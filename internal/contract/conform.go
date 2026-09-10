@@ -113,6 +113,12 @@ func RunConformance(botDir, fixturesDir string) (*Report, error) {
 		return nil, err
 	}
 	deps := step.NewDemoDeps(fixturesDir, blobs)
+	// Conformance checks that a `file` port was produced with the right
+	// shape, not that it's byte-for-byte a real PDF — real rendering is
+	// exercised directly against the harness Docker images instead (see
+	// docs/harnesses.md), so this stays hermetic and never depends on
+	// whatever state the host's own Chrome happens to be in.
+	deps.SkipRealRender = true
 
 	report := &Report{BotName: nb.Metadata.Name}
 	result, err := step.Interpret(nb, inputs, deps)

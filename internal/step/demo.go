@@ -43,7 +43,13 @@ type DemoDeps struct {
 	Blobstore   BlobStore
 	Approver    Approver
 	Clock       func() time.Time
-	memory      map[string]map[string]string
+	// SkipRealRender forces transform.render to use the plain HTML fallback
+	// instead of shelling out to a host Chrome. Off by default (interactive
+	// demo-mode runs want a real PDF); RunConformance turns it on so
+	// `nanobots conform` / `go test` stay hermetic and don't depend on
+	// whatever state the host's Chrome happens to be in.
+	SkipRealRender bool
+	memory         map[string]map[string]string
 }
 
 func NewDemoDeps(fixturesDir string, blobs BlobStore) *DemoDeps {
@@ -86,7 +92,7 @@ func (d *DemoDeps) AIGenerate(prompt string, model schema.Model) (string, error)
 }
 
 func (d *DemoDeps) Render(templatePath string, data any, to string) ([]byte, string, error) {
-	if to == "pdf" {
+	if to == "pdf" && !d.SkipRealRender {
 		return RenderHTMLToPDF(templatePath, data)
 	}
 	html, err := RenderHTML(templatePath, data)

@@ -2,13 +2,23 @@ package step
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"html/template"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"time"
 )
+
+// chromeRenderTimeout bounds the headless Chrome subprocess. Without this, a
+// hung Chrome process (a real failure mode — a busy host, a crash-looping
+// renderer, a stuck GPU process) would hang the whole bot run indefinitely
+// instead of failing with a clear error. Comfortably under a bot's own
+// max_runtime_secs guardrail (240s for recap-emails-to-pdf). A var, not a
+// const, so tests can shrink it rather than waiting out the real timeout.
+var chromeRenderTimeout = 30 * time.Second
 
 // RenderHTML executes an html/template file against data, returning the
 // rendered HTML bytes.
@@ -52,15 +62,26 @@ func RenderHTMLToPDF(templatePath string, data any) (pdfBytes []byte, mime strin
 		return nil, "", err
 	}
 
-	cmd := exec.Command(chrome,
+	ctx, cancel := context.WithTimeout(context.Background(), chromeRenderTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, chrome,
 		"--headless=new",
 		"--disable-gpu",
 		"--no-sandbox",
+		// Chrome's default profile location lives under $HOME, which is
+		// read-only when the container runs with --read-only (the whole
+		// point of the harness images). Point it at the same tmpfs-backed
+		// scratch dir we already made for the HTML/PDF files.
+		"--user-data-dir="+dir,
 		"--print-to-pdf="+pdfPath,
 		"--no-pdf-header-footer",
 		"file://"+htmlPath,
 	)
-	if out, err := cmd.CombinedOutput(); err != nil {
+	out, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return nil, "", fmt.Errorf("headless chrome render timed out after %s", chromeRenderTimeout)
+	}
+	if err != nil {
 		return nil, "", fmt.Errorf("headless chrome render failed: %w (%s)", err, string(out))
 	}
 	pdf, err := os.ReadFile(pdfPath)
@@ -70,11 +91,17 @@ func RenderHTMLToPDF(templatePath string, data any) (pdfBytes []byte, mime strin
 	return pdf, "application/pdf", nil
 }
 
+// findChrome locates a Chrome/Chromium binary. NANOBOTS_CHROME_PATH, when
+// set, is authoritative — an operator who names a binary explicitly and
+// finds nothing there almost certainly wants an error, not this function
+// silently discovering a different Chrome elsewhere (which is also what
+// keeps this function's behavior testable without a real Chrome install).
 func findChrome() string {
-	if p := os.Getenv("NANOBOTS_CHROME_PATH"); p != "" {
+	if p, isSet := os.LookupEnv("NANOBOTS_CHROME_PATH"); isSet {
 		if _, err := os.Stat(p); err == nil {
 			return p
 		}
+		return ""
 	}
 	candidates := map[string][]string{
 		"darwin": {"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"},
