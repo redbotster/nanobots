@@ -1,0 +1,207 @@
+// Package schema defines the Go types for the Nanobot and Nanoswarm resources
+// described in NANOBOTS-BLUEPRINT.md. These are the source of truth for the
+// generated JSON Schema in schemas/ and for everything the planner type-checks
+// against.
+package schema
+
+// PortType is the set of types a port can carry. Assignability between these
+// is what the planner's snap type-checker enforces.
+type PortType string
+
+const (
+	PortString   PortType = "string"
+	PortDatetime PortType = "datetime"
+	PortBoolean  PortType = "boolean"
+	PortJSON     PortType = "json"
+	PortFile     PortType = "file"
+	PortEvent    PortType = "event"
+	// list<T> ports are written as "list<string>", "list<json>", etc. and
+	// parsed with ParsePortType.
+)
+
+// InputPort is a typed input on a Nanobot.
+type InputPort struct {
+	Name     string `json:"name" yaml:"name"`
+	Type     string `json:"type" yaml:"type"`
+	Default  string `json:"default,omitempty" yaml:"default,omitempty"`
+	Required bool   `json:"required,omitempty" yaml:"required,omitempty"`
+}
+
+// OutputPort is a typed output on a Nanobot.
+type OutputPort struct {
+	Name        string `json:"name" yaml:"name"`
+	Type        string `json:"type" yaml:"type"`
+	Mime        string `json:"mime,omitempty" yaml:"mime,omitempty"`
+	Schema      string `json:"schema,omitempty" yaml:"schema,omitempty"` // path to a JSON Schema file, for json-typed outputs
+	Description string `json:"description,omitempty" yaml:"description,omitempty"`
+}
+
+// Ports groups a Nanobot's inputs and outputs.
+type Ports struct {
+	Inputs  []InputPort  `json:"inputs,omitempty" yaml:"inputs,omitempty"`
+	Outputs []OutputPort `json:"outputs,omitempty" yaml:"outputs,omitempty"`
+}
+
+// Harness selects the agent loop that drives a bot.
+type Harness struct {
+	Type       string `json:"type" yaml:"type"` // claude-code | opencode | openclaude | hermes | openclaw | bare
+	Version    string `json:"version,omitempty" yaml:"version,omitempty"`
+	Entrypoint string `json:"entrypoint,omitempty" yaml:"entrypoint,omitempty"`
+}
+
+// Model is the default LLM configuration for ai.generate steps.
+type Model struct {
+	Provider    string  `json:"provider,omitempty" yaml:"provider,omitempty"`
+	Name        string  `json:"name,omitempty" yaml:"name,omitempty"`
+	MaxTokens   int     `json:"max_tokens,omitempty" yaml:"max_tokens,omitempty"`
+	Temperature float64 `json:"temperature,omitempty" yaml:"temperature,omitempty"`
+}
+
+// ConnectionMethod is Nanobots' own abstraction over how a service gets
+// connected — a layer on top of whatever 1Claw exposes natively. See
+// docs/connections.md.
+type ConnectionMethod string
+
+const (
+	ConnectionOAuth1Claw  ConnectionMethod = "oauth_1claw"  // 1Claw's own OAuth provider registry
+	ConnectionOAuthNative ConnectionMethod = "oauth_native" // a provider-specific OAuth client Nanobots implements directly (e.g. Google)
+	ConnectionBrowser     ConnectionMethod = "browser"      // 1Claw Browser Bridge
+	ConnectionAPIKeyVault ConnectionMethod = "api_key_vault"
+	ConnectionDemo        ConnectionMethod = "demo" // fixture data, no real network calls
+)
+
+// Service is an external system a bot reads or writes.
+type Service struct {
+	ID         string           `json:"id" yaml:"id"`
+	Provider   string           `json:"provider" yaml:"provider"`
+	Scopes     []string         `json:"scopes,omitempty" yaml:"scopes,omitempty"`
+	Required   bool             `json:"required,omitempty" yaml:"required,omitempty"`
+	Connection ConnectionMethod `json:"connection,omitempty" yaml:"connection,omitempty"` // resolved by the connection registry if empty
+}
+
+// Step is one entry in a Nanobot's spec.steps pipeline. Only the fields
+// relevant to its Type are meaningful; see internal/step for the interpreter.
+type Step struct {
+	Name       string         `json:"name" yaml:"name"`
+	Type       string         `json:"type" yaml:"type"` // service.call | ai.generate | http.request | transform.render | transform.now | memory.get | memory.put | memory.search | approve | if | notify | wait
+	Service    string         `json:"service,omitempty" yaml:"service,omitempty"`
+	Op         string         `json:"op,omitempty" yaml:"op,omitempty"`
+	Params     map[string]any `json:"params,omitempty" yaml:"params,omitempty"`
+	PromptFile string         `json:"prompt_file,omitempty" yaml:"prompt_file,omitempty"`
+	Inputs     map[string]any `json:"inputs,omitempty" yaml:"inputs,omitempty"`
+	Template   string         `json:"template,omitempty" yaml:"template,omitempty"`
+	To         string         `json:"to,omitempty" yaml:"to,omitempty"`
+	Key        string         `json:"key,omitempty" yaml:"key,omitempty"`
+	Value      string         `json:"value,omitempty" yaml:"value,omitempty"`
+	Output     string         `json:"output,omitempty" yaml:"output,omitempty"`
+	Summary    string         `json:"summary,omitempty" yaml:"summary,omitempty"`
+	RiskTier   string         `json:"risk_tier,omitempty" yaml:"risk_tier,omitempty"`
+}
+
+// Guardrails are constraints a bot declares about itself.
+type Guardrails struct {
+	PII                 string   `json:"pii,omitempty" yaml:"pii,omitempty"` // redact | block | allow
+	InjectionThreshold  float64  `json:"injection_threshold,omitempty" yaml:"injection_threshold,omitempty"`
+	MaxRuntimeSecs      int      `json:"max_runtime_secs,omitempty" yaml:"max_runtime_secs,omitempty"`
+	NetworkEgress       []string `json:"network_egress,omitempty" yaml:"network_egress,omitempty"`
+	WritesAllowed       []string `json:"writes_allowed,omitempty" yaml:"writes_allowed,omitempty"`
+	DailyBudgetUSD      float64  `json:"daily_budget_usd,omitempty" yaml:"daily_budget_usd,omitempty"`
+	ApprovalRequiredFor []string `json:"approval_required_for,omitempty" yaml:"approval_required_for,omitempty"`
+}
+
+// Resources describes the container footprint.
+type Resources struct {
+	Preset string `json:"preset,omitempty" yaml:"preset,omitempty"` // small | medium | large
+	Memory string `json:"memory,omitempty" yaml:"memory,omitempty"`
+	CPU    string `json:"cpu,omitempty" yaml:"cpu,omitempty"`
+	Image  string `json:"image,omitempty" yaml:"image,omitempty"`
+}
+
+// Metadata is the Kubernetes-flavoured metadata block shared by both kinds.
+type Metadata struct {
+	Name        string   `json:"name" yaml:"name"`
+	Version     string   `json:"version,omitempty" yaml:"version,omitempty"`
+	Description string   `json:"description,omitempty" yaml:"description,omitempty"`
+	Tags        []string `json:"tags,omitempty" yaml:"tags,omitempty"`
+	Author      string   `json:"author,omitempty" yaml:"author,omitempty"`
+	License     string   `json:"license,omitempty" yaml:"license,omitempty"`
+	Owner       string   `json:"owner,omitempty" yaml:"owner,omitempty"`
+}
+
+// NanobotSpec is the spec block of a Nanobot resource.
+type NanobotSpec struct {
+	Harness    Harness    `json:"harness" yaml:"harness"`
+	Model      Model      `json:"model,omitempty" yaml:"model,omitempty"`
+	Services   []Service  `json:"services,omitempty" yaml:"services,omitempty"`
+	Ports      Ports      `json:"ports" yaml:"ports"`
+	Steps      []Step     `json:"steps" yaml:"steps"`
+	Guardrails Guardrails `json:"guardrails,omitempty" yaml:"guardrails,omitempty"`
+	Resources  Resources  `json:"resources,omitempty" yaml:"resources,omitempty"`
+}
+
+// Nanobot is a single brick: apiVersion/kind/metadata/spec, Helm-chart shaped.
+type Nanobot struct {
+	APIVersion string      `json:"apiVersion" yaml:"apiVersion"`
+	Kind       string      `json:"kind" yaml:"kind"` // "Nanobot"
+	Metadata   Metadata    `json:"metadata" yaml:"metadata"`
+	Spec       NanobotSpec `json:"spec" yaml:"spec"`
+
+	// SourcePath is the directory the nanobot.yaml was loaded from — not part
+	// of the schema, used by the planner/runner to resolve relative paths
+	// (bot.md, prompts/, templates/, fixtures/).
+	SourcePath string `json:"-" yaml:"-"`
+}
+
+// BotRef references a bot instance inside a swarm's bots[] list.
+type BotRef struct {
+	ID     string         `json:"id" yaml:"id"`
+	Use    string         `json:"use,omitempty" yaml:"use,omitempty"`   // registry ref: name@version
+	Path   string         `json:"path,omitempty" yaml:"path,omitempty"` // local path, alternative to use:
+	Inputs map[string]any `json:"inputs,omitempty" yaml:"inputs,omitempty"`
+}
+
+// Snap is a typed connection from one bot's output port to another's input.
+type Snap struct {
+	From string `json:"from" yaml:"from"` // "<bot-id>.<port>[.<field>...]"
+	To   string `json:"to" yaml:"to"`
+}
+
+// Trigger is how a swarm starts a run.
+type Trigger struct {
+	Type     string `json:"type" yaml:"type"` // cron | webhook | manual | event
+	Expr     string `json:"expr,omitempty" yaml:"expr,omitempty"`
+	Timezone string `json:"timezone,omitempty" yaml:"timezone,omitempty"`
+}
+
+// Deploy is where a swarm runs.
+type Deploy struct {
+	Target string         `json:"target" yaml:"target"` // local | 1claw | kubernetes | apple
+	OnClaw map[string]any `json:"onclaw,omitempty" yaml:"onclaw,omitempty"`
+}
+
+// SwarmDefaults are swarm-wide defaults every bot inherits unless it overrides.
+type SwarmDefaults struct {
+	Model      Model      `json:"model,omitempty" yaml:"model,omitempty"`
+	Guardrails Guardrails `json:"guardrails,omitempty" yaml:"guardrails,omitempty"`
+	Resources  Resources  `json:"resources,omitempty" yaml:"resources,omitempty"`
+}
+
+// NanoswarmSpec is the spec block of a Nanoswarm resource.
+type NanoswarmSpec struct {
+	Defaults SwarmDefaults  `json:"defaults,omitempty" yaml:"defaults,omitempty"`
+	Vars     map[string]any `json:"vars,omitempty" yaml:"vars,omitempty"`
+	Trigger  Trigger        `json:"trigger" yaml:"trigger"`
+	Bots     []BotRef       `json:"bots" yaml:"bots"`
+	Snaps    []Snap         `json:"snaps,omitempty" yaml:"snaps,omitempty"`
+	Deploy   Deploy         `json:"deploy" yaml:"deploy"`
+}
+
+// Nanoswarm is a saved graph of nanobots snapped together.
+type Nanoswarm struct {
+	APIVersion string        `json:"apiVersion" yaml:"apiVersion"`
+	Kind       string        `json:"kind" yaml:"kind"` // "Nanoswarm"
+	Metadata   Metadata      `json:"metadata" yaml:"metadata"`
+	Spec       NanoswarmSpec `json:"spec" yaml:"spec"`
+
+	SourcePath string `json:"-" yaml:"-"`
+}

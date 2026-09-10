@@ -1,0 +1,7 @@
+{
+  "file_id": "1a2b3c4d5e6f-demo",
+  "to": "kevin@example.com",
+  "subject": "Your recap is ready",
+  "body_intro": "Here's today's inbox recap.",
+  "attach": false
+}

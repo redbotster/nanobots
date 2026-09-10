@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanobots.dev/bots/recap-emails-to-pdf/schemas/recap.json",
+  "title": "Recap",
+  "type": "object",
+  "required": ["headline", "items"],
+  "properties": {
+    "headline": {
+      "type": "string",
+      "description": "One sentence capturing the most important thing in this batch."
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from", "subject", "summary", "thread_ref"],
+        "properties": {
+          "from": { "type": "string" },
+          "subject": { "type": "string" },
+          "summary": { "type": "string" },
+          "thread_ref": { "type": "string" }
+        }
+      }
+    }
+  }
+}

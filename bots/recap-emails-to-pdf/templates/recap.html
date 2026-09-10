@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Inbox recap</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", sans-serif; color: #1a1a1a; margin: 48px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .date { color: #6b7280; font-size: 13px; margin-bottom: 24px; }
+  .headline { font-size: 16px; margin-bottom: 28px; padding: 12px 16px; background: #f3f4f6; border-radius: 6px; }
+  .item { padding: 14px 0; border-top: 1px solid #e5e7eb; }
+  .item:first-of-type { border-top: none; }
+  .from { font-weight: 600; font-size: 14px; }
+  .subject { color: #374151; font-size: 13px; margin: 2px 0 6px; }
+  .summary { font-size: 13px; line-height: 1.5; }
+  .empty { color: #6b7280; font-style: italic; }
+</style>
+</head>
+<body>
+  <h1>Inbox recap</h1>
+  <div class="date">Generated {{.generated_at}}</div>
+  <div class="headline">{{.headline}}</div>
+  {{if .items}}
+    {{range .items}}
+    <div class="item">
+      <div class="from">{{.from}}</div>
+      <div class="subject">{{.subject}}</div>
+      <div class="summary">{{.summary}}</div>
+    </div>
+    {{end}}
+  {{else}}
+    <p class="empty">Nothing else to report.</p>
+  {{end}}
+</body>
+</html>

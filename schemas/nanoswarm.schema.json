@@ -1,0 +1,214 @@
+{
+  "$id": "https://nanobots.dev/schemas/nanoswarm.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "apiVersion": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "metadata": {
+      "properties": {
+        "author": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "license": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "spec": {
+      "properties": {
+        "bots": {
+          "items": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "inputs": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "path": {
+                "type": "string"
+              },
+              "use": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "defaults": {
+          "properties": {
+            "guardrails": {
+              "properties": {
+                "approval_required_for": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "daily_budget_usd": {
+                  "type": "number"
+                },
+                "injection_threshold": {
+                  "type": "number"
+                },
+                "max_runtime_secs": {
+                  "type": "integer"
+                },
+                "network_egress": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "pii": {
+                  "type": "string"
+                },
+                "writes_allowed": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            },
+            "model": {
+              "properties": {
+                "max_tokens": {
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "temperature": {
+                  "type": "number"
+                }
+              },
+              "type": "object"
+            },
+            "resources": {
+              "properties": {
+                "cpu": {
+                  "type": "string"
+                },
+                "image": {
+                  "type": "string"
+                },
+                "memory": {
+                  "type": "string"
+                },
+                "preset": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "type": "object"
+        },
+        "deploy": {
+          "properties": {
+            "onclaw": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "target": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "target"
+          ],
+          "type": "object"
+        },
+        "snaps": {
+          "items": {
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "trigger": {
+          "properties": {
+            "expr": {
+              "type": "string"
+            },
+            "timezone": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        "vars": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "trigger",
+        "bots",
+        "deploy"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
+  "title": "Nanoswarm",
+  "type": "object"
+}

@@ -1,0 +1,290 @@
+{
+  "$id": "https://nanobots.dev/schemas/nanobot.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "apiVersion": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "metadata": {
+      "properties": {
+        "author": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "license": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "spec": {
+      "properties": {
+        "guardrails": {
+          "properties": {
+            "approval_required_for": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "daily_budget_usd": {
+              "type": "number"
+            },
+            "injection_threshold": {
+              "type": "number"
+            },
+            "max_runtime_secs": {
+              "type": "integer"
+            },
+            "network_egress": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "pii": {
+              "type": "string"
+            },
+            "writes_allowed": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "harness": {
+          "properties": {
+            "entrypoint": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        "model": {
+          "properties": {
+            "max_tokens": {
+              "type": "integer"
+            },
+            "name": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "temperature": {
+              "type": "number"
+            }
+          },
+          "type": "object"
+        },
+        "ports": {
+          "properties": {
+            "inputs": {
+              "items": {
+                "properties": {
+                  "default": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "required": {
+                    "type": "boolean"
+                  },
+                  "type": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "type"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "outputs": {
+              "items": {
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "mime": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "schema": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "type"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "resources": {
+          "properties": {
+            "cpu": {
+              "type": "string"
+            },
+            "image": {
+              "type": "string"
+            },
+            "memory": {
+              "type": "string"
+            },
+            "preset": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "services": {
+          "items": {
+            "properties": {
+              "connection": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "scopes": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "id",
+              "provider"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "steps": {
+          "items": {
+            "properties": {
+              "inputs": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "key": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "op": {
+                "type": "string"
+              },
+              "output": {
+                "type": "string"
+              },
+              "params": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "prompt_file": {
+                "type": "string"
+              },
+              "risk_tier": {
+                "type": "string"
+              },
+              "service": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              },
+              "template": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "type"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "harness",
+        "ports",
+        "steps"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
+  "title": "Nanobot",
+  "type": "object"
+}

@@ -1,0 +1,89 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: email-drive-file
+  version: 1.1.0
+  description: Email a link (or attachment) to a Google Drive file when it appears.
+  tags: [email, gmail, drive, notify]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: bare                       # no LLM loop — deterministic steps only
+
+  services:
+    - id: gdrive
+      provider: google
+      scopes: [drive.readonly]
+      required: true
+      # TODO(nanobots#gmail-oauth): real Gmail/Drive OAuth is deferred — see
+      # README.md and docs/connections.md. Browser-Bridge automation of
+      # Google sign-in is blocked by Google's own anti-automation policy;
+      # this runs against the `demo` provider (fixture data) until a real
+      # OAuth path (1Claw-native or a Nanobots Google client) is wired up.
+      connection: demo
+    - id: gmail
+      provider: google
+      scopes: [gmail.send]
+      required: true
+      connection: demo
+
+  ports:
+    inputs:
+      - name: file_id
+        type: string
+        required: true
+      - name: to
+        type: string
+        required: true
+      - name: subject
+        type: string
+        default: "A file is ready: {{steps.lookup.output.name}}"
+      - name: body_intro
+        type: string
+        default: ""
+      - name: attach
+        type: boolean
+        default: false
+    outputs:
+      - name: message_id
+        type: string
+      - name: sent_at
+        type: datetime
+
+  steps:
+    - name: lookup
+      type: service.call
+      service: gdrive
+      op: files.get
+      params: { id: "{{inputs.file_id}}", fields: "name,webViewLink,size" }
+    - name: gate
+      type: approve                  # compiles to 1Claw approval_request
+      summary: "Send '{{steps.lookup.output.name}}' to {{inputs.to}}?"
+      risk_tier: low
+    - name: send
+      type: service.call
+      service: gmail
+      op: messages.send
+      params:
+        to: "{{inputs.to}}"
+        subject: "{{inputs.subject}}"
+        body: "{{inputs.body_intro}}\n\n{{steps.lookup.output.webViewLink}}"
+        attach: "{{inputs.attach}}"
+      output: message_id
+    - name: stamp
+      type: transform.now
+      output: sent_at
+
+  guardrails:
+    pii: redact
+    max_runtime_secs: 60
+    network_egress: [googleapis.com]
+    writes_allowed: [gmail]
+
+  resources:
+    preset: small
+    memory: 64Mi
+    cpu: 100m
+    image: ghcr.io/nanobots/harness-bare:1.0-slim
