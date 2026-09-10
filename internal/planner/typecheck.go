@@ -19,19 +19,23 @@ type SnapCheck struct {
 	Err      error
 }
 
-// endpoint is a parsed "<bot-id>.<port>[.<field>...]" reference.
-type endpoint struct {
+// Endpoint is a parsed "<bot-id>.<port>[.<field>...]" reference, exported so
+// internal/runner can resolve a snap's actual value (not just its type) when
+// wiring a downstream bot's inputs at run time.
+type Endpoint struct {
 	BotID  string
 	Port   string
 	Fields []string // remaining dotted segments, for drilling into a json-typed port's schema
 }
 
-func parseEndpoint(s string) (endpoint, error) {
+// ParseEndpoint parses "<bot-id>.<port>[.<field>...]" — the shape of both
+// sides of a Nanoswarm snap.
+func ParseEndpoint(s string) (Endpoint, error) {
 	parts := strings.Split(s, ".")
 	if len(parts) < 2 {
-		return endpoint{}, fmt.Errorf("%q: expected <bot-id>.<port>[.<field>...]", s)
+		return Endpoint{}, fmt.Errorf("%q: expected <bot-id>.<port>[.<field>...]", s)
 	}
-	return endpoint{BotID: parts[0], Port: parts[1], Fields: parts[2:]}, nil
+	return Endpoint{BotID: parts[0], Port: parts[1], Fields: parts[2:]}, nil
 }
 
 // TypeCheckSnaps validates every snap in the swarm: both endpoints must
@@ -70,7 +74,7 @@ func TypeCheckSnaps(rs *ResolvedSwarm) []SnapCheck {
 }
 
 func resolveEndpointType(rs *ResolvedSwarm, ref string, isOutput bool) (schema.ParsedType, error) {
-	ep, err := parseEndpoint(ref)
+	ep, err := ParseEndpoint(ref)
 	if err != nil {
 		return schema.ParsedType{}, err
 	}

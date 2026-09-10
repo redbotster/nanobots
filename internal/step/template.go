@@ -13,6 +13,11 @@ import (
 
 var templateExpr = regexp.MustCompile(`\{\{\s*([^}]+?)\s*\}\}`)
 
+// ResolveTemplateValue is the exported form of resolveValue, for callers
+// outside this package that need the same `{{...}}` resolution — currently
+// internal/runner, for defaulting a swarm bot's inputs before a run starts.
+func ResolveTemplateValue(v any, ctx map[string]any) any { return resolveValue(v, ctx) }
+
 // resolveValue recursively resolves `{{...}}` template expressions in v
 // against ctx. A string that is *entirely* one expression resolves to the
 // looked-up value's native type (so `"{{steps.fetch.output}}"` yields the

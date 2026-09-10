@@ -27,6 +27,9 @@ type LiveDeps struct {
 	// NewLiveDeps; tests override them to keep polling loops fast.
 	ApprovalPoll    time.Duration
 	ApprovalTimeout time.Duration
+
+	// Approver, when set, overrides Approve entirely (see Approve below).
+	Approver Approver
 }
 
 func NewLiveDeps(oc *oneclaw.Client, shroud *oneclaw.ShroudClient, agentID, fixturesDir string, blobs BlobStore) *LiveDeps {
@@ -93,8 +96,13 @@ func (l *LiveDeps) MemoryPut(namespace, key, value string) error {
 }
 
 // Approve opens a real 1Claw approval and blocks until a human decides in
-// the WebUI, dashboard, or 1Claw mobile app.
+// the WebUI, dashboard, or 1Claw mobile app — unless Approver is set, in
+// which case that takes over entirely (the local runner uses this to route
+// approvals through its own queue; see internal/runner/approver.go).
 func (l *LiveDeps) Approve(summary, riskTier string) (bool, string, error) {
+	if l.Approver != nil {
+		return l.Approver.Approve(summary, riskTier)
+	}
 	a, err := l.OneClaw.RequestApproval(l.AgentID, summary, riskTier)
 	if err != nil {
 		return false, "", err

@@ -77,17 +77,27 @@ func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, deps Deps) (*R
 			out = deps.Now()
 
 		case "memory.get":
+			// Best-effort: memory is "since last run" bookkeeping, not a
+			// correctness requirement — a backend that can't store it yet
+			// (e.g. TODO(1claw#memory-enable): memory_enabled has no
+			// documented way to turn on via the public API) degrades to
+			// "nothing remembered" rather than failing the whole run.
 			var found bool
-			out, found, err = deps.MemoryGet(nb.Metadata.Name, s.Key)
-			if err == nil {
+			var memErr error
+			out, found, memErr = deps.MemoryGet(nb.Metadata.Name, s.Key)
+			if memErr != nil {
+				log(s.Name, "memory.get %s failed, continuing without it: %v", s.Key, memErr)
+				out, found = "", false
+			} else {
 				log(s.Name, "memory.get %s (found=%v)", s.Key, found)
 			}
 
 		case "memory.put":
 			val := fmt.Sprint(resolveValue(s.Value, ctx))
-			err = deps.MemoryPut(nb.Metadata.Name, s.Key, val)
 			out = val
-			if err == nil {
+			if memErr := deps.MemoryPut(nb.Metadata.Name, s.Key, val); memErr != nil {
+				log(s.Name, "memory.put %s failed, continuing without it: %v", s.Key, memErr)
+			} else {
 				log(s.Name, "memory.put %s", s.Key)
 			}
 

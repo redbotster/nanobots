@@ -23,11 +23,11 @@ func BuildDAG(rs *ResolvedSwarm) (*DAG, error) {
 	sort.Strings(d.Nodes)
 
 	for _, snap := range rs.Swarm.Spec.Snaps {
-		fromEp, err := parseEndpoint(snap.From)
+		fromEp, err := ParseEndpoint(snap.From)
 		if err != nil {
 			return nil, err
 		}
-		toEp, err := parseEndpoint(snap.To)
+		toEp, err := ParseEndpoint(snap.To)
 		if err != nil {
 			return nil, err
 		}
