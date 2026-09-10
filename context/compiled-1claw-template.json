@@ -1,0 +1,53 @@
+{
+  "name": "nanoswarm-daily-email-recap",
+  "spec": {
+    "vault": { "name": "nanobots-main", "description": "Nanobots swarm secrets" },
+    "agents": [
+      {
+        "name": "recap",
+        "description": "recap-emails-to-pdf@0.3.0",
+        "execution": true,
+        "shroud_enabled": true,
+        "shroud_config": {
+          "pii_policy": "redact",
+          "injection_threshold": 0.7,
+          "allowed_providers": ["anthropic"],
+          "enable_secret_redaction": true,
+          "daily_budget_usd": 5
+        },
+        "runtime": { "name": "recap-rt", "template": "openclaw", "preset": "small", "idle_timeout_secs": 600 }
+      },
+      {
+        "name": "mailer",
+        "description": "email-drive-file@1.1.0",
+        "execution": true,
+        "shroud_enabled": true,
+        "shroud_config": { "pii_policy": "redact", "enable_secret_redaction": true }
+      }
+    ],
+    "policies": [
+      { "principal_ref": "agents.recap",  "vault_ref": "vault", "paths": ["nanobots/daily-email-recap/**"], "permissions": ["read"] },
+      { "principal_ref": "agents.mailer", "vault_ref": "vault", "paths": ["nanobots/daily-email-recap/**"], "permissions": ["read"] }
+    ],
+    "automations": [
+      {
+        "name": "daily-email-recap",
+        "trigger_type": "cron",
+        "cron_expr": "0 7 * * 1-5",
+        "timezone": "America/Chicago",
+        "workflow_spec": {
+          "steps": [
+            { "name": "recap.fetch",     "type": "execute_intent", "params": { "binding": "{{binding.recap.gmail}}",  "params": { "op": "messages.list", "q": "after:{{steps.recap_memory.output}} label:INBOX", "max": 200 } } },
+            { "name": "recap.summarise", "type": "ai_generate", "prompt": "{{file:prompts/recap.md}}", "provider": "anthropic", "model": "claude-sonnet-4-6", "max_tokens": 4000 },
+            { "name": "recap.render",    "type": "execute_intent", "params": { "binding": "{{binding.recap.runtime}}", "params": { "op": "render.pdf", "template": "recap.html", "data": "{{steps.recap.summarise.output}}" } } },
+            { "name": "recap.upload",    "type": "execute_intent", "params": { "binding": "{{binding.recap.gdrive}}", "params": { "op": "files.create", "folder": "Recaps/2026", "file": "{{steps.recap.render.output}}" } } },
+            { "name": "recap.remember",  "type": "memory_put", "namespace": "daily-email-recap", "key": "last_run_at", "value": "{{run.started_at}}" },
+            { "name": "mailer.lookup",   "type": "execute_intent", "params": { "binding": "{{binding.mailer.gdrive}}", "params": { "op": "files.get", "id": "{{steps.recap.upload.output.id}}" } } },
+            { "name": "mailer.gate",     "type": "approval_request", "summary": "Send '{{steps.mailer.lookup.output.name}}' to me@example.com?", "risk_tier": "low" },
+            { "name": "mailer.send",     "type": "execute_intent", "params": { "binding": "{{binding.mailer.gmail}}", "params": { "op": "messages.send", "to": "me@example.com", "subject": "Inbox recap for {{run.date}}", "body": "{{steps.recap.summarise.output.headline}}\n\n{{steps.mailer.lookup.output.webViewLink}}" } } }
+          ]
+        }
+      }
+    ]
+  }
+}

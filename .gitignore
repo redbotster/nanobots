@@ -1,0 +1,30 @@
+# Secrets — never committed, ever
+.secrets/
+*.env
+.env.*
+
+# Local runtime state (agent keys, run history, blob store, browser profiles)
+/.nanobots/
+.nanobots/
+
+# Go
+/bin/
+/dist/
+*.test
+*.out
+coverage.*
+
+# Node / web
+web/node_modules/
+web/dist/
+node_modules/
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Claude Code project state
+.claude/

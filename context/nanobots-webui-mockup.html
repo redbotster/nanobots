@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nanobots — daily-email-recap</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#030811; --panel:#08162A; --panel-2:#0B1D35;
+    --edge:rgba(0,212,255,.22); --edge-strong:rgba(0,212,255,.55);
+    --tron:#00D4FF; --deep:#1B4BFF; --glow:#BFF3FF;
+    --text:#DCEBF5; --muted:#6F8AA5; --warn:#FF9F43;
+    --ok:#4BE3B0;
+    --display:'Chakra Petch',system-ui,sans-serif;
+    --body:'IBM Plex Sans',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--void); color:var(--text); font-family:var(--body); font-size:14px; line-height:1.5;
+    background-image:
+      linear-gradient(rgba(0,212,255,.045) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(0,212,255,.045) 1px,transparent 1px);
+    background-size:48px 48px;
+  }
+  a{color:inherit}
+  button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+  button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--tron);outline-offset:2px}
+
+  .app{display:grid;min-height:100vh;grid-template-rows:56px 1fr;grid-template-columns:200px 1fr 320px;grid-template-areas:"top top top" "rail canvas inspector"}
+
+  /* top bar */
+  .top{grid-area:top;display:flex;align-items:center;gap:20px;padding:0 20px;border-bottom:1px solid var(--edge);background:rgba(3,8,17,.8);backdrop-filter:blur(6px)}
+  .wordmark{font-family:var(--display);font-weight:700;font-size:18px;letter-spacing:.14em;display:flex;align-items:center;gap:10px}
+  .wordmark i{display:inline-block;width:10px;height:22px;background:var(--tron);box-shadow:0 0 12px var(--tron)}
+  .crumb{font-family:var(--display);color:var(--muted);font-size:14px}
+  .crumb b{color:var(--text);font-weight:500}
+  .status{margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok)}
+  .actions{display:flex;gap:8px}
+  .btn{padding:8px 14px;border:1px solid var(--edge-strong);font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.04em;transition:background .15s,border-color .15s}
+  .btn:hover{background:rgba(0,212,255,.08)}
+  .btn.primary{background:var(--deep);border-color:var(--deep);color:#fff}
+  .btn.primary:hover{background:#2a5aff}
+
+  /* rail */
+  .rail{grid-area:rail;border-right:1px solid var(--edge);padding:16px 0;display:flex;flex-direction:column}
+  .rail nav button{display:flex;align-items:center;gap:12px;width:100%;padding:11px 20px;text-align:left;color:var(--muted);border-left:2px solid transparent}
+  .rail nav button.on{color:var(--text);border-left-color:var(--tron);background:linear-gradient(90deg,rgba(0,212,255,.10),transparent)}
+  .rail nav svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.6}
+  .rail .foot{margin-top:auto;padding:16px 20px;color:var(--muted);font-size:12px;border-top:1px solid var(--edge)}
+  .rail .foot b{display:block;color:var(--text);font-weight:500}
+
+  /* canvas */
+  .canvas{grid-area:canvas;display:grid;grid-template-rows:1fr 220px;min-width:0}
+  .board{position:relative;padding:36px 32px;overflow:auto}
+  .board h1{font-family:var(--display);font-weight:500;font-size:22px;margin:0 0 4px}
+  .board .sub{color:var(--muted);margin:0 0 28px}
+  .graph{position:relative;display:grid;grid-template-columns:260px 200px 260px 160px;align-items:center;gap:0}
+
+  .brick{position:relative;border:1px solid var(--edge-strong);background:var(--panel);padding:16px 18px 14px;cursor:pointer;transition:box-shadow .2s,border-color .2s}
+  .brick:hover{border-color:var(--tron)}
+  .brick.on{box-shadow:0 0 0 1px var(--tron),0 0 28px rgba(0,212,255,.25)}
+  .brick::before{content:"";position:absolute;inset:-1px;border:1px solid transparent;pointer-events:none}
+  .brick .kind{font-family:var(--display);font-size:11px;color:var(--tron);letter-spacing:.08em;margin-bottom:6px;display:flex;justify-content:space-between}
+  .brick .kind span{color:var(--muted);letter-spacing:0}
+  .brick h2{font-family:var(--display);font-size:16px;font-weight:600;margin:0 0 2px}
+  .brick p{margin:0 0 12px;color:var(--muted);font-size:13px}
+  .brick .svc{display:flex;gap:6px;flex-wrap:wrap}
+  .brick .svc span{font-size:11px;padding:2px 8px;border:1px solid var(--edge);color:var(--text)}
+  .studs{position:absolute;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:14px}
+  .studs.out{right:-7px}.studs.in{left:-7px}
+  .stud{width:12px;height:12px;border-radius:50%;background:var(--void);border:2px solid var(--tron);box-shadow:0 0 8px var(--tron)}
+  .stud.dim{border-color:var(--muted);box-shadow:none}
+
+  /* the light trail — the one loud element */
+  .trail{position:relative;height:120px}
+  .trail svg{width:100%;height:100%;overflow:visible}
+  .trail path{fill:none;stroke:var(--tron);stroke-width:2;filter:drop-shadow(0 0 6px var(--tron))}
+  .trail path.pulse{stroke:var(--glow);stroke-width:3;stroke-dasharray:18 140;animation:flow 1.8s linear infinite}
+  @keyframes flow{to{stroke-dashoffset:-158}}
+  .trail .port{position:absolute;font-family:var(--display);font-size:11px;color:var(--glow);background:var(--void);padding:1px 6px;white-space:nowrap}
+  .trail .port.a{top:18px;left:50%;transform:translateX(-50%)}
+  .trail .port.b{bottom:10px;left:50%;transform:translateX(-50%);color:var(--muted)}
+
+  .addbot{border:1px dashed var(--edge-strong);color:var(--muted);padding:20px 12px;text-align:center;font-family:var(--display);font-size:13px;margin-left:24px;transition:color .15s,border-color .15s}
+  .addbot:hover{color:var(--tron);border-color:var(--tron)}
+  .addbot b{display:block;font-size:22px;font-weight:400;color:var(--tron);line-height:1}
+
+  .legend{margin-top:32px;color:var(--muted);font-size:13px;display:flex;gap:24px;flex-wrap:wrap}
+  .legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px;vertical-align:-1px}
+  .legend .t::before{background:var(--tron)}.legend .w::before{background:var(--warn)}.legend .o::before{background:var(--ok)}
+
+  /* drawer */
+  .drawer{border-top:1px solid var(--edge);background:rgba(8,22,42,.7);display:grid;grid-template-rows:40px 1fr;min-height:0}
+  .tabs{display:flex;border-bottom:1px solid var(--edge)}
+  .tabs button{padding:0 18px;font-family:var(--display);font-size:13px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
+  .tabs button.on{color:var(--text);border-bottom-color:var(--tron)}
+  .tabs .right{margin-left:auto;display:flex;align-items:center;padding-right:12px;gap:8px;color:var(--muted);font-size:12px}
+  .pane{overflow:auto;padding:12px 18px;font-size:13px}
+  .pane[hidden]{display:none}
+  .log{display:grid;grid-template-columns:72px 110px 1fr;row-gap:6px;column-gap:14px;font-variant-numeric:tabular-nums}
+  .log .t{color:var(--muted)}
+  .log .who{font-family:var(--display);color:var(--tron)}
+  .log .ok{color:var(--ok)}
+  .log .warnrow{grid-column:1/-1;border:1px solid var(--warn);padding:10px 12px;display:flex;align-items:center;gap:12px;background:rgba(255,159,67,.06)}
+  .log .warnrow strong{color:var(--warn);font-family:var(--display);font-weight:600}
+  .log .warnrow .btn{margin-left:auto;border-color:var(--warn);color:var(--warn);padding:5px 12px}
+  .log .warnrow .btn.ghost{border-color:var(--edge)}
+  pre{margin:0;font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:#b8d0e6;white-space:pre}
+  pre .k{color:var(--tron)}pre .s{color:#ffd28a}pre .c{color:var(--muted)}
+
+  /* inspector */
+  .inspector{grid-area:inspector;border-left:1px solid var(--edge);padding:20px;overflow:auto;background:rgba(8,22,42,.5)}
+  .inspector h3{font-family:var(--display);font-size:16px;font-weight:600;margin:0}
+  .inspector .id{color:var(--muted);font-size:12px;margin:2px 0 18px}
+  .field{margin-bottom:14px}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+  .sel,.inp{width:100%;background:var(--void);border:1px solid var(--edge);color:var(--text);padding:8px 10px;font:inherit}
+  .sel{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--tron) 50%),linear-gradient(135deg,var(--tron) 50%,transparent 50%);background-position:calc(100% - 16px) 15px,calc(100% - 11px) 15px;background-size:5px 5px;background-repeat:no-repeat}
+  .group{border-top:1px solid var(--edge);padding-top:14px;margin-top:6px}
+  .group h4{font-family:var(--display);font-size:12px;font-weight:600;color:var(--muted);margin:0 0 10px;letter-spacing:.05em}
+  .row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;font-size:13px}
+  .row small{color:var(--muted);display:block;font-size:12px}
+  .toggle{width:34px;height:18px;border:1px solid var(--edge-strong);position:relative;flex:none}
+  .toggle::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;background:var(--muted)}
+  .toggle.on{border-color:var(--tron)}.toggle.on::after{left:18px;background:var(--tron);box-shadow:0 0 8px var(--tron)}
+  .conn{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:13px}
+  .conn .dot{background:var(--ok);box-shadow:0 0 6px var(--ok)}
+  .conn .dot.off{background:var(--muted);box-shadow:none}
+  .conn .btn{margin-left:auto;padding:4px 10px;font-size:12px}
+  .range{display:flex;align-items:center;gap:10px}
+  .range input{flex:1;accent-color:var(--tron)}
+  .range output{font-variant-numeric:tabular-nums;width:32px;text-align:right}
+  .note{margin-top:18px;padding:10px 12px;border:1px solid var(--edge);color:var(--muted);font-size:12px}
+  .note b{color:var(--text);font-weight:500}
+
+  /* toast */
+  .toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,20px);opacity:0;border:1px solid var(--tron);background:var(--panel);padding:10px 16px;font-family:var(--display);font-size:13px;box-shadow:0 0 24px rgba(0,212,255,.25);transition:transform .2s,opacity .2s;pointer-events:none}
+  .toast.show{transform:translate(-50%,0);opacity:1}
+
+  /* mobile */
+  .tabbar{display:none}
+  @media (max-width:980px){
+    .app{grid-template-columns:1fr;grid-template-rows:56px 1fr auto;grid-template-areas:"top" "canvas" "inspector";padding-bottom:64px}
+    .rail{display:none}
+    .crumb{display:none}
+    .status{display:none}
+    .board{padding:24px 18px}
+    .graph{grid-template-columns:1fr;gap:0;max-width:420px}
+    .trail{height:96px}
+    .trail .port.a{top:14px;left:auto;right:0;transform:none}
+    .trail .port.b{bottom:8px;left:0;transform:none}
+    .studs.out{right:auto;left:50%;top:auto;bottom:-7px;transform:translateX(-50%);flex-direction:row}
+    .studs.in{left:50%;top:-7px;transform:translateX(-50%);flex-direction:row}
+    .addbot{margin:16px 0 0}
+    .inspector{border-left:0;border-top:1px solid var(--edge)}
+    .canvas{grid-template-rows:auto 260px}
+    .tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;height:64px;border-top:1px solid var(--edge);background:rgba(3,8,17,.92);backdrop-filter:blur(8px);z-index:5}
+    .tabbar button{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-family:var(--display);font-size:11px;color:var(--muted)}
+    .tabbar button.on{color:var(--tron)}
+    .tabbar svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.6}
+  }
+  @media (prefers-reduced-motion:reduce){.trail path.pulse{animation:none;stroke-dasharray:none;opacity:.5}}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="top">
+    <div class="wordmark"><i></i>NANOBOTS</div>
+    <div class="crumb">Swarms / <b>daily-email-recap</b></div>
+    <div class="status"><span class="dot"></span>Local stack · 1Claw connected</div>
+    <div class="actions">
+      <button class="btn" id="runBtn">Run once</button>
+      <button class="btn primary" id="saveBtn">Save swarm</button>
+    </div>
+  </header>
+
+  <aside class="rail">
+    <nav>
+      <button><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h7"/></svg>Bot library</button>
+      <button class="on"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="7" height="6"/><rect x="14" y="13" width="7" height="6"/><path d="M10 8h2a2 2 0 0 1 2 2v3"/></svg>Swarms</button>
+      <button><svg viewBox="0 0 24 24"><path d="M4 12h4l2-6 4 12 2-6h4"/></svg>Runs</button>
+      <button><svg viewBox="0 0 24 24"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/></svg>Guardrails</button>
+      <button><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>Settings</button>
+    </nav>
+    <div class="foot"><b>me@example.com</b>Solo plan · 2 of 5 swarms</div>
+  </aside>
+
+  <main class="canvas">
+    <section class="board">
+      <h1>daily-email-recap</h1>
+      <p class="sub">Weekdays at 7:00 AM, Chicago. Two bots, one snap, one approval before anything leaves your inbox.</p>
+
+      <div class="graph">
+        <!-- brick 1 -->
+        <div class="brick on" id="b-recap" role="button" tabindex="0" aria-pressed="true">
+          <div class="kind">recap-emails-to-pdf <span>v0.3.0</span></div>
+          <h2>Recap inbox to PDF</h2>
+          <p>Reads unread mail since last run, writes a recap to Drive.</p>
+          <div class="svc"><span>Gmail</span><span>Google Drive</span><span>openclaw</span></div>
+          <div class="studs in"><span class="stud dim" title="since: datetime"></span><span class="stud dim" title="label: string"></span></div>
+          <div class="studs out"><span class="stud" title="drive_file_id: string"></span><span class="stud" title="recap_json: json"></span><span class="stud dim" title="recap_pdf: file"></span></div>
+        </div>
+
+        <!-- the snap -->
+        <div class="trail" aria-label="Snap: recap.drive_file_id to mailer.file_id">
+          <svg viewBox="0 0 200 120" preserveAspectRatio="none">
+            <path d="M0 52 C 60 52, 60 60, 100 60 S 140 68, 200 68"/>
+            <path class="pulse" d="M0 52 C 60 52, 60 60, 100 60 S 140 68, 200 68"/>
+          </svg>
+          <span class="port a">drive_file_id</span>
+          <span class="port b">file_id</span>
+        </div>
+
+        <!-- brick 2 -->
+        <div class="brick" id="b-mailer" role="button" tabindex="0" aria-pressed="false">
+          <div class="kind">email-drive-file <span>v1.1.0</span></div>
+          <h2>Email me the file</h2>
+          <p>Looks up the Drive file, waits for your approval, sends the link.</p>
+          <div class="svc"><span>Google Drive</span><span>Gmail</span><span>bare</span></div>
+          <div class="studs in"><span class="stud" title="file_id: string"></span><span class="stud" title="to: string"></span><span class="stud dim" title="body_intro: string"></span></div>
+          <div class="studs out"><span class="stud dim" title="message_id: string"></span></div>
+        </div>
+
+        <button class="addbot"><b>+</b>Snap a bot</button>
+      </div>
+
+      <div class="legend"><span class="t">Snapped port</span><span class="w">Needs your approval</span><span class="o">Service connected</span></div>
+    </section>
+
+    <section class="drawer">
+      <div class="tabs">
+        <button class="on" data-tab="log">Run log</button>
+        <button data-tab="yaml">nanoswarm.yaml</button>
+        <div class="right">Last run today 7:00 AM · 41 s · $0.03</div>
+      </div>
+
+      <div class="pane" id="pane-log">
+        <div class="log">
+          <span class="t">7:00:00</span><span class="who">recap</span><span>Fetched 37 messages from INBOX since yesterday 7:00 AM</span>
+          <span class="t">7:00:19</span><span class="who">recap</span><span>Summarised with claude-sonnet-4-6 through 1Claw Shroud (2 PII items redacted)</span>
+          <span class="t">7:00:27</span><span class="who">recap</span><span>Rendered recap-2026-09-10.pdf (184 KB)</span>
+          <span class="t">7:00:31</span><span class="who">recap</span><span class="ok">Saved to Drive · Recaps/2026</span>
+          <span class="t">7:00:33</span><span class="who">mailer</span><span>Found "recap-2026-09-10.pdf" · 184 KB</span>
+          <div class="warnrow" id="gate">
+            <strong>Approval needed</strong>
+            <span>Send "recap-2026-09-10.pdf" to me@example.com?</span>
+            <button class="btn ghost" id="rejectBtn">Skip today</button>
+            <button class="btn" id="approveBtn">Approve and send</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="pane" id="pane-yaml" hidden>
+<pre><span class="k">apiVersion:</span> nanobots.dev/v1alpha1
+<span class="k">kind:</span> Nanoswarm
+<span class="k">metadata:</span>
+  <span class="k">name:</span> daily-email-recap
+<span class="k">spec:</span>
+  <span class="k">defaults:</span>
+    <span class="k">model:</span> { <span class="k">provider:</span> anthropic, <span class="k">name:</span> claude-sonnet-4-6 }
+    <span class="k">guardrails:</span> { <span class="k">pii:</span> redact, <span class="k">injection_threshold:</span> 0.7, <span class="k">daily_budget_usd:</span> 5, <span class="k">approval_required_for:</span> [email.send] }
+  <span class="k">trigger:</span> { <span class="k">type:</span> cron, <span class="k">expr:</span> <span class="s">"0 7 * * 1-5"</span>, <span class="k">timezone:</span> America/Chicago }
+  <span class="k">bots:</span>
+    - <span class="k">id:</span> recap
+      <span class="k">use:</span> recap-emails-to-pdf@0.3.0
+    - <span class="k">id:</span> mailer
+      <span class="k">use:</span> email-drive-file@1.1.0
+      <span class="k">inputs:</span> { <span class="k">to:</span> <span class="s">"{{vars.notify_to}}"</span> }
+  <span class="k">snaps:</span>
+    - { <span class="k">from:</span> recap.drive_file_id, <span class="k">to:</span> mailer.file_id }
+    - { <span class="k">from:</span> recap.recap_json.headline, <span class="k">to:</span> mailer.body_intro }
+  <span class="k">deploy:</span> { <span class="k">target:</span> local }   <span class="c"># or: 1claw | kubernetes | apple</span></pre>
+      </div>
+    </section>
+  </main>
+
+  <aside class="inspector" id="inspector">
+    <h3 id="insName">Recap inbox to PDF</h3>
+    <div class="id" id="insId">recap · recap-emails-to-pdf@0.3.0</div>
+
+    <div class="field"><label for="prov">Provider</label>
+      <select class="sel" id="prov"><option>Anthropic</option><option>OpenAI</option><option>Google</option><option>Ollama (local)</option></select></div>
+    <div class="field"><label for="model">Model</label>
+      <select class="sel" id="model"><option>claude-sonnet-4-6</option><option>claude-opus-5</option><option>claude-haiku-4-5</option></select></div>
+    <div class="field"><label for="harness">Harness</label>
+      <select class="sel" id="harness"><option>openclaw</option><option>claude-code</option><option>opencode</option><option>openclaude</option><option>hermes</option><option>bare (no model)</option></select></div>
+
+    <div class="group">
+      <h4>Guardrails (enforced by 1Claw)</h4>
+      <div class="row"><div>Redact personal data<small>Before anything reaches the model</small></div><button class="toggle on" aria-pressed="true"></button></div>
+      <div class="row"><div>Block prompt injection<small>Threshold 0.7 · fail closed</small></div><button class="toggle on" aria-pressed="true"></button></div>
+      <div class="row"><div>Ask me before sending email<small>Pauses the run until you approve</small></div><button class="toggle on" aria-pressed="true"></button></div>
+      <div class="field"><label>Daily budget</label><div class="range"><input type="range" min="1" max="50" value="5" id="budget"><output for="budget">$5</output></div></div>
+    </div>
+
+    <div class="group">
+      <h4>Services</h4>
+      <div id="svcList">
+        <div class="conn"><span class="dot"></span>Gmail <small style="color:var(--muted)">read only</small><button class="btn">Manage</button></div>
+        <div class="conn"><span class="dot"></span>Google Drive <small style="color:var(--muted)">Recaps/2026</small><button class="btn">Manage</button></div>
+      </div>
+    </div>
+
+    <div class="note"><b>Your keys stay in 1Claw.</b> This bot never sees a token or an API key; every call is signed through your vault and shows up in the audit log.</div>
+  </aside>
+
+  <nav class="tabbar">
+    <button><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h7"/></svg>Bots</button>
+    <button class="on"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="7" height="6"/><rect x="14" y="13" width="7" height="6"/><path d="M10 8h2a2 2 0 0 1 2 2v3"/></svg>Swarms</button>
+    <button><svg viewBox="0 0 24 24"><path d="M4 12h4l2-6 4 12 2-6h4"/></svg>Runs</button>
+    <button><svg viewBox="0 0 24 24"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/></svg>Guardrails</button>
+  </nav>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const bots = {
+    recap:  { name:'Recap inbox to PDF', id:'recap · recap-emails-to-pdf@0.3.0', harness:0, model:0,
+              svcs:[['Gmail','read only'],['Google Drive','Recaps/2026']] },
+    mailer: { name:'Email me the file',  id:'mailer · email-drive-file@1.1.0',   harness:5, model:0,
+              svcs:[['Google Drive','read only'],['Gmail','send as me']] },
+  };
+  const toast = (m)=>{ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2200); };
+
+  document.querySelectorAll('.brick').forEach(el=>{
+    const pick=()=>{
+      document.querySelectorAll('.brick').forEach(b=>{b.classList.remove('on');b.setAttribute('aria-pressed','false')});
+      el.classList.add('on'); el.setAttribute('aria-pressed','true');
+      const b=bots[el.id.slice(2)];
+      insName.textContent=b.name; insId.textContent=b.id; harness.selectedIndex=b.harness; model.selectedIndex=b.model;
+      svcList.innerHTML=b.svcs.map(([n,s])=>`<div class="conn"><span class="dot"></span>${n} <small style="color:var(--muted)">${s}</small><button class="btn">Manage</button></div>`).join('');
+    };
+    el.addEventListener('click',pick); el.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault();pick();} });
+  });
+
+  document.querySelectorAll('.tabs [data-tab]').forEach(t=>t.addEventListener('click',()=>{
+    document.querySelectorAll('.tabs [data-tab]').forEach(x=>x.classList.remove('on')); t.classList.add('on');
+    document.getElementById('pane-log').hidden = t.dataset.tab!=='log';
+    document.getElementById('pane-yaml').hidden = t.dataset.tab!=='yaml';
+  }));
+
+  document.querySelectorAll('.toggle').forEach(t=>t.addEventListener('click',()=>{ t.classList.toggle('on'); t.setAttribute('aria-pressed',t.classList.contains('on')); }));
+  budget.addEventListener('input',()=>budget.nextElementSibling.textContent='$'+budget.value);
+
+  approveBtn.addEventListener('click',()=>{ gate.outerHTML='<span class="t">7:04:12</span><span class="who">mailer</span><span class="ok">Approved · sent to me@example.com</span>'; toast('Sent'); });
+  rejectBtn.addEventListener('click',()=>{ gate.outerHTML='<span class="t">7:04:12</span><span class="who">mailer</span><span>Skipped today · run finished</span>'; toast('Skipped'); });
+  saveBtn.addEventListener('click',()=>toast('Saved daily-email-recap'));
+  runBtn.addEventListener('click',()=>toast('Run started'));
+</script>
+</body>
+</html>
