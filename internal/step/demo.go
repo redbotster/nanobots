@@ -91,6 +91,13 @@ func (d *DemoDeps) AIGenerate(prompt string, model schema.Model) (string, error)
 	return string(b), nil
 }
 
+// WebFetch serves bots/<id>/fixtures/web.fetch.json — like every other
+// DemoDeps method, the fixture is returned regardless of which URL(s) were
+// actually requested, so conformance never touches the network.
+func (d *DemoDeps) WebFetch(params map[string]any) (any, error) {
+	return d.loadFixture("web.fetch.json")
+}
+
 func (d *DemoDeps) Render(templatePath string, data any, to string) ([]byte, string, error) {
 	if to == "pdf" && !d.SkipRealRender {
 		return RenderHTMLToPDF(templatePath, data)

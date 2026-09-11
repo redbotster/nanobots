@@ -134,6 +134,27 @@ func (s *Server) handleStepApprove(w http.ResponseWriter, r *http.Request) {
 	writeCallbackResult(w, map[string]any{"approved": approved, "decided_by": decidedBy})
 }
 
+func (s *Server) handleStepWebFetch(w http.ResponseWriter, r *http.Request) {
+	deps, ok := s.depsFromRequest(r)
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	var req struct {
+		Params map[string]any `json:"params"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeCallbackError(w, err)
+		return
+	}
+	result, err := deps.WebFetch(req.Params)
+	if err != nil {
+		writeCallbackError(w, err)
+		return
+	}
+	writeCallbackResult(w, result)
+}
+
 func (s *Server) handleStepNotify(w http.ResponseWriter, r *http.Request) {
 	deps, ok := s.depsFromRequest(r)
 	if !ok {

@@ -64,6 +64,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /internal/steps/memory_put", s.handleStepMemoryPut)
 	mux.HandleFunc("POST /internal/steps/approve", s.handleStepApprove)
 	mux.HandleFunc("POST /internal/steps/notify", s.handleStepNotify)
+	mux.HandleFunc("POST /internal/steps/web_fetch", s.handleStepWebFetch)
 
 	return withCORS(mux)
 }

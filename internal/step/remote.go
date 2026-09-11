@@ -125,4 +125,13 @@ func (r *RemoteDeps) Render(templatePath string, data any, to string) ([]byte, s
 
 func (r *RemoteDeps) Now() string { return time.Now().UTC().Format(time.RFC3339) }
 
+// WebFetch, unlike Render/Now, does round-trip through nanobotd — whether it
+// serves a fixture (DemoDeps) or does a real fetch (LiveDeps) genuinely
+// differs, the same reason ServiceCall/AIGenerate/Notify all proxy too.
+func (r *RemoteDeps) WebFetch(params map[string]any) (any, error) {
+	var out any
+	err := r.call("/internal/steps/web_fetch", map[string]any{"params": params}, &out)
+	return out, err
+}
+
 func (r *RemoteDeps) Blobs() BlobStore { return r.Blobstore }

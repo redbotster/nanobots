@@ -1,0 +1,7 @@
+{
+  "changes": [
+    { "url": "https://example.com/pricing", "change": "Team plan price appears unchanged at $149/mo, up to 10 seats." },
+    { "url": "https://example.com/changelog", "change": "New: v2.4 added CSV export." }
+  ],
+  "summary_md": "Pricing: Pro $49/mo, Team $149/mo (10 seats). Changelog: v2.4 added CSV export, v2.3 added dark mode."
+}

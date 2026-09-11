@@ -78,5 +78,10 @@ type Deps interface {
 	// WebUI/run log and actually waits.
 	Approve(summary, riskTier string) (approved bool, decidedBy string, err error)
 	Notify(message, channel string) error
+	// WebFetch executes a `web.fetch` step (params.url or params.urls) —
+	// credential-free, but still routed through Deps rather than called
+	// directly, so DemoDeps can serve a fixture instead of a real network
+	// call (conformance/tests must never depend on the internet).
+	WebFetch(params map[string]any) (any, error)
 	Blobs() BlobStore
 }

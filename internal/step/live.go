@@ -178,4 +178,12 @@ func (l *LiveDeps) Notify(message, channel string) error {
 	return l.Demo.Notify(message, channel)
 }
 
+// WebFetch always does the real, credential-free fetch — there's no
+// connection: demo concept for it (it isn't tied to a schema.Service at
+// all), so LiveDeps never falls back to DemoDeps here the way ServiceCall
+// does for a demo-connection service.
+func (l *LiveDeps) WebFetch(params map[string]any) (any, error) {
+	return runWebFetch(params)
+}
+
 func (l *LiveDeps) Blobs() BlobStore { return l.Blobstore }

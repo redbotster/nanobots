@@ -1,0 +1,67 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: competitor-watch
+  version: 0.1.0
+  description: Check a list of pages weekly and report what changed.
+  tags: [research, monitoring, utility]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: bare
+    # bare + ai.generate is intentional, not a typo — see docs/harnesses.md:
+    # ai.generate needs no browser, only bare's own distroless HTTPS callback.
+
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    max_tokens: 2000
+    temperature: 0.2
+
+  ports:
+    inputs:
+      - name: urls
+        type: list<string>
+        required: true
+    outputs:
+      - name: changes
+        type: list<json>
+      - name: summary_md
+        type: string
+
+  steps:
+    - name: fetch
+      type: web.fetch
+      params: { urls: "{{inputs.urls}}" }
+    - name: recall_prior
+      type: memory.get
+      key: last_summary
+    - name: compare
+      type: ai.generate
+      prompt_file: ./prompts/compare.md
+      inputs: { pages: "{{steps.fetch.output}}", previous_summary: "{{steps.recall_prior.output}}" }
+      outputs:
+        changes: "{{steps.compare.output.changes}}"
+        summary_md: "{{steps.compare.output.summary_md}}"
+    - name: remember
+      type: memory.put
+      key: last_summary
+      value: "{{steps.compare.output.summary_md}}"
+
+  guardrails:
+    pii: allow
+    injection_threshold: 0.7
+    max_runtime_secs: 90
+    # A real container network policy scoped to just inputs.urls' hosts
+    # isn't built (see internal/step/webfetch.go's own doc comment) — this
+    # field is reported, not enforced, the same pre-existing gap
+    # guardrails.network_egress has everywhere else in this build.
+    network_egress: ["*"]
+
+  resources:
+    preset: small
+    memory: 64Mi
+    cpu: 100m
+    image: ghcr.io/nanobots/harness-bare:1.0-slim

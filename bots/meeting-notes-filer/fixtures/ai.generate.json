@@ -1,0 +1,7 @@
+{
+  "summary": "The team locked the launch date and assigned a contract follow-up.",
+  "decisions": ["Launch date set to the 15th."],
+  "action_items": [
+    { "owner": "Marcus", "task": "Send the updated contract to legal", "due": "Friday" }
+  ]
+}

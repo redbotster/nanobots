@@ -82,10 +82,8 @@ func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, swarmVars map[
 			out = deps.Now()
 
 		case "web.fetch":
-			// No service, no credential — runs identically under Demo/Live
-			// (see runWebFetch/fetchURL in webfetch.go).
 			params, _ := resolveValue(s.Params, ctx).(map[string]any)
-			out, err = runWebFetch(params)
+			out, err = deps.WebFetch(params)
 			if err == nil {
 				log(s.Name, "web.fetch -> ok")
 			}

@@ -1,0 +1,76 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: meeting-notes-filer
+  version: 0.1.0
+  description: Turn a transcript into notes, decisions, and action items; file them to Drive.
+  tags: [meetings, drive, notes]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: openclaw
+    entrypoint: ./bot.md
+
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    max_tokens: 3000
+    temperature: 0.2
+
+  services:
+    - id: gdrive
+      provider: google
+      scopes: [drive.file]
+      required: true
+      connection: demo
+
+  ports:
+    inputs:
+      - name: transcript
+        type: file
+        required: true
+      - name: folder
+        type: string
+        default: "Meeting Notes"
+    outputs:
+      - name: notes_md
+        type: file
+        mime: text/html
+      - name: action_items
+        type: list<json>
+      - name: decisions
+        type: list<string>
+
+  steps:
+    - name: summarise
+      type: ai.generate
+      prompt_file: ./prompts/notes.md
+      inputs: { transcript: "{{inputs.transcript}}" }
+      outputs:
+        action_items: "{{steps.summarise.output.action_items}}"
+        decisions: "{{steps.summarise.output.decisions}}"
+    - name: render
+      type: transform.render
+      template: ./templates/notes.html
+      to: html
+      output: notes_md
+    - name: save
+      type: service.call
+      service: gdrive
+      op: files.create
+      params: { folder: "{{inputs.folder}}", file: "{{outputs.notes_md}}" }
+
+  guardrails:
+    pii: redact
+    injection_threshold: 0.7
+    max_runtime_secs: 180
+    network_egress: [googleapis.com]
+    writes_allowed: [gdrive]
+
+  resources:
+    preset: small
+    memory: 256Mi
+    cpu: 250m
+    image: ghcr.io/nanobots/harness-openclaw:1.4-slim

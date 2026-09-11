@@ -1,0 +1,4 @@
+[
+  { "url": "https://example.com/pricing", "text": "Pro plan $49/mo. Team plan $149/mo, up to 10 seats." },
+  { "url": "https://example.com/changelog", "text": "v2.4: added CSV export. v2.3: dark mode." }
+]

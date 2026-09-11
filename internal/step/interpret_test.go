@@ -55,6 +55,9 @@ func (f *fakeDeps) Approve(summary, riskTier string) (bool, string, error) {
 	return f.approve, f.approvedBy, nil
 }
 func (f *fakeDeps) Notify(message, channel string) error { f.notifyCalled = true; return nil }
+func (f *fakeDeps) WebFetch(params map[string]any) (any, error) {
+	return f.serviceResult, f.serviceErr
+}
 func (f *fakeDeps) Blobs() BlobStore {
 	if f.blobs != nil {
 		return f.blobs
