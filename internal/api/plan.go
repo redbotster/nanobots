@@ -50,34 +50,7 @@ func (s *Server) handlePlan(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	resp := planResponse{Swarm: result.Resolved.Swarm.Metadata.Name, OK: result.OK()}
-	for instanceID, rb := range result.Resolved.Bots {
-		botID, _, _ := strings.Cut(rb.Ref.Use, "@")
-		if botID == "" {
-			botID = rb.Ref.Path
-		}
-		resp.Bots = append(resp.Bots, botInstanceJSON{
-			InstanceID: instanceID, BotID: botID,
-			Name: rb.Nanobot.Metadata.Name, Version: rb.Nanobot.Metadata.Version,
-		})
-	}
-	if result.DAGErr != nil {
-		resp.Error = result.DAGErr.Error()
-	} else if order, err := result.DAG.TopoSort(); err == nil {
-		resp.Order = order
-	}
-	for _, c := range result.Snaps {
-		sc := snapCheckJSON{From: c.Snap.From, To: c.Snap.To, OK: c.OK}
-		if c.OK {
-			sc.FromType, sc.ToType = c.FromType.String(), c.ToType.String()
-		} else {
-			sc.Error = c.Err.Error()
-		}
-		resp.Snaps = append(resp.Snaps, sc)
-	}
-	resp.Bots = nonNil(resp.Bots)
-	resp.Snaps = nonNil(resp.Snaps)
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, http.StatusOK, buildPlanResponse(result.Resolved.Swarm.Metadata.Name, result, nil))
 }
 
 // handleSwarmYAML serves a swarm file's raw source for the WebUI's YAML

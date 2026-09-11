@@ -129,3 +129,49 @@ export interface SwarmSummary {
   name: string;
   description: string;
 }
+
+/** One bot instance in a swarm draft, as the visual builder edits it — the
+ * wire shape internal/api/builder.go's builderBotRef expects. */
+export interface DraftBot {
+  id: string;
+  use: string; // "<bot-dir-id>@<version>"
+  inputs?: Record<string, unknown>;
+}
+
+/** One connection in a swarm draft — internal/api/builder.go's builderSnap. */
+export interface DraftSnap {
+  from: string;
+  to: string;
+}
+
+export interface ValidateSwarmRequest {
+  bots: DraftBot[];
+  snaps: DraftSnap[];
+}
+
+export interface SaveSwarmRequest {
+  path?: string; // set to overwrite an existing swarm; omit to create a new one
+  name: string;
+  description?: string;
+  bots: DraftBot[];
+  snaps: DraftSnap[];
+}
+
+export interface SaveSwarmResult {
+  path: string;
+  name: string;
+  description: string;
+  plan: PlanResult;
+}
+
+/** A saved swarm's full structured bots/snaps — what the builder loads to
+ * edit an existing swarm (as opposed to PlanResult's type-checked-but-lossy
+ * summary, or the raw YAML text the read-only drawer shows). */
+export interface SwarmFull {
+  path: string;
+  name: string;
+  description: string;
+  owner: string;
+  bots: DraftBot[];
+  snaps: DraftSnap[];
+}

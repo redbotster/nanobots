@@ -21,7 +21,7 @@ type SwarmSummary struct {
 // yet (blueprint §4 #8), so "every .yaml file in this one directory" is the
 // whole discovery mechanism for now.
 func (s *Server) handleListSwarms(w http.ResponseWriter, r *http.Request) {
-	dir := filepath.Join(filepath.Dir(s.BotsDir), "examples", "swarms")
+	dir := s.swarmsDir()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)

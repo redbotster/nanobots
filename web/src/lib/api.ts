@@ -2,8 +2,12 @@ import type {
   BotSummary,
   PlanResult,
   Run,
+  SaveSwarmRequest,
+  SaveSwarmResult,
   StatusResponse,
+  SwarmFull,
   SwarmSummary,
+  ValidateSwarmRequest,
 } from "./types";
 
 async function reqText(path: string): Promise<string> {
@@ -33,6 +37,18 @@ export const api = {
     req<PlanResult>(`/api/swarms/plan?path=${encodeURIComponent(path)}`),
   swarmYAML: (path: string) =>
     reqText(`/api/swarms/yaml?path=${encodeURIComponent(path)}`),
+  swarmFull: (path: string) =>
+    req<SwarmFull>(`/api/swarms/full?path=${encodeURIComponent(path)}`),
+  validateSwarm: (draft: ValidateSwarmRequest) =>
+    req<PlanResult>("/api/swarms/validate", {
+      method: "POST",
+      body: JSON.stringify(draft),
+    }),
+  saveSwarm: (draft: SaveSwarmRequest) =>
+    req<SaveSwarmResult>("/api/swarms", {
+      method: "POST",
+      body: JSON.stringify(draft),
+    }),
   startRun: (swarmPath: string) =>
     req<Run>("/api/runs", {
       method: "POST",

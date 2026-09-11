@@ -31,16 +31,24 @@ func (p *PlanResult) OK() bool {
 	return true
 }
 
-// Plan loads a Nanoswarm, resolves its bots, type-checks its snaps, and
-// builds the run DAG. It returns a PlanResult even on type-check/DAG
-// failures (so callers can print a full report) — the returned error is only
-// for problems that prevent planning from running at all (bad YAML, an
-// unresolvable bot reference).
+// Plan loads a Nanoswarm from swarmPath, resolves its bots, type-checks its
+// snaps, and builds the run DAG. It returns a PlanResult even on
+// type-check/DAG failures (so callers can print a full report) — the
+// returned error is only for problems that prevent planning from running at
+// all (bad YAML, an unresolvable bot reference).
 func Plan(swarmPath, botsDir string) (*PlanResult, error) {
 	sw, err := schema.LoadNanoswarm(swarmPath)
 	if err != nil {
 		return nil, err
 	}
+	return PlanSwarm(sw, botsDir)
+}
+
+// PlanSwarm is Plan without the file load — same resolve/type-check/DAG
+// pipeline, for a Nanoswarm already in memory. The WebUI's visual builder
+// uses this to type-check a swarm as it's being built, before it's ever
+// saved to a YAML file (see internal/api/builder.go).
+func PlanSwarm(sw *schema.Nanoswarm, botsDir string) (*PlanResult, error) {
 	resolved, err := Resolve(sw, botsDir)
 	if err != nil {
 		return nil, err

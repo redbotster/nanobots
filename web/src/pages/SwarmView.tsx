@@ -16,9 +16,11 @@ import { StatusDot } from "../components/StatusDot";
 export function SwarmView({
   swarm,
   onBack,
+  onEdit,
 }: {
   swarm: SwarmSummary;
   onBack: () => void;
+  onEdit?: () => void;
 }) {
   const SWARM_PATH = swarm.path;
   const [plan, setPlan] = useState<PlanResult | null>(null);
@@ -102,10 +104,19 @@ export function SwarmView({
         >
           ← Swarms
         </button>
-        <h1 className="font-display text-xl font-medium text-ink">
-          {plan?.swarm ?? swarm.name}
-        </h1>
-        <p className="mt-1 max-w-xl text-sm text-muted">{swarm.description}</p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="font-display text-xl font-medium text-ink">
+              {plan?.swarm ?? swarm.name}
+            </h1>
+            <p className="mt-1 max-w-xl text-sm text-muted">{swarm.description}</p>
+          </div>
+          {onEdit && (
+            <Button variant="ghost" onClick={onEdit} disabled={isBusy}>
+              Edit
+            </Button>
+          )}
+        </div>
 
         <div className="mt-3 flex items-center gap-3">
           <Button variant="primary" onClick={runOnce} disabled={starting || isBusy}>

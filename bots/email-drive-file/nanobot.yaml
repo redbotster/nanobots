@@ -78,7 +78,13 @@ spec:
 
   guardrails:
     pii: redact
-    max_runtime_secs: 60
+    # 1800s, not a tight deterministic-work budget, because the `gate` step
+    # above blocks on a human decision, not on compute — the container's
+    # whole wall-clock budget bounds that wait too (see internal/runner's
+    # RunContainer), so it has to match the other human-gated bots
+    # (email-send-approved, the standalone approve brick) or every real
+    # approval times out and kills the run before anyone can respond.
+    max_runtime_secs: 1800
     network_egress: [googleapis.com]
     writes_allowed: [gmail]
 

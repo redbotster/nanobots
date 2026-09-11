@@ -7,6 +7,7 @@ package api
 
 import (
 	"net/http"
+	"path/filepath"
 
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/runner"
@@ -21,6 +22,19 @@ type Server struct {
 	OneClaw      *oneclaw.Client
 	BotsDir      string
 	Blobs        step.BlobStore
+	// SwarmsDir is where handleListSwarms scans and handleSaveSwarm writes —
+	// kept as its own explicit field (not derived from BotsDir) specifically
+	// so tests can point it at a t.TempDir() instead of ever writing into
+	// this repo's real examples/swarms/. Defaults to
+	// filepath.Join(filepath.Dir(BotsDir), "examples", "swarms") when empty.
+	SwarmsDir string
+}
+
+func (s *Server) swarmsDir() string {
+	if s.SwarmsDir != "" {
+		return s.SwarmsDir
+	}
+	return filepath.Join(filepath.Dir(s.BotsDir), "examples", "swarms")
 }
 
 func (s *Server) Handler() http.Handler {
@@ -31,6 +45,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/swarms", s.handleListSwarms)
 	mux.HandleFunc("GET /api/swarms/plan", s.handlePlan)
 	mux.HandleFunc("GET /api/swarms/yaml", s.handleSwarmYAML)
+	mux.HandleFunc("GET /api/swarms/full", s.handleGetSwarmFull)
+	mux.HandleFunc("POST /api/swarms/validate", s.handleValidateSwarm)
+	mux.HandleFunc("POST /api/swarms", s.handleSaveSwarm)
 	mux.HandleFunc("POST /api/runs", s.handleStartRun)
 	mux.HandleFunc("GET /api/runs", s.handleListRuns)
 	mux.HandleFunc("GET /api/runs/{id}", s.handleGetRun)
