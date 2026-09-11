@@ -29,6 +29,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/status", s.handleStatus)
 	mux.HandleFunc("GET /api/bots", s.handleListBots)
 	mux.HandleFunc("GET /api/swarms/plan", s.handlePlan)
+	mux.HandleFunc("GET /api/swarms/yaml", s.handleSwarmYAML)
 	mux.HandleFunc("POST /api/runs", s.handleStartRun)
 	mux.HandleFunc("GET /api/runs", s.handleListRuns)
 	mux.HandleFunc("GET /api/runs/{id}", s.handleGetRun)
