@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { api } from "./lib/api";
-import type { StatusResponse } from "./lib/types";
 import { SwarmsPage } from "./pages/SwarmsPage";
 import { BotLibrary } from "./pages/BotLibrary";
 import { RunsPage } from "./pages/RunsPage";
@@ -8,9 +7,11 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { LandingPage } from "./pages/LandingPage";
 import { StatusDot } from "./components/StatusDot";
 import { Switch } from "./components/Switch";
+import { DockerBanner } from "./components/DockerBanner";
 import { useUIMode } from "./lib/uiMode";
 import { useApprovalNotifications } from "./lib/useApprovalNotifications";
 import { useTheme } from "./lib/theme";
+import { useStatus } from "./lib/useStatus";
 
 type Page = "swarm" | "bots" | "runs" | "settings";
 
@@ -40,8 +41,7 @@ export default function App() {
 function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [page, setPage] = useState<Page>("swarm");
   const [uiMode, setUiMode] = useUIMode();
-  const [status, setStatus] = useState<StatusResponse | null>(null);
-  const [apiUnreachable, setApiUnreachable] = useState(false);
+  const { status, unreachable: apiUnreachable } = useStatus();
   const [counts, setCounts] = useState<{ bots: number; swarms: number } | null>(null);
   const { count: pendingApprovals, permission: notifyPermission, requestPermission: enableNotifications } =
     useApprovalNotifications();
@@ -56,10 +56,6 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const visibleNav = uiMode === "basic" ? NAV.filter((item) => item.id !== "bots") : NAV;
 
   useEffect(() => {
-    api
-      .status()
-      .then(setStatus)
-      .catch(() => setApiUnreachable(true));
     Promise.all([api.listBots(), api.listSwarms()])
       .then(([bots, swarms]) => setCounts({ bots: bots.length, swarms: swarms.length }))
       .catch(() => {});
@@ -189,11 +185,14 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         </div>
       </aside>
 
-      <main className="min-h-0 min-w-0 overflow-hidden">
-        {page === "swarm" && <SwarmsPage uiMode={uiMode} />}
-        {page === "bots" && <BotLibrary />}
-        {page === "runs" && <RunsPage />}
-        {page === "settings" && <SettingsPage status={status} />}
+      <main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+        <DockerBanner status={status} />
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {page === "swarm" && <SwarmsPage uiMode={uiMode} />}
+          {page === "bots" && <BotLibrary />}
+          {page === "runs" && <RunsPage />}
+          {page === "settings" && <SettingsPage status={status} />}
+        </div>
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 flex h-16 border-t border-edge bg-void/95 backdrop-blur sm:hidden">

@@ -50,6 +50,33 @@ func EnsureHarnessImage(harnessType, repoRoot string) (tag, user string, err err
 	return h.Tag, h.User, nil
 }
 
+// DockerAvailable reports whether the docker daemon is reachable right now,
+// and if it isn't, the one-line reason.
+//
+// Every bot runs in a container, so a stopped Docker Desktop makes the whole
+// product fail — and it used to fail late, deep inside a run, as a wall of
+// "cannot connect to the Docker daemon at unix://..." in a log nobody opens.
+// Asking up front costs one cheap command and lets the UI say so before you
+// hit Run. `docker version` (not `info`) because it's the fastest call that
+// still round-trips to the daemon rather than answering from the client.
+func DockerAvailable() (bool, string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "docker", "version", "--format", "{{.Server.Version}}")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return false, "Docker didn't respond within 3s"
+		}
+		if _, lookErr := exec.LookPath("docker"); lookErr != nil {
+			return false, "Docker isn't installed"
+		}
+		return false, "Docker isn't running"
+	}
+	return true, ""
+}
+
 // ContainerSpec is what RunContainer needs to run one bot instance.
 type ContainerSpec struct {
 	Image      string

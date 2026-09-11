@@ -130,6 +130,13 @@ export function isFileOutput(v: unknown): v is FileOutput {
 
 export interface StatusResponse {
   oneclaw_configured: boolean;
+  /** Every bot runs in a container, so this being false means nothing can
+   * run at all — reported separately from oneclaw because the two fail
+   * independently and have unrelated fixes. */
+  docker_available: boolean;
+  /** One line, only when docker_available is false: "Docker isn't running",
+   * "Docker isn't installed", or a timeout. */
+  docker_reason: string;
 }
 
 export interface SwarmSummary {

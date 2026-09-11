@@ -251,3 +251,62 @@ func TestSwarmYAMLRejectsPathTraversal(t *testing.T) {
 		t.Fatalf("status = %d, want 400 for a path containing ..", rec.Code)
 	}
 }
+
+// The probe shells out to `docker version`, so the cache is what keeps a
+// polled status endpoint from doing that on every request from every tab.
+func TestDockerProbeCachesWithinTTL(t *testing.T) {
+	var p dockerProbe
+	start := time.Now()
+
+	// First call populates the cache by really probing; whatever it finds
+	// (this test must pass on a machine with and without Docker running) is
+	// what every call inside the TTL has to keep returning.
+	wantOK, wantReason := p.get(start)
+	firstCheckedAt := p.checkedAt
+
+	if gotOK, gotReason := p.get(start.Add(dockerProbeTTL - time.Millisecond)); gotOK != wantOK || gotReason != wantReason {
+		t.Errorf("inside TTL = (%v, %q), want the cached (%v, %q)", gotOK, gotReason, wantOK, wantReason)
+	}
+	if !p.checkedAt.Equal(firstCheckedAt) {
+		t.Error("a call inside the TTL re-probed; the cache did nothing")
+	}
+
+	p.get(start.Add(dockerProbeTTL + time.Millisecond))
+	if p.checkedAt.Equal(firstCheckedAt) {
+		t.Error("a call past the TTL used the stale cache; Docker coming back would never be noticed")
+	}
+}
+
+func TestStatusReportsDockerSeparatelyFromOneClaw(t *testing.T) {
+	// No OneClaw client configured, so oneclaw_configured must be false
+	// regardless of what the machine's Docker is doing — the two are
+	// independent signals and the UI treats them as such.
+	srv := &Server{BotsDir: t.TempDir()}
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/status", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got["oneclaw_configured"] != false {
+		t.Errorf("oneclaw_configured = %v, want false", got["oneclaw_configured"])
+	}
+	available, ok := got["docker_available"].(bool)
+	if !ok {
+		t.Fatalf("docker_available = %#v, want a bool", got["docker_available"])
+	}
+	reason, _ := got["docker_reason"].(string)
+	// The machine running this may or may not have Docker up; what must
+	// always hold is that an unavailable Docker comes with something to
+	// show the user, and an available one doesn't nag.
+	if available && reason != "" {
+		t.Errorf("docker_available with reason %q, want no reason", reason)
+	}
+	if !available && reason == "" {
+		t.Error("docker unavailable with an empty reason; the banner would render blank")
+	}
+}

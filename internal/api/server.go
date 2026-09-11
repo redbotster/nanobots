@@ -8,6 +8,8 @@ package api
 import (
 	"net/http"
 	"path/filepath"
+	"sync"
+	"time"
 
 	"github.com/redbotster/nanobots/internal/foundry"
 	"github.com/redbotster/nanobots/internal/oneclaw"
@@ -42,6 +44,10 @@ type Server struct {
 	// "" resolves to oneclaw.DefaultEnvFilePath(), the same file every
 	// other credential-loading call in this build already reads from.
 	EnvFilePath string
+
+	// docker caches the "is Docker running" probe behind the status
+	// endpoint. Zero value is ready to use.
+	docker dockerProbe
 }
 
 func (s *Server) swarmsDir() string {
@@ -109,8 +115,38 @@ func withCORS(next http.Handler) http.Handler {
 	})
 }
 
+// dockerProbe caches runner.DockerAvailable for a few seconds. The status
+// endpoint is polled by every open tab, and shelling out to `docker version`
+// on each poll would be wasteful; a few seconds of staleness is invisible
+// next to how long Docker Desktop takes to start anyway.
+type dockerProbe struct {
+	mu        sync.Mutex
+	checkedAt time.Time
+	ok        bool
+	reason    string
+}
+
+const dockerProbeTTL = 5 * time.Second
+
+func (p *dockerProbe) get(now time.Time) (bool, string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.checkedAt.IsZero() && now.Sub(p.checkedAt) < dockerProbeTTL {
+		return p.ok, p.reason
+	}
+	p.ok, p.reason = runner.DockerAvailable()
+	p.checkedAt = now
+	return p.ok, p.reason
+}
+
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	dockerOK, dockerReason := s.docker.get(time.Now())
 	writeJSON(w, http.StatusOK, map[string]any{
 		"oneclaw_configured": s.OneClaw != nil && s.OneClaw.Configured(),
+		// Reported separately from oneclaw because they fail independently
+		// and the fixes are unrelated: one is a key, the other is an app
+		// you have to go start.
+		"docker_available": dockerOK,
+		"docker_reason":    dockerReason,
 	})
 }

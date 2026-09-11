@@ -104,6 +104,16 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
         {!status?.oneclaw_configured && <OneClawKeySetup />}
       </section>
 
+      <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-4">
+        <h2 className="font-display text-sm font-semibold text-ink">Docker</h2>
+        <div className="mt-3 flex items-center gap-2 text-sm">
+          <StatusDot tone={status?.docker_available ? "ok" : "warn"} />
+          {status?.docker_available
+            ? "Running — every bot gets its own container"
+            : `${status?.docker_reason ?? "Checking…"} — bots run in containers, so nothing runs until it's up`}
+        </div>
+      </section>
+
       {status?.oneclaw_configured && (
         <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-4">
           <h2 className="font-display text-sm font-semibold text-ink">Connect a service</h2>
