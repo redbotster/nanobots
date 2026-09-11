@@ -30,6 +30,8 @@ type Orchestrator struct {
 	Google        step.GoogleConfig
 	GitHub        step.GitHubConfig
 	Slack         step.SlackConfig
+	Stripe        step.StripeConfig
+	HubSpot       step.HubSpotConfig
 }
 
 // ExecuteSwarm plans swarmPath, then runs it in the background, returning
@@ -130,7 +132,7 @@ func (o *Orchestrator) runBot(run *Run, rs *planner.ResolvedSwarm, botID string,
 	if err != nil {
 		return err
 	}
-	deps := BuildDeps(run, botID, nb, o.OneClaw, agentID, agentAPIKey, blobs, o.Google, o.GitHub, o.Slack)
+	deps := BuildDeps(run, botID, nb, o.OneClaw, agentID, agentAPIKey, blobs, o.Google, o.GitHub, o.Slack, o.Stripe, o.HubSpot)
 
 	token := uuid.NewString()
 	o.Callbacks.Register(token, deps)

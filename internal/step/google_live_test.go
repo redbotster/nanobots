@@ -11,23 +11,25 @@ import (
 // fakeGoogleAPI implements googleAPI in-memory so dispatchGoogle's op-mapping
 // logic is tested without a real HTTP server or Google account.
 type fakeGoogleAPI struct {
-	messagesListResult                     []google.Message
-	messagesListErr                        error
-	sentTo, sentSubj, sentBody             string
-	modifiedUrgent, modifiedLater          []string
-	draftsCreated                          []struct{ to, subject, body string }
-	draftSentID                            string
-	filesGetResult                         *google.DriveFile
-	filesListResult                        []google.DriveFile
-	filesCreateFolder, filesCreateFilename string
-	filesCreateData                        []byte
-	filesCreateMime                        string
-	filesCreateResult                      *google.DriveFile
-	downloadResult                         string
-	downloadMime                           string
-	rowsAppendSheet                        string
-	rowsAppendValues                       []any
-	rowsAppendResult                       string
+	messagesListResult                                 []google.Message
+	messagesListErr                                    error
+	sentTo, sentSubj, sentBody                         string
+	modifiedUrgent, modifiedLater                      []string
+	draftsCreated                                      []struct{ to, subject, body string }
+	draftSentID                                        string
+	filesGetResult                                     *google.DriveFile
+	filesListResult                                    []google.DriveFile
+	filesCreateFolder, filesCreateFilename             string
+	filesCreateData                                    []byte
+	filesCreateMime                                    string
+	filesCreateResult                                  *google.DriveFile
+	downloadResult                                     string
+	downloadMime                                       string
+	rowsAppendSheet                                    string
+	rowsAppendValues                                   []any
+	rowsAppendResult                                   string
+	eventsListCalendarID, eventsListMin, eventsListMax string
+	eventsListResult                                   []google.Event
 }
 
 func (f *fakeGoogleAPI) MessagesList(q string, max int) ([]google.Message, error) {
@@ -59,6 +61,10 @@ func (f *fakeGoogleAPI) FilesCreate(folder, filename string, data []byte, mimeTy
 }
 func (f *fakeGoogleAPI) FilesDownload(id string) (string, string, error) {
 	return f.downloadResult, f.downloadMime, nil
+}
+func (f *fakeGoogleAPI) EventsList(calendarID, timeMin, timeMax string) ([]google.Event, error) {
+	f.eventsListCalendarID, f.eventsListMin, f.eventsListMax = calendarID, timeMin, timeMax
+	return f.eventsListResult, nil
 }
 func (f *fakeGoogleAPI) RowsAppend(sheetID string, values []any) (string, error) {
 	f.rowsAppendSheet, f.rowsAppendValues = sheetID, values
@@ -242,6 +248,27 @@ func TestDispatchGoogleRowsAppendFlattensValuesInSortedKeyOrder(t *testing.T) {
 	m, ok := out.(map[string]any)
 	if !ok || m["row_number"] != "42" {
 		t.Errorf("out = %#v", out)
+	}
+}
+
+func TestDispatchGoogleEventsListPassesParamsAndShapesResult(t *testing.T) {
+	f := &fakeGoogleAPI{eventsListResult: []google.Event{{ID: "e1", Summary: "1:1", Start: "2026-09-11T10:00:00-05:00"}}}
+	out, err := dispatchGoogle(f, "events.list", map[string]any{
+		"calendar_id": "primary", "time_min": "2026-09-11T00:00:00Z", "time_max": "2026-09-12T00:00:00Z",
+	}, nil)
+	if err != nil {
+		t.Fatalf("dispatchGoogle: %v", err)
+	}
+	if f.eventsListCalendarID != "primary" || f.eventsListMin != "2026-09-11T00:00:00Z" || f.eventsListMax != "2026-09-12T00:00:00Z" {
+		t.Errorf("fake got calendarID=%q min=%q max=%q", f.eventsListCalendarID, f.eventsListMin, f.eventsListMax)
+	}
+	items, ok := out.([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("out = %#v, want []any of length 1", out)
+	}
+	m, ok := items[0].(map[string]any)
+	if !ok || m["summary"] != "1:1" {
+		t.Errorf("items[0] = %#v", items[0])
 	}
 }
 

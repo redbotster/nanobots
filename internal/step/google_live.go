@@ -87,6 +87,7 @@ type googleAPI interface {
 	FilesCreate(folder, filename string, data []byte, mimeType string) (*google.DriveFile, error)
 	FilesDownload(id string) (contentBase64, mimeType string, err error)
 	RowsAppend(sheetID string, values []any) (rowNumber string, err error)
+	EventsList(calendarID, timeMin, timeMax string) ([]google.Event, error)
 }
 
 // googleClient lazily builds the real *google.Client, reusing one
@@ -204,6 +205,16 @@ func dispatchGoogle(c googleAPI, op string, params map[string]any, blobs BlobSto
 			return nil, err
 		}
 		return map[string]any{"row_number": rowNumber, "values": values}, nil
+
+	case "events.list":
+		calendarID, _ := params["calendar_id"].(string)
+		timeMin, _ := params["time_min"].(string)
+		timeMax, _ := params["time_max"].(string)
+		events, err := c.EventsList(calendarID, timeMin, timeMax)
+		if err != nil {
+			return nil, err
+		}
+		return toJSONAny(events)
 
 	default:
 		return nil, fmt.Errorf("google: unsupported op %q", op)

@@ -11,10 +11,10 @@ func testClient(t *testing.T, mux *http.ServeMux) *Client {
 	t.Helper()
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	origGmail, origDrive, origUpload, origSheets := gmailBase, driveBase, driveUploadBase, sheetsBase
-	gmailBase, driveBase, driveUploadBase, sheetsBase = srv.URL, srv.URL, srv.URL, srv.URL
+	origGmail, origDrive, origUpload, origSheets, origCalendar := gmailBase, driveBase, driveUploadBase, sheetsBase, calendarBase
+	gmailBase, driveBase, driveUploadBase, sheetsBase, calendarBase = srv.URL, srv.URL, srv.URL, srv.URL, srv.URL
 	t.Cleanup(func() {
-		gmailBase, driveBase, driveUploadBase, sheetsBase = origGmail, origDrive, origUpload, origSheets
+		gmailBase, driveBase, driveUploadBase, sheetsBase, calendarBase = origGmail, origDrive, origUpload, origSheets, origCalendar
 	})
 	return NewClient(func() (string, error) { return "test-token", nil })
 }

@@ -38,18 +38,19 @@ const (
 	// simpler for a non-technical user than connecting each bot separately,
 	// and Google's consent screen shows exactly what's being granted either
 	// way.
-	ScopeGmailReadonly = "https://www.googleapis.com/auth/gmail.readonly"
-	ScopeGmailSend     = "https://www.googleapis.com/auth/gmail.send"
-	ScopeGmailCompose  = "https://www.googleapis.com/auth/gmail.compose"
-	ScopeGmailModify   = "https://www.googleapis.com/auth/gmail.modify"
-	ScopeDriveFile     = "https://www.googleapis.com/auth/drive.file"
-	ScopeDriveReadonly = "https://www.googleapis.com/auth/drive.readonly"
+	ScopeGmailReadonly    = "https://www.googleapis.com/auth/gmail.readonly"
+	ScopeGmailSend        = "https://www.googleapis.com/auth/gmail.send"
+	ScopeGmailCompose     = "https://www.googleapis.com/auth/gmail.compose"
+	ScopeGmailModify      = "https://www.googleapis.com/auth/gmail.modify"
+	ScopeDriveFile        = "https://www.googleapis.com/auth/drive.file"
+	ScopeDriveReadonly    = "https://www.googleapis.com/auth/drive.readonly"
+	ScopeCalendarReadonly = "https://www.googleapis.com/auth/calendar.readonly"
 )
 
 // DefaultScopes covers every Google op this build's bots declare.
 var DefaultScopes = []string{
 	ScopeGmailReadonly, ScopeGmailSend, ScopeGmailCompose, ScopeGmailModify,
-	ScopeDriveFile, ScopeDriveReadonly,
+	ScopeDriveFile, ScopeDriveReadonly, ScopeCalendarReadonly,
 }
 
 // PKCE is one authorization attempt's verifier/challenge/state triple.

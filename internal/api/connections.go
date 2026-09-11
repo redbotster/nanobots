@@ -16,9 +16,11 @@ import (
 // shared "nanobots-main" vault — the same paths internal/step's
 // {google,github,slack}_live.go read from by default.
 var vaultKeyFor = map[string]string{
-	"google": "google/refresh_token",
-	"slack":  "slack/bot_token",
-	"github": "github/token",
+	"google":  "google/refresh_token",
+	"slack":   "slack/bot_token",
+	"github":  "github/token",
+	"stripe":  "stripe/secret_key",
+	"hubspot": "hubspot/token",
 }
 
 type connectionStatus struct {
@@ -41,7 +43,7 @@ func (s *Server) handleConnectionsStatus(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	statuses := make([]connectionStatus, 0, len(vaultKeyFor))
-	for _, service := range []string{"google", "slack", "github"} {
+	for _, service := range []string{"google", "slack", "github", "stripe", "hubspot"} {
 		_, err := s.OneClaw.GetSecret(vault.ID, vaultKeyFor[service])
 		statuses = append(statuses, connectionStatus{Service: service, Connected: err == nil})
 	}

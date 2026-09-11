@@ -55,6 +55,8 @@ func Run(opts Options) error {
 	var googleCfg step.GoogleConfig
 	var githubCfg step.GitHubConfig
 	var slackCfg step.SlackConfig
+	var stripeCfg step.StripeConfig
+	var hubspotCfg step.HubSpotConfig
 	if oc.Configured() {
 		vault, err := oc.EnsureVault("nanobots-main")
 		if err != nil {
@@ -62,6 +64,8 @@ func Run(opts Options) error {
 		}
 		githubCfg = step.GitHubConfig{VaultID: vault.ID}
 		slackCfg = step.SlackConfig{VaultID: vault.ID}
+		stripeCfg = step.StripeConfig{VaultID: vault.ID}
+		hubspotCfg = step.HubSpotConfig{VaultID: vault.ID}
 
 		clientID, err := google.LoadClientID(opts.EnvFilePath)
 		if err != nil {
@@ -104,6 +108,8 @@ func Run(opts Options) error {
 		Google:        googleCfg,
 		GitHub:        githubCfg,
 		Slack:         slackCfg,
+		Stripe:        stripeCfg,
+		HubSpot:       hubspotCfg,
 	}
 
 	srv := &api.Server{

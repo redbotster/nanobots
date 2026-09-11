@@ -286,6 +286,8 @@ func runRun(args []string) error {
 	var googleCfg step.GoogleConfig
 	var githubCfg step.GitHubConfig
 	var slackCfg step.SlackConfig
+	var stripeCfg step.StripeConfig
+	var hubspotCfg step.HubSpotConfig
 	if oc.Configured() {
 		vault, err := oc.EnsureVault("nanobots-main")
 		if err != nil {
@@ -293,6 +295,8 @@ func runRun(args []string) error {
 		}
 		githubCfg = step.GitHubConfig{VaultID: vault.ID}
 		slackCfg = step.SlackConfig{VaultID: vault.ID}
+		stripeCfg = step.StripeConfig{VaultID: vault.ID}
+		hubspotCfg = step.HubSpotConfig{VaultID: vault.ID}
 		clientID, err := google.LoadClientID("")
 		if err != nil {
 			return err
@@ -316,6 +320,7 @@ func runRun(args []string) error {
 		Callbacks:    callbacks, OneClaw: oc, AgentStateDir: stateDir,
 		RunWorkDir: runWorkDir, BlobDir: filepath.Join(home, ".nanobots", "blobs"),
 		Google: googleCfg, GitHub: githubCfg, Slack: slackCfg,
+		Stripe: stripeCfg, HubSpot: hubspotCfg,
 	}
 	srv := &api.Server{
 		Orchestrator: orch, Runs: runner.NewRunStore(), Callbacks: callbacks,

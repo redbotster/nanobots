@@ -41,10 +41,14 @@ type LiveDeps struct {
 	// GitHub/Slack configure direct access the same way — see
 	// github_live.go/slack_live.go. Both are zero-value "not configured" by
 	// default too.
-	GitHub           GitHubConfig
-	githubTokenCache *vaultToken
-	Slack            SlackConfig
-	slackTokenCache  *vaultToken
+	GitHub            GitHubConfig
+	githubTokenCache  *vaultToken
+	Slack             SlackConfig
+	slackTokenCache   *vaultToken
+	Stripe            StripeConfig
+	stripeTokenCache  *vaultToken
+	HubSpot           HubSpotConfig
+	hubspotTokenCache *vaultToken
 }
 
 func NewLiveDeps(oc *oneclaw.Client, shroud *oneclaw.ShroudClient, agentID, fixturesDir string, blobs BlobStore) *LiveDeps {
@@ -84,6 +88,20 @@ func (l *LiveDeps) ServiceCall(svc schema.Service, op string, params map[string]
 			return nil, err
 		}
 		return dispatchGitHub(client, op, params)
+	}
+	if svc.Provider == "stripe" {
+		client, err := l.stripeClient()
+		if err != nil {
+			return nil, err
+		}
+		return dispatchStripe(client, op, params)
+	}
+	if svc.Provider == "hubspot" {
+		client, err := l.hubspotClient()
+		if err != nil {
+			return nil, err
+		}
+		return dispatchHubSpot(client, op, params)
 	}
 	call := func() (*oneclaw.ExecuteResult, error) {
 		return l.OneClaw.Execute(l.AgentID, svc.ID, "http", map[string]any{"op": op, "params": params})
