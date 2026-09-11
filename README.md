@@ -6,6 +6,20 @@ Nanobots is a local-first system for composing single-job AI/deterministic conta
 
 The full product spec lives in [`context/NANOBOTS-BLUEPRINT.md`](context/NANOBOTS-BLUEPRINT.md) and [`context/NANOBOTS-CATALOG.md`](context/NANOBOTS-CATALOG.md). Treat those as the source of truth for the YAML schemas and the launch catalog; this README covers what's actually built, and is kept in sync with it — if something here contradicts the code, the code wins. `docs/` has one page per concept — contract, connections, harnesses, approvals, the 1Claw bridge, Browser Bridge — each ending in how to run it for real.
 
+## Why nanobots, not one big agent
+
+The obvious way to automate "recap my inbox, prep my meetings, and post my content" is one big agent with a giant prompt and every tool bolted on. That's also the way you end up with something slow, expensive to run, impossible to debug when it does the wrong thing, and terrifying to grant real Gmail/Stripe/LinkedIn access to, because there's no boundary around what it might decide to do with any of them at once.
+
+Nanobots' bet is the opposite one — the Unix philosophy applied to AI automation: lots of small bricks that each do one job extremely well, wired together instead of merged together. Concretely, that means every bot in `bots/` is built to be:
+
+- **Small** — one job per bot, statable in one sentence. `inbox-triage` sorts mail; it doesn't also draft replies (that's `draft-replies`) or send them (`email-send-approved`).
+- **Fast** — most bots run in the `bare` harness (no LLM loop, no browser, a plain deterministic container) and finish in seconds; only the ones that genuinely need Chrome or an LLM call reach for more.
+- **Powerful** — small doesn't mean thin. Each bot is backed by a real integration wherever one exists (direct Gmail/Slack/GitHub/Stripe/HubSpot/X/LinkedIn clients, not just fixtures) and does its one job completely, not partially.
+- **Modular** — every input and output is a typed, named port (`docs/bot-contract.md`), so a bot never has to know or trust anything about its neighbors beyond the shape of the data crossing the wire.
+- **Orchestratable** — because the ports are typed and the contract is uniform, any bot can be snapped into any swarm the planner can type-check, and swapped for another bot with compatible ports without touching anything else. Composing bricks this way, instead of writing one monolithic agent, is what makes 30 bots and 14 swarms possible to build, test, and trust independently — you never have to reason about the whole system to trust one piece of it, and a piece you don't trust yet (a bot still on `connection: demo`) can't leak scope into the pieces you do.
+
+That's the actual product: not a chatbot that does automation, but a growing, composable catalog of small, real, individually-provable automation bricks — plus, since assembling bricks by hand is still work, an AI composer that does the assembly for you from one sentence of plain English (next section).
+
 ## Who this is for
 
 The primary customer is a **busy solo operator** — a solo founder, indie hacker, or anyone running their own show without an assistant: inbox triage, meeting prep, content, and follow-ups eat their day, and they'd rather describe the outcome they want than configure automation software. That's who the AI composer, the basic-mode UI, and the swarm gallery are built to hook in one sentence ("Help me automate a daily email recap and list it by priority") — no YAML, no drag-and-drop tutorial, no OAuth screens, a working swarm on the canvas in seconds.
