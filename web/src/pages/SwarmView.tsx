@@ -70,10 +70,13 @@ export function SwarmView({
     }
   };
 
-  const snapLabel = useMemo(() => {
-    const s = plan?.snaps?.[0];
-    return s ? { from: s.From.split(".")[1], to: s.To.split(".")[1] } : null;
-  }, [plan]);
+  // Which snap(s) actually connect two consecutive bots in the run order —
+  // not just "the swarm's first snap," which broke down the moment a swarm
+  // had more than 2 bots (every connector showed the same label).
+  const snapsBetween = (fromInstance: string, toInstance: string) =>
+    (plan?.snaps ?? []).filter(
+      (s) => s.From.split(".")[0] === fromInstance && s.To.split(".")[0] === toInstance,
+    );
 
   return (
     <div className="grid h-full grid-rows-[1fr_260px] sm:grid-rows-[1fr_280px]">
@@ -113,6 +116,8 @@ export function SwarmView({
         <div className="mt-8 flex flex-wrap items-center gap-0 sm:flex-nowrap">
           {order.map((instanceId, i) => {
             const bot = bots[botIdOf.get(instanceId) ?? ""];
+            const nextId = order[i + 1];
+            const snaps = nextId ? snapsBetween(instanceId, nextId) : [];
             return (
               <div key={instanceId} className="flex items-center">
                 {bot && (
@@ -125,8 +130,9 @@ export function SwarmView({
                 )}
                 {i < order.length - 1 && (
                   <SnapTrail
-                    from={snapLabel?.from ?? "output"}
-                    to={snapLabel?.to ?? "input"}
+                    from={snaps[0] ? snaps[0].From.split(".").slice(1).join(".") : "output"}
+                    to={snaps[0] ? snaps[0].To.split(".").slice(1).join(".") : "input"}
+                    extra={Math.max(0, snaps.length - 1)}
                     live={run?.status === "running"}
                   />
                 )}
