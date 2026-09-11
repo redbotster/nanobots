@@ -93,9 +93,21 @@ type Step struct {
 	To         string         `json:"to,omitempty" yaml:"to,omitempty"`
 	Key        string         `json:"key,omitempty" yaml:"key,omitempty"`
 	Value      string         `json:"value,omitempty" yaml:"value,omitempty"`
-	Output     string         `json:"output,omitempty" yaml:"output,omitempty"`
-	Summary    string         `json:"summary,omitempty" yaml:"summary,omitempty"`
-	RiskTier   string         `json:"risk_tier,omitempty" yaml:"risk_tier,omitempty"`
+	// Data is transform.pick's payload — unlike Value (a plain string, used
+	// by memory.put), this can be any YAML shape (a string, a number, an
+	// object) so a step can build something like an event payload directly.
+	Data   any    `json:"data,omitempty" yaml:"data,omitempty"`
+	Output string `json:"output,omitempty" yaml:"output,omitempty"`
+	// Outputs extracts several named output ports directly from this one
+	// step's own result in a single pass — e.g. a lookup step producing
+	// both a file and its id. Each value is a template resolved against the
+	// same ctx as everything else, with steps.<this-step>.output already
+	// available (see internal/step/interpret.go). Output (singular) binds
+	// the step's whole result to one port; Outputs (plural) is for pulling
+	// several fields out of it at once. A step may use either or both.
+	Outputs  map[string]string `json:"outputs,omitempty" yaml:"outputs,omitempty"`
+	Summary  string            `json:"summary,omitempty" yaml:"summary,omitempty"`
+	RiskTier string            `json:"risk_tier,omitempty" yaml:"risk_tier,omitempty"`
 }
 
 // Guardrails are constraints a bot declares about itself.

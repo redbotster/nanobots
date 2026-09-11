@@ -1,0 +1,41 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: notify
+  version: 0.1.0
+  description: Post a message to Slack, email, or SMS.
+  tags: [utility, notify]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: bare
+
+  ports:
+    inputs:
+      - name: message
+        type: string
+        required: true
+      - name: channel
+        type: string
+        required: true
+    outputs:
+      - name: delivered
+        type: boolean
+
+  steps:
+    - name: send
+      type: notify
+      params: { message: "{{inputs.message}}", channel: "{{inputs.channel}}" }
+      output: delivered
+
+  guardrails:
+    pii: redact
+    max_runtime_secs: 15
+
+  resources:
+    preset: small
+    memory: 32Mi
+    cpu: 100m
+    image: ghcr.io/nanobots/harness-bare:1.0-slim

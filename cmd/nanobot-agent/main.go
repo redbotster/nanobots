@@ -62,7 +62,12 @@ func run() error {
 
 	deps := buildDeps(botDir, blobs)
 
-	result, err := step.Interpret(nb, inputs, deps)
+	swarmVars, err := readSwarmVars(runDir)
+	if err != nil {
+		return fmt.Errorf("read swarm_vars.json: %w", err)
+	}
+
+	result, err := step.Interpret(nb, inputs, swarmVars, deps)
 	if err != nil {
 		writeLog(runDir, result)
 		return fmt.Errorf("bot %s: %w", nb.Metadata.Name, err)
@@ -79,6 +84,24 @@ func run() error {
 		}
 	}
 	return nil
+}
+
+// readSwarmVars loads /run/swarm_vars.json if the runner wrote one — a bot
+// run outside any swarm (e.g. a standalone `nanobots run` on a single bot,
+// or conformance testing) simply has none, which isn't an error.
+func readSwarmVars(runDir string) (map[string]any, error) {
+	raw, err := os.ReadFile(filepath.Join(runDir, "swarm_vars.json"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var vars map[string]any
+	if err := json.Unmarshal(raw, &vars); err != nil {
+		return nil, err
+	}
+	return vars, nil
 }
 
 func buildDeps(botDir string, blobs step.BlobStore) step.Deps {

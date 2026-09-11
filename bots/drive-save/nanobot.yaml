@@ -1,0 +1,56 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: drive-save
+  version: 0.1.0
+  description: Save a file to a folder and return the link.
+  tags: [drive, utility]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: bare
+
+  services:
+    - id: gdrive
+      provider: google
+      scopes: [drive.file]
+      required: true
+      connection: demo
+
+  ports:
+    inputs:
+      - name: file
+        type: file
+        required: true
+      - name: folder
+        type: string
+        required: true
+    outputs:
+      - name: file_id
+        type: string
+      - name: link
+        type: string
+
+  steps:
+    - name: upload
+      type: service.call
+      service: gdrive
+      op: files.create
+      params: { folder: "{{inputs.folder}}", file: "{{inputs.file}}" }
+      outputs:
+        file_id: "{{steps.upload.output.id}}"
+        link: "{{steps.upload.output.webViewLink}}"
+
+  guardrails:
+    pii: allow
+    max_runtime_secs: 60
+    network_egress: [googleapis.com]
+    writes_allowed: [gdrive]
+
+  resources:
+    preset: small
+    memory: 64Mi
+    cpu: 100m
+    image: ghcr.io/nanobots/harness-bare:1.0-slim

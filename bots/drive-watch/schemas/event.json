@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanobots.dev/bots/drive-watch/schemas/event.json",
+  "title": "DriveWatchEvent",
+  "type": "object",
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "mimeType": { "type": "string" },
+    "createdTime": { "type": "string" }
+  }
+}

@@ -1,6 +1,7 @@
 package step
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -24,16 +25,19 @@ type Result struct {
 }
 
 // Interpret runs every step in nb.Spec.Steps, in order, against resolvedInputs
-// (already defaulted/validated by the caller) and deps. It returns an error
-// on the first step that fails, or if a declared output port is never
-// produced.
-func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, deps Deps) (*Result, error) {
+// (already defaulted/validated by the caller) and deps. swarmVars is exposed
+// to step templates as `{{swarm.vars.*}}` (see e.g.
+// bots/recap-emails-to-pdf/nanobot.yaml's upload step) — pass nil for a bot
+// run outside any swarm context. It returns an error on the first step that
+// fails, or if a declared output port is never produced.
+func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, swarmVars map[string]any, deps Deps) (*Result, error) {
 	ctx := map[string]any{
 		"inputs":  resolvedInputs,
 		"steps":   map[string]any{},
 		"outputs": map[string]any{},
 		"memory":  map[string]any{}, // populated lazily by memory.get below
 		"run":     map[string]any{"started_at": deps.Now()},
+		"swarm":   map[string]any{"vars": swarmVars},
 	}
 	stepsCtx := ctx["steps"].(map[string]any)
 	outputsCtx := ctx["outputs"].(map[string]any)
@@ -58,6 +62,7 @@ func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, deps Deps) (*R
 			out, err = deps.ServiceCall(svc, s.Op, params)
 			if err == nil {
 				log(s.Name, "%s.%s -> ok", s.Service, s.Op)
+				out, err = maybeMaterializeFile(nb, s, out, deps)
 			}
 
 		case "ai.generate":
@@ -75,6 +80,16 @@ func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, deps Deps) (*R
 
 		case "transform.now":
 			out = deps.Now()
+
+		case "transform.pick":
+			// A pure computation step: no service, no model, just resolve
+			// s.Value (which may be a whole literal/object, not just a
+			// string) against ctx. Exists so a step can shape a value —
+			// picking a field out of an earlier step, building a small
+			// literal like an event payload — without pretending it's a
+			// service call. See schema.Step.Outputs for pulling several
+			// fields out of one step at once.
+			out = resolveValue(s.Data, ctx)
 
 		case "memory.get":
 			// Best-effort: memory is "since last run" bookkeeping, not a
@@ -110,7 +125,14 @@ func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, deps Deps) (*R
 			out = map[string]any{"approved": approved, "decided_by": decidedBy}
 			if err == nil {
 				log(s.Name, "approve %q -> approved=%v by=%s", summary, approved, decidedBy)
-				if !approved {
+				// A rejection only aborts the run when nothing downstream is
+				// set up to look at the decision — that's an inline gate
+				// (e.g. email-drive-file's "gate" step before sending).
+				// When the step binds an output (the catalog's standalone
+				// `approve` brick), false is a normal, valid result: the
+				// swarm around it decides what to do with a "no", not this
+				// bot.
+				if !approved && s.Output == "" && len(s.Outputs) == 0 {
 					return nil, fmt.Errorf("step %q: not approved (decided_by=%s)", s.Name, decidedBy)
 				}
 			}
@@ -119,7 +141,10 @@ func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, deps Deps) (*R
 			message, _ := resolveValue(s.Params["message"], ctx).(string)
 			channel, _ := resolveValue(s.Params["channel"], ctx).(string)
 			err = deps.Notify(message, channel)
-			out = map[string]any{"delivered": err == nil}
+			// A bare bool, not {"delivered": bool} — the catalog's `notify`
+			// brick declares a single `delivered:boolean` output port, so
+			// that's the shape a step.Output binding needs to match.
+			out = err == nil
 			if err == nil {
 				log(s.Name, "notify -> %s", channel)
 			}
@@ -136,6 +161,9 @@ func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, deps Deps) (*R
 		if s.Output != "" {
 			outputsCtx[s.Output] = out
 		}
+		for port, tmpl := range s.Outputs {
+			outputsCtx[port] = resolveValue(tmpl, ctx)
+		}
 		lastOutput = out
 	}
 
@@ -150,6 +178,42 @@ func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, deps Deps) (*R
 		res.Outputs[port.Name] = val
 	}
 	return res, nil
+}
+
+// maybeMaterializeFile turns a service.call result into a FileValue when the
+// step's declared output port is `file`-typed and the op returned the
+// blueprint's file-download shape ({"content_base64": "...", "mime": "..."}).
+// This is how a bot like drive-watch turns "downloaded a file from Drive"
+// into a real blob-store reference without every provider needing its own
+// bespoke handling — any op that returns that shape gets this for free.
+func maybeMaterializeFile(nb *schema.Nanobot, s schema.Step, out any, deps Deps) (any, error) {
+	if s.Output == "" {
+		return out, nil
+	}
+	var portType string
+	for _, p := range nb.Spec.Ports.Outputs {
+		if p.Name == s.Output {
+			portType = p.Type
+			break
+		}
+	}
+	if portType != string(schema.PortFile) {
+		return out, nil
+	}
+	m, ok := out.(map[string]any)
+	if !ok {
+		return out, nil
+	}
+	b64, ok := m["content_base64"].(string)
+	if !ok {
+		return out, nil
+	}
+	data, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return nil, fmt.Errorf("decode content_base64: %w", err)
+	}
+	mime, _ := m["mime"].(string)
+	return deps.Blobs().Write(data, mime)
 }
 
 func findService(nb *schema.Nanobot, id string) (schema.Service, bool) {

@@ -1,0 +1,56 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: form-to-sheet
+  version: 0.1.0
+  description: Take a webhook payload (Typeform, Tally, website form) and append a row.
+  tags: [sheets, utility, webhook]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: bare
+
+  services:
+    - id: sheets
+      provider: google
+      scopes: [spreadsheets]
+      required: true
+      connection: demo
+
+  ports:
+    inputs:
+      - name: payload
+        type: json
+        required: true
+      - name: sheet
+        type: string
+        required: true
+    outputs:
+      - name: row
+        type: json
+      - name: row_number
+        type: string
+
+  steps:
+    - name: append
+      type: service.call
+      service: sheets
+      op: rows.append
+      params: { sheet: "{{inputs.sheet}}", values: "{{inputs.payload}}" }
+      output: row
+      outputs:
+        row_number: "{{steps.append.output.row_number}}"
+
+  guardrails:
+    pii: redact
+    max_runtime_secs: 30
+    network_egress: [googleapis.com]
+    writes_allowed: [sheets]
+
+  resources:
+    preset: small
+    memory: 64Mi
+    cpu: 100m
+    image: ghcr.io/nanobots/harness-bare:1.0-slim

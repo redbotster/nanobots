@@ -1,0 +1,47 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: render-pdf
+  version: 0.1.0
+  description: Render Markdown or HTML to a PDF file.
+  tags: [pdf, utility]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  # No LLM loop, no external services — but its own job needs real Chrome to
+  # render a real PDF, so the runner substitutes the openclaw image at
+  # execution time while this stays declared "bare" (see
+  # internal/runner.needsRealPDFRender and docs/harnesses.md).
+  harness:
+    type: bare
+
+  ports:
+    inputs:
+      - name: content
+        type: string
+        required: true
+      - name: template
+        type: file
+    outputs:
+      - name: pdf
+        type: file
+        mime: application/pdf
+
+  steps:
+    - name: render
+      type: transform.render
+      template: ./templates/plain.html
+      to: pdf
+      inputs: { data: { body: "{{inputs.content}}" } }
+      output: pdf
+
+  guardrails:
+    pii: allow
+    max_runtime_secs: 60
+
+  resources:
+    preset: small
+    memory: 256Mi
+    cpu: 250m
+    image: ghcr.io/nanobots/harness-bare:1.0-slim

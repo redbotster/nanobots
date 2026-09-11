@@ -121,7 +121,7 @@ func RunConformance(botDir, fixturesDir string) (*Report, error) {
 	deps.SkipRealRender = true
 
 	report := &Report{BotName: nb.Metadata.Name}
-	result, err := step.Interpret(nb, inputs, deps)
+	result, err := step.Interpret(nb, inputs, nil, deps)
 	if err != nil {
 		report.Errors = append(report.Errors, err.Error())
 		if result != nil {

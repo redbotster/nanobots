@@ -1,6 +1,7 @@
 package contract
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -16,9 +17,33 @@ func repoRoot(t *testing.T) string {
 	return filepath.Join(filepath.Dir(file), "..", "..")
 }
 
+// allBotIDs discovers every bot under bots/<id>/nanobot.yaml, so this test
+// covers new bricks automatically instead of relying on someone remembering
+// to add them to a hardcoded list.
+func allBotIDs(t *testing.T, root string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(root, "bots"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(root, "bots", e.Name(), "nanobot.yaml")); err == nil {
+			ids = append(ids, e.Name())
+		}
+	}
+	if len(ids) == 0 {
+		t.Fatal("no bots found under bots/ — did the test find the wrong repo root?")
+	}
+	return ids
+}
+
 func TestRunConformanceOnLaunchBots(t *testing.T) {
 	root := repoRoot(t)
-	bots := []string{"email-drive-file", "recap-emails-to-pdf"}
+	bots := allBotIDs(t, root)
 	for _, id := range bots {
 		id := id
 		t.Run(id, func(t *testing.T) {

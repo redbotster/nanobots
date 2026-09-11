@@ -1,0 +1,67 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: email-send-approved
+  version: 0.1.0
+  description: Send an existing draft after a human taps approve.
+  tags: [email, gmail, send]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: bare
+
+  services:
+    - id: gmail
+      provider: google
+      scopes: [gmail.send]
+      required: true
+      connection: demo
+
+  ports:
+    inputs:
+      - name: draft_id
+        type: string
+        required: true
+      - name: summary
+        type: string
+        required: true
+    outputs:
+      - name: message_id
+        type: string
+      - name: sent_at
+        type: datetime
+
+  steps:
+    # This gate cannot be removed by a swarm's approval_required_for default
+    # (see NANOBOTS-BLUEPRINT.md §6 step 7: "the swarm-level
+    # approval_required_for default must not be able to remove it for bricks
+    # 4 and 11") — enforced here by simply never making it conditional on
+    # anything the swarm controls.
+    - name: gate
+      type: approve
+      summary: "{{inputs.summary}}"
+      risk_tier: medium
+    - name: send
+      type: service.call
+      service: gmail
+      op: drafts.send
+      params: { draft_id: "{{inputs.draft_id}}" }
+      output: message_id
+    - name: stamp
+      type: transform.now
+      output: sent_at
+
+  guardrails:
+    pii: redact
+    max_runtime_secs: 1800
+    network_egress: [googleapis.com]
+    writes_allowed: [gmail]
+    approval_required_for: ["*"]
+
+  resources:
+    preset: small
+    memory: 64Mi
+    cpu: 100m
+    image: ghcr.io/nanobots/harness-bare:1.0-slim

@@ -68,7 +68,18 @@ func (o *Orchestrator) runBot(run *Run, rs *planner.ResolvedSwarm, botID string,
 	nb := rb.Nanobot
 	run.Log(botID, "", "starting (%s harness)", nb.Spec.Harness.Type)
 
-	image, user, err := EnsureHarnessImage(nb.Spec.Harness.Type, o.RepoRoot)
+	harnessType := nb.Spec.Harness.Type
+	if harnessType == "bare" && needsRealPDFRender(nb) {
+		// A "bare" bot (catalog: render-pdf and anything built on it) whose
+		// own job is producing a real PDF still needs Chrome to do that for
+		// real — bare's distroless image doesn't have one. The harness type
+		// stays "bare" in nanobot.yaml (that's the honest declaration: no
+		// LLM loop, no dynamic reasoning), but execution borrows openclaw's
+		// image so transform.render isn't silently degraded to HTML.
+		harnessType = "openclaw"
+		run.Log(botID, "", "using openclaw image for real Chrome rendering (bare harness has none)")
+	}
+	image, user, err := EnsureHarnessImage(harnessType, o.RepoRoot)
 	if err != nil {
 		return err
 	}
@@ -88,6 +99,20 @@ func (o *Orchestrator) runBot(run *Run, rs *planner.ResolvedSwarm, botID string,
 	}
 	if err := os.WriteFile(filepath.Join(runDir, "inputs.json"), inputsJSON, 0o644); err != nil {
 		return err
+	}
+	// swarm_vars.json is separate from inputs.json on purpose — the bot
+	// contract (docs/bot-contract.md) keeps inputs.json a flat "one value
+	// per declared input port" file; swarm-wide vars are a distinct,
+	// optional thing a bot may reference via {{swarm.vars.*}} (see
+	// bots/recap-emails-to-pdf/nanobot.yaml's upload step).
+	if len(rs.Swarm.Spec.Vars) > 0 {
+		varsJSON, err := json.Marshal(rs.Swarm.Spec.Vars)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(runDir, "swarm_vars.json"), varsJSON, 0o644); err != nil {
+			return err
+		}
 	}
 
 	var agentID, agentAPIKey string
@@ -149,6 +174,15 @@ func agentRequestFor(nb *schema.Nanobot) oneclaw.CreateAgentRequest {
 			EnableSecretRedaction: true,
 		},
 	}
+}
+
+func needsRealPDFRender(nb *schema.Nanobot) bool {
+	for _, s := range nb.Spec.Steps {
+		if s.Type == "transform.render" && s.To == "pdf" {
+			return true
+		}
+	}
+	return false
 }
 
 func orDefault(s, def string) string {

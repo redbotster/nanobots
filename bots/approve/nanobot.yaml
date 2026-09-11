@@ -1,0 +1,47 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: approve
+  version: 0.1.0
+  description: Pause the swarm until a human approves on web or phone.
+  tags: [utility, approval]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: bare
+
+  ports:
+    inputs:
+      - name: summary
+        type: string
+        required: true
+      - name: risk
+        type: string
+        default: low
+    outputs:
+      - name: approved
+        type: boolean
+      - name: decided_by
+        type: string
+
+  steps:
+    - name: gate
+      type: approve
+      summary: "{{inputs.summary}}"
+      risk_tier: "{{inputs.risk}}"
+      outputs:
+        approved: "{{steps.gate.output.approved}}"
+        decided_by: "{{steps.gate.output.decided_by}}"
+
+  guardrails:
+    pii: allow
+    max_runtime_secs: 1800
+    approval_required_for: ["*"]
+
+  resources:
+    preset: small
+    memory: 32Mi
+    cpu: 100m
+    image: ghcr.io/nanobots/harness-bare:1.0-slim

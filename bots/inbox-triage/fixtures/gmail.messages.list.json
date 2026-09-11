@@ -1,0 +1,30 @@
+[
+  {
+    "id": "19a1a1",
+    "from": "Marcus Webb <marcus@webb-legal.com>",
+    "subject": "Contract review — one open item",
+    "date": "2026-09-10T14:00:00Z",
+    "snippet": "Need to talk through the liability cap in section 4.2 before you sign — can we do 15 minutes today?"
+  },
+  {
+    "id": "19a1a2",
+    "from": "The Overview <newsletter@overview.example>",
+    "subject": "This week in design systems",
+    "date": "2026-09-10T08:00:00Z",
+    "snippet": "Five links on token pipelines and one hot take about spacing scales."
+  },
+  {
+    "id": "19a1a3",
+    "from": "no-reply@github.com",
+    "subject": "[redbotster/nanobots] CI passed",
+    "date": "2026-09-10T07:40:00Z",
+    "snippet": "All checks passed on main."
+  },
+  {
+    "id": "19a1a4",
+    "from": "Priya Shah <priya@northwind-consulting.com>",
+    "subject": "Kickoff moved to the 15th",
+    "date": "2026-09-09T20:11:00Z",
+    "snippet": "Confirming we're pushing kickoff five days — let me know if that doesn't work."
+  }
+]

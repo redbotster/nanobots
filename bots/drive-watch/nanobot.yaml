@@ -1,0 +1,62 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: drive-watch
+  version: 0.1.0
+  description: Fire when a new file lands in a folder.
+  tags: [drive, utility, trigger]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: bare
+
+  services:
+    - id: gdrive
+      provider: google
+      scopes: [drive.readonly]
+      required: true
+      connection: demo
+
+  ports:
+    inputs:
+      - name: folder
+        type: string
+        required: true
+    outputs:
+      - name: file
+        type: file
+      - name: file_id
+        type: string
+      - name: event
+        type: json
+        schema: ./schemas/event.json
+
+  steps:
+    - name: list
+      type: service.call
+      service: gdrive
+      op: files.list
+      params: { folder: "{{inputs.folder}}", order_by: "createdTime desc", max: 1 }
+      outputs:
+        file_id: "{{steps.list.output.id}}"
+        event: "{{steps.list.output}}"
+    - name: download
+      type: service.call
+      service: gdrive
+      op: files.download
+      params: { id: "{{steps.list.output.id}}" }
+      output: file
+
+  guardrails:
+    pii: allow
+    max_runtime_secs: 30
+    network_egress: [googleapis.com]
+    writes_allowed: []
+
+  resources:
+    preset: small
+    memory: 64Mi
+    cpu: 100m
+    image: ghcr.io/nanobots/harness-bare:1.0-slim
