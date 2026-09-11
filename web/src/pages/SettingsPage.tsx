@@ -45,10 +45,10 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
   }
 
   return (
-    <div className="h-full overflow-auto p-6 sm:p-8">
+    <div className="h-full overflow-auto p-5 sm:p-6">
       <h1 className="font-display text-xl font-medium text-ink">Settings</h1>
 
-      <section className="mt-6 rounded-lg border border-edge-strong bg-panel p-5">
+      <section className="mt-5 rounded-lg border border-edge-strong bg-panel p-4">
         <h2 className="font-display text-sm font-semibold text-ink">1Claw</h2>
         <div className="mt-3 flex items-center gap-2 text-sm">
           <StatusDot tone={status?.oneclaw_configured ? "ok" : "warn"} />
@@ -60,7 +60,7 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
       </section>
 
       {status?.oneclaw_configured && (
-        <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-5">
+        <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-4">
           <h2 className="font-display text-sm font-semibold text-ink">Connect a service</h2>
           <p className="mt-1 text-[13px] text-muted">
             Every credential goes straight into your 1Claw vault — never onto
@@ -123,7 +123,7 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
         </section>
       )}
 
-      <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-5">
+      <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-4">
         <h2 className="font-display text-sm font-semibold text-ink">Services in use</h2>
         <p className="mt-1 text-[13px] text-muted">
           How each bot's declared services get connected — every service
@@ -132,7 +132,7 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
         </p>
         <div className="mt-4 flex flex-col divide-y divide-edge">
           {[...services.entries()].map(([id, s]) => (
-            <div key={id} className="flex items-center gap-3 py-3">
+            <div key={id} className="flex items-center gap-3 py-2.5">
               <StatusDot tone={s.connection === "demo" ? "warn" : "ok"} />
               <div className="min-w-0 flex-1">
                 <div className="text-sm text-ink">
@@ -258,7 +258,7 @@ function OAuthConnectRow({
   };
 
   return (
-    <div className="py-3">
+    <div className="py-2.5">
       <div className="flex items-center gap-3">
         <StatusDot tone={connected ? "ok" : "muted"} />
         <div className="min-w-0 flex-1">
@@ -309,7 +309,7 @@ function TokenConnectRow({
   };
 
   return (
-    <div className="py-3">
+    <div className="py-2.5">
       <div className="flex items-center gap-3">
         <StatusDot tone={connected ? "ok" : "muted"} />
         <div className="min-w-0 flex-1">

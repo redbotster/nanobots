@@ -134,6 +134,12 @@ export interface SwarmSummary {
   description: string;
   services_live: number;
   services_total: number;
+  /** Absent when this swarm has never run this session — the gallery and
+   * run history used to be two disconnected parts of the UI. */
+  last_run_id?: string;
+  last_run_status?: RunStatus;
+  last_run_at?: string;
+  last_run_trigger?: "manual" | "schedule";
 }
 
 /** One bot instance in a swarm draft, as the visual builder edits it — the

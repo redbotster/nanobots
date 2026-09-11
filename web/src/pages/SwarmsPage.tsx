@@ -6,6 +6,16 @@ import { SwarmView } from "./SwarmView";
 import { BuilderPage } from "./BuilderPage";
 import { FoundryJobPage } from "./FoundryJobPage";
 import { Button } from "../components/Button";
+import { StatusDot } from "../components/StatusDot";
+import { relativeTime } from "../lib/relativeTime";
+
+const RUN_TONE: Record<string, "ok" | "warn" | "danger" | "muted"> = {
+  succeeded: "ok",
+  running: "warn",
+  awaiting_approval: "warn",
+  failed: "danger",
+  pending: "muted",
+};
 
 type Mode =
   | { kind: "list" }
@@ -173,7 +183,7 @@ export function SwarmsPage({ uiMode }: { uiMode: UIMode }) {
   }
 
   return (
-    <div className="h-full overflow-auto p-6 sm:p-8">
+    <div className="h-full overflow-auto p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-display text-xl font-medium text-ink">Swarms</h1>
@@ -188,7 +198,7 @@ export function SwarmsPage({ uiMode }: { uiMode: UIMode }) {
         )}
       </div>
 
-      <div className="mt-6">
+      <div className="mt-4">
         {mode.kind === "gap" ? (
           <GapPanel
             gap={mode.gap}
@@ -220,7 +230,7 @@ export function SwarmsPage({ uiMode }: { uiMode: UIMode }) {
         </div>
       )}
 
-      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {swarms?.map((s) => (
           <button
             key={s.path}
@@ -249,6 +259,15 @@ export function SwarmsPage({ uiMode }: { uiMode: UIMode }) {
             <p className="mt-1.5 text-[13px] leading-snug text-muted">
               {s.description}
             </p>
+            {s.last_run_status ? (
+              <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-muted">
+                <StatusDot tone={RUN_TONE[s.last_run_status] ?? "muted"} />
+                last ran {relativeTime(s.last_run_at!)}
+                {s.last_run_trigger === "schedule" && " · scheduled"}
+              </div>
+            ) : (
+              <div className="mt-2.5 text-[11px] text-muted/60">never run yet</div>
+            )}
           </button>
         ))}
       </div>

@@ -21,7 +21,7 @@ export function RunDetail({ runId, onBack }: { runId: string; onBack: () => void
   const { run } = useRun(runId);
 
   return (
-    <div className="grid h-full grid-rows-[auto_1fr] p-6 sm:p-8">
+    <div className="grid h-full grid-rows-[auto_1fr] p-5 sm:p-6">
       <div>
         <button
           onClick={onBack}

@@ -43,7 +43,7 @@ export function BotLibrary() {
   }, [filtered]);
 
   return (
-    <div className="h-full overflow-auto p-6 sm:p-8">
+    <div className="h-full overflow-auto p-5 sm:p-6">
       <h1 className="font-display text-xl font-medium text-ink">Bot library</h1>
       <p className="mt-1 text-sm text-muted">
         Every bot declares typed ports — any bot here can be snapped into a
@@ -66,7 +66,7 @@ export function BotLibrary() {
       )}
 
       {groups.map(([category, groupBots]) => (
-        <section key={category} className="mt-6">
+        <section key={category} className="mt-5">
           <button
             onClick={() => setCollapsed((c) => ({ ...c, [category]: !c[category] }))}
             className="flex items-center gap-1.5 py-1 font-display text-xs font-semibold uppercase tracking-wider text-muted hover:text-ink"
@@ -76,7 +76,7 @@ export function BotLibrary() {
             <span className="font-normal normal-case tracking-normal">({groupBots.length})</span>
           </button>
           {!collapsed[category] && (
-            <div className="mt-2 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {groupBots.map((bot) => (
                 <BotCard key={bot.id} bot={bot} connections={connections} onChanged={reload} />
               ))}

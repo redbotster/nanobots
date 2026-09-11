@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/redbotster/nanobots/internal/runner"
 	"github.com/redbotster/nanobots/internal/step"
@@ -137,6 +138,63 @@ func TestHandleListSwarmsReportsServiceLiveness(t *testing.T) {
 	}
 	if found.ServicesLive != 0 {
 		t.Errorf("ServicesLive = %d, want 0 — every shipped bot defaults to connection: demo", found.ServicesLive)
+	}
+	if found.LastRunID != "" {
+		t.Errorf("expected no last run for a swarm that's never executed, got %+v", found)
+	}
+}
+
+func TestHandleListSwarmsReportsLastRun(t *testing.T) {
+	srv := testServer(t)
+	run := runner.NewRun("daily-email-recap")
+	run.TriggeredBy = "schedule"
+	run.SetStatus(runner.StatusSucceeded)
+	srv.Runs.Add(run)
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/api/swarms", nil))
+	var swarms []SwarmSummary
+	if err := json.Unmarshal(rec.Body.Bytes(), &swarms); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	var found *SwarmSummary
+	for i := range swarms {
+		if swarms[i].Name == "daily-email-recap" {
+			found = &swarms[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("daily-email-recap not found in listing")
+	}
+	if found.LastRunID != run.ID {
+		t.Errorf("LastRunID = %q, want %q", found.LastRunID, run.ID)
+	}
+	if found.LastRunStatus != "succeeded" {
+		t.Errorf("LastRunStatus = %q, want succeeded", found.LastRunStatus)
+	}
+	if found.LastRunTrigger != "schedule" {
+		t.Errorf("LastRunTrigger = %q, want schedule", found.LastRunTrigger)
+	}
+	if found.LastRunAt == "" {
+		t.Error("expected LastRunAt to be set")
+	}
+}
+
+func TestLastRunForPicksTheMostRecentMatchingRun(t *testing.T) {
+	older := runner.NewRun("x")
+	older.StartedAt = time.Now().Add(-time.Hour)
+	newer := runner.NewRun("x")
+	unrelated := runner.NewRun("y")
+
+	got := lastRunFor([]*runner.Run{older, newer, unrelated}, "x")
+	if got == nil || got.ID != newer.ID {
+		t.Errorf("lastRunFor = %v, want the newer run", got)
+	}
+}
+
+func TestLastRunForReturnsNilWhenNoneMatch(t *testing.T) {
+	if got := lastRunFor([]*runner.Run{runner.NewRun("x")}, "y"); got != nil {
+		t.Errorf("expected nil, got %v", got)
 	}
 }
 

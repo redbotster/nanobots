@@ -97,7 +97,7 @@ export function SwarmView({
 
   return (
     <div className="grid h-full grid-rows-[1fr_260px] sm:grid-rows-[1fr_280px]">
-      <section className="overflow-auto p-6 sm:p-8">
+      <section className="overflow-auto p-5 sm:p-6">
         <button
           onClick={onBack}
           className="mb-3 flex items-center gap-1 font-display text-xs text-muted hover:text-ink"

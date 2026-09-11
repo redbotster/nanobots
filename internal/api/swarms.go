@@ -5,8 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/redbotster/nanobots/internal/planner"
+	"github.com/redbotster/nanobots/internal/runner"
 	"github.com/redbotster/nanobots/internal/schema"
 )
 
@@ -15,13 +17,38 @@ import (
 // ServicesLive/ServicesTotal let the gallery show "how real is this swarm
 // right now" at a glance, without opening it — a swarm resolution failure
 // (a broken bot ref) just leaves both at 0 rather than failing the whole
-// listing.
+// listing. LastRun* are omitted entirely (via omitempty) when the swarm has
+// never run this session — the gallery and the run history were previously
+// two completely disconnected parts of the UI; a human had no way to tell
+// "is this swarm actually working" without opening it and checking Runs by
+// hand.
 type SwarmSummary struct {
-	Path          string `json:"path"`
-	Name          string `json:"name"`
-	Description   string `json:"description"`
-	ServicesLive  int    `json:"services_live"`
-	ServicesTotal int    `json:"services_total"`
+	Path           string `json:"path"`
+	Name           string `json:"name"`
+	Description    string `json:"description"`
+	ServicesLive   int    `json:"services_live"`
+	ServicesTotal  int    `json:"services_total"`
+	LastRunID      string `json:"last_run_id,omitempty"`
+	LastRunStatus  string `json:"last_run_status,omitempty"`
+	LastRunAt      string `json:"last_run_at,omitempty"`
+	LastRunTrigger string `json:"last_run_trigger,omitempty"`
+}
+
+// lastRunFor finds the most recently started run matching swarmName —
+// matched by name, not path, since that's all a Run knows about the swarm
+// that produced it (runner.Run.SwarmName comes from the swarm's own
+// metadata.name, not its file path).
+func lastRunFor(runs []*runner.Run, swarmName string) *runner.Run {
+	var latest *runner.Run
+	for _, r := range runs {
+		if r.SwarmName != swarmName {
+			continue
+		}
+		if latest == nil || r.StartedAt.After(latest.StartedAt) {
+			latest = r
+		}
+	}
+	return latest
 }
 
 // countLiveServices resolves every bot a swarm references (the same
@@ -53,6 +80,11 @@ func (s *Server) handleListSwarms(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	var allRuns []*runner.Run
+	if s.Runs != nil {
+		allRuns = s.Runs.List()
+	}
+
 	var swarms []SwarmSummary
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
@@ -68,10 +100,17 @@ func (s *Server) handleListSwarms(w http.ResponseWriter, r *http.Request) {
 			relPath = path
 		}
 		live, total := countLiveServices(sw, s.BotsDir)
-		swarms = append(swarms, SwarmSummary{
+		summary := SwarmSummary{
 			Path: relPath, Name: sw.Metadata.Name, Description: sw.Metadata.Description,
 			ServicesLive: live, ServicesTotal: total,
-		})
+		}
+		if last := lastRunFor(allRuns, sw.Metadata.Name); last != nil {
+			summary.LastRunID = last.ID
+			summary.LastRunStatus = string(last.GetStatus())
+			summary.LastRunAt = last.StartedAt.Format(time.RFC3339)
+			summary.LastRunTrigger = last.TriggeredBy
+		}
+		swarms = append(swarms, summary)
 	}
 	writeJSON(w, http.StatusOK, nonNil(swarms))
 }

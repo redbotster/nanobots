@@ -3,6 +3,7 @@ import { api } from "../lib/api";
 import type { Run } from "../lib/types";
 import { StatusDot } from "../components/StatusDot";
 import { RunDetail } from "./RunDetail";
+import { relativeTime } from "../lib/relativeTime";
 
 const tone: Record<Run["status"], "ok" | "warn" | "danger" | "muted"> = {
   succeeded: "ok",
@@ -31,7 +32,7 @@ export function RunsPage() {
   const needsApproval = sorted.filter((r) => r.status === "awaiting_approval");
 
   return (
-    <div className="h-full overflow-auto p-6 sm:p-8">
+    <div className="h-full overflow-auto p-5 sm:p-6">
       <h1 className="font-display text-xl font-medium text-ink">Runs</h1>
       <p className="mt-1 text-sm text-muted">
         Every time a swarm ran this session, local to this nanobotd — history
@@ -53,7 +54,7 @@ export function RunsPage() {
         </p>
       )}
 
-      <div className="mt-6 flex flex-col gap-2">
+      <div className="mt-5 flex flex-col gap-1.5">
         {sorted.map((run) => (
           <button
             key={run.id}
@@ -73,8 +74,8 @@ export function RunsPage() {
                   </span>
                 )}
               </div>
-              <div className="text-[11px] text-muted">
-                {new Date(run.started_at).toLocaleString()} · {run.id.slice(0, 8)}
+              <div className="text-[11px] text-muted" title={new Date(run.started_at).toLocaleString()}>
+                {relativeTime(run.started_at)} · {run.id.slice(0, 8)}
               </div>
             </div>
             <div className="text-xs text-muted">{run.status.replace("_", " ")}</div>
