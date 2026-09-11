@@ -219,9 +219,9 @@ export function BuilderPage({
         </div>
       )}
 
-      <div className="grid min-h-0 grid-cols-[220px_1fr] sm:grid-cols-[240px_1fr]">
+      <div className="grid min-h-0 grid-rows-[minmax(0,1fr)] grid-cols-[220px_1fr] sm:grid-cols-[240px_1fr]">
         <BuilderPalette bots={Object.values(botDefs)} onAdd={addBot} />
-        <div className="flex min-w-0">
+        <div className="flex min-h-0 min-w-0">
           <div className="min-w-0 flex-1">
             <BuilderCanvas
               bots={bots}

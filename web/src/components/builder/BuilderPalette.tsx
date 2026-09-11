@@ -21,8 +21,8 @@ export function BuilderPalette({
   );
 
   return (
-    <div className="flex h-full flex-col border-r border-edge">
-      <div className="border-b border-edge p-3">
+    <div className="flex h-full min-h-0 flex-col border-r border-edge">
+      <div className="shrink-0 border-b border-edge p-3">
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -30,7 +30,7 @@ export function BuilderPalette({
           className="w-full rounded border border-edge-strong bg-void px-2.5 py-1.5 text-xs text-ink placeholder:text-muted focus:border-tron focus:outline-none"
         />
       </div>
-      <div className="flex-1 overflow-auto p-2">
+      <div className="min-h-0 flex-1 overflow-auto p-2">
         {filtered.map((bot) => (
           <button
             key={bot.id}
