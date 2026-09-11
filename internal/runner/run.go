@@ -59,6 +59,14 @@ type Run struct {
 	StartedAt  time.Time `json:"started_at"`
 	FinishedAt time.Time `json:"finished_at,omitempty"`
 	Error      string    `json:"error,omitempty"`
+	// TriggeredBy is "manual" (a human clicked Run or invoked `nanobots
+	// run`) or "schedule" (internal/scheduler fired it) — set once at
+	// construction/immediately after and never mutated again, so reading
+	// it directly elsewhere carries the same no-further-writes safety as
+	// ID/SwarmName (see GetStatus's own doc comment for the fields that
+	// *do* need synchronized access). Exists so the Runs page can show a
+	// run nobody clicked "why did this happen" instead of a mystery entry.
+	TriggeredBy string `json:"triggered_by"`
 
 	mu          sync.Mutex
 	log         []LogEntry
@@ -71,6 +79,7 @@ func NewRun(swarmName string) *Run {
 	return &Run{
 		ID:          uuid.NewString(),
 		SwarmName:   swarmName,
+		TriggeredBy: "manual",
 		Status:      StatusPending,
 		StartedAt:   time.Now(),
 		outputs:     map[string]map[string]any{},

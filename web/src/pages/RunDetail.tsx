@@ -39,6 +39,14 @@ export function RunDetail({ runId, onBack }: { runId: string; onBack: () => void
               {run.status.replace("_", " ")}
             </span>
           )}
+          {run?.triggered_by === "schedule" && (
+            <span
+              className="rounded-full border border-edge px-1.5 py-0.5 text-[9px] text-muted"
+              title="Fired automatically by the scheduler, not a manual Run click"
+            >
+              ⏰ scheduled
+            </span>
+          )}
         </div>
         <p className="mt-1 text-[11px] text-muted">{runId}</p>
       </div>

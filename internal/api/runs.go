@@ -85,6 +85,7 @@ func runToJSON(run *runner.Run) map[string]any {
 		"started_at":        run.StartedAt,
 		"finished_at":       run.GetFinishedAt(),
 		"error":             run.GetError(),
+		"triggered_by":      run.TriggeredBy,
 		"log":               run.LogEntries(),
 		"pending_approvals": pending,
 		"outputs":           run.AllOutputs(),

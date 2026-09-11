@@ -62,7 +62,17 @@ export function RunsPage() {
           >
             <StatusDot tone={tone[run.status]} />
             <div className="min-w-0 flex-1">
-              <div className="font-display text-sm text-ink">{run.swarm_name}</div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-display text-sm text-ink">{run.swarm_name}</span>
+                {run.triggered_by === "schedule" && (
+                  <span
+                    className="rounded-full border border-edge px-1.5 py-0.5 text-[9px] text-muted"
+                    title="Fired automatically by the scheduler, not a manual Run click"
+                  >
+                    ⏰ scheduled
+                  </span>
+                )}
+              </div>
               <div className="text-[11px] text-muted">
                 {new Date(run.started_at).toLocaleString()} · {run.id.slice(0, 8)}
               </div>

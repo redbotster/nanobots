@@ -147,6 +147,10 @@ func (s *Scheduler) tick(now time.Time) {
 		if err != nil {
 			log.Printf("scheduler: %s: failed to start: %v", path, err)
 		} else {
+			// Safe to set directly, no lock: nothing can observe this run
+			// until Runs.Add below publishes it, and TriggeredBy is never
+			// written again after this.
+			run.TriggeredBy = "schedule"
 			s.Runs.Add(run)
 		}
 		st.nextFire = st.schedule.Next(now.In(st.loc))

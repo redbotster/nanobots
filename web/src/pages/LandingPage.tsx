@@ -52,14 +52,37 @@ export function LandingPage({ onLogin }: { onLogin: () => void }) {
           Login
         </Button>
 
+        <div className="mt-12 w-full max-w-xl rounded-lg border border-edge-strong bg-panel p-4 text-left shadow-glow-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-base">✨</span>
+            <span className="font-display text-xs font-semibold text-muted">
+              Just say what you want
+            </span>
+          </div>
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="flex-1 rounded border border-edge-strong bg-void px-3 py-2 text-[13px] text-ink">
+              Help me automate a daily email recap and list it by priority
+            </div>
+            <span className="hidden shrink-0 text-tron sm:block">→</span>
+            <span className="shrink-0 rounded border border-tron/40 bg-tron/5 px-2.5 py-2 text-center text-[12px] text-tron sm:text-left">
+              a working swarm
+            </span>
+          </div>
+          <p className="mt-2 text-[12px] leading-relaxed text-muted">
+            No YAML, no drag-and-drop tutorial — the "head nanobot" snaps
+            together a real, validated draft from the actual bot catalog and
+            hands it to you to review.
+          </p>
+        </div>
+
         <div
           id="how-it-works"
-          className="mt-24 grid max-w-3xl grid-cols-1 gap-8 text-left sm:grid-cols-3"
+          className="mt-16 grid max-w-4xl grid-cols-1 gap-8 text-left sm:grid-cols-4"
         >
           {[
             {
-              title: "Snap bots together",
-              body: "Each bot does one job with typed ports. Output of one snaps into input of the next — the planner refuses anything that doesn't type-check.",
+              title: "Describe it, or snap bots yourself",
+              body: "Type what you want automated and let the head nanobot assemble it, or drag bots onto a canvas by hand — typed ports mean the planner refuses anything that doesn't type-check.",
             },
             {
               title: "Watch it run, live",
@@ -68,6 +91,10 @@ export function LandingPage({ onLogin }: { onLogin: () => void }) {
             {
               title: "Approve before it acts",
               body: "Anything that sends, posts, pays, or deletes pauses for you first. You turn that off; it never ships off by default.",
+            },
+            {
+              title: "It runs itself from here",
+              body: "Give it a schedule and walk away — a real cron scheduler fires it for you, no one clicking Run every morning.",
             },
           ].map((f) => (
             <div key={f.title}>

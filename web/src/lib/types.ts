@@ -101,6 +101,10 @@ export interface Run {
   log: LogEntry[];
   pending_approvals: PendingApproval[] | null;
   outputs: Record<string, Record<string, unknown>>;
+  /** "manual" (a human clicked Run) or "schedule" (internal/scheduler
+   * fired it) — see docs/scheduler.md. Lets the Runs page explain a run
+   * nobody remembers starting. */
+  triggered_by: "manual" | "schedule";
 }
 
 /** A file-typed output's shape on the wire — see internal/runner's

@@ -108,6 +108,25 @@ func TestTickFiresADueSwarmAndAdvancesItsNextFire(t *testing.T) {
 	}
 }
 
+func TestTickMarksTheRunAsSchedulerTriggered(t *testing.T) {
+	dir := t.TempDir()
+	writeSwarm(t, dir, "every-minute.yaml", "* * * * *")
+
+	orch := &fakeOrchestrator{}
+	runs := &fakeRunStore{}
+	s := &Scheduler{Orchestrator: orch, Runs: runs, SwarmsDir: dir}
+	s.tick(time.Date(2026, 3, 2, 9, 0, 0, 0, time.UTC))
+
+	runs.mu.Lock()
+	defer runs.mu.Unlock()
+	if len(runs.runs) != 1 {
+		t.Fatalf("runs added = %d, want 1", len(runs.runs))
+	}
+	if got := runs.runs[0].TriggeredBy; got != "schedule" {
+		t.Errorf("TriggeredBy = %q, want \"schedule\"", got)
+	}
+}
+
 func TestTickFiresImmediatelyWhenAlreadyDueOnFirstSight(t *testing.T) {
 	// Discovering (or just having edited) a schedule that already matches
 	// this very instant should fire now, not wait a full cycle — a human
