@@ -164,6 +164,13 @@ type Client struct {
 	mu          sync.Mutex
 	token       string
 	tokenExpiry time.Time
+
+	// Short-lived cache of the agent listing, so EnsureAgent can verify a
+	// saved credential still points at a live agent without one API call
+	// per bot in a swarm. See agents.go's listAgentsCached.
+	agentsMu sync.Mutex
+	agents   []Agent
+	agentsAt time.Time
 }
 
 func NewClient(apiKey string) *Client {

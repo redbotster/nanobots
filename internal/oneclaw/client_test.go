@@ -3,6 +3,7 @@ package oneclaw
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -89,11 +90,16 @@ func TestEnsureVaultIsIdempotent(t *testing.T) {
 
 func TestEnsureAgentPersistsCredentialAndReusesIt(t *testing.T) {
 	createCalls := 0
+	// The listing has to reflect creates, the way the real API does —
+	// EnsureAgent now checks a saved credential against it, so a fake that
+	// always answers "no agents" is a fake that models nothing.
+	var existing []Agent
 	srv := newTestServer(t, map[string]http.HandlerFunc{
 		"/v1/auth/api-key-token": tokenHandler(t),
 		"/v1/agents": func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodPost {
 				createCalls++
+				existing = append(existing, Agent{ID: "a1", Name: "nanobots-recap"})
 				w.WriteHeader(http.StatusCreated)
 				json.NewEncoder(w).Encode(map[string]any{
 					"agent":   Agent{ID: "a1", Name: "nanobots-recap"},
@@ -101,7 +107,7 @@ func TestEnsureAgentPersistsCredentialAndReusesIt(t *testing.T) {
 				})
 				return
 			}
-			json.NewEncoder(w).Encode(map[string]any{"agents": []Agent{}})
+			json.NewEncoder(w).Encode(map[string]any{"agents": existing})
 		},
 	})
 	c := NewClient("1ck_test")
@@ -171,5 +177,129 @@ func TestExecuteApprovalRequired(t *testing.T) {
 	}
 	if approvalErr.ApprovalID != "appr-1" {
 		t.Errorf("ApprovalID = %q, want appr-1", approvalErr.ApprovalID)
+	}
+}
+
+// The bug this fixes, hit for real: seven nanobots-* agents were deleted on
+// 1Claw, their credential files stayed behind in ~/.nanobots/state/agents/,
+// and every run of those bots then died on `shroud: chat failed (401): agent
+// key exchange failed` — a message that gives no hint the fix is "delete a
+// local file". EnsureAgent now notices the agent is gone and makes a new one.
+func TestEnsureAgentReplacesACredentialWhoseAgentWasDeleted(t *testing.T) {
+	createCalls := 0
+	var existing []Agent
+	srv := newTestServer(t, map[string]http.HandlerFunc{
+		"/v1/auth/api-key-token": tokenHandler(t),
+		"/v1/agents": func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost {
+				createCalls++
+				id := fmt.Sprintf("a%d", createCalls)
+				existing = append(existing, Agent{ID: id, Name: "nanobots-recap"})
+				w.WriteHeader(http.StatusCreated)
+				json.NewEncoder(w).Encode(map[string]any{
+					"agent":   Agent{ID: id, Name: "nanobots-recap"},
+					"api_key": "ocv_" + id,
+				})
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]any{"agents": existing})
+		},
+	})
+	c := NewClient("1ck_test")
+	c.BaseURL = srv.URL
+	stateDir := t.TempDir()
+
+	if _, _, err := c.EnsureAgent(stateDir, "nanobots-recap", CreateAgentRequest{}); err != nil {
+		t.Fatalf("first EnsureAgent: %v", err)
+	}
+
+	// Someone deletes it on 1Claw. The local credential file is untouched.
+	existing = nil
+	c.invalidateAgentCache()
+
+	id, key, err := c.EnsureAgent(stateDir, "nanobots-recap", CreateAgentRequest{})
+	if err != nil {
+		t.Fatalf("EnsureAgent after remote deletion should self-heal, got: %v", err)
+	}
+	if id != "a2" || key != "ocv_a2" {
+		t.Errorf("EnsureAgent = %q, %q, want the freshly created a2/ocv_a2", id, key)
+	}
+	if createCalls != 2 {
+		t.Errorf("createCalls = %d, want 2 (the stale one replaced)", createCalls)
+	}
+
+	// And the new credential is what's now on disk, so the next process
+	// doesn't repeat the whole dance.
+	cred, ok, err := loadAgentCredential(stateDir, "nanobots-recap")
+	if err != nil || !ok {
+		t.Fatalf("loadAgentCredential = %v, %v", ok, err)
+	}
+	if cred.AgentID != "a2" {
+		t.Errorf("saved credential is for %q, want the replacement a2", cred.AgentID)
+	}
+}
+
+// An api_key is shown exactly once and can never be recovered, so a listing
+// that's momentarily wrong must not cost you one. Nothing deletes the local
+// credential — a failed replacement leaves it exactly where it was.
+func TestEnsureAgentNeverDiscardsACredentialItCannotReplace(t *testing.T) {
+	srv := newTestServer(t, map[string]http.HandlerFunc{
+		"/v1/auth/api-key-token": tokenHandler(t),
+		"/v1/agents": func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost {
+				// What the 10-agent pro-tier cap looks like.
+				w.WriteHeader(http.StatusForbidden)
+				w.Write([]byte(`{"error":{"message":"agent limit reached"}}`))
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]any{"agents": []Agent{}})
+		},
+	})
+	c := NewClient("1ck_test")
+	c.BaseURL = srv.URL
+	stateDir := t.TempDir()
+	if err := saveAgentCredential(stateDir, "nanobots-recap", agentCredential{AgentID: "gone", APIKey: "ocv_precious"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := c.EnsureAgent(stateDir, "nanobots-recap", CreateAgentRequest{}); err == nil {
+		t.Fatal("expected an error when the replacement can't be created")
+	}
+
+	cred, ok, err := loadAgentCredential(stateDir, "nanobots-recap")
+	if err != nil || !ok {
+		t.Fatalf("the credential file was destroyed: ok=%v err=%v", ok, err)
+	}
+	if cred.APIKey != "ocv_precious" {
+		t.Errorf("credential = %q, want it left exactly as it was", cred.APIKey)
+	}
+}
+
+// A five-bot swarm calls EnsureAgent five times back to back; that must not
+// be five listings of the same unchanged account.
+func TestEnsureAgentDoesNotListOncePerBot(t *testing.T) {
+	listCalls := 0
+	existing := []Agent{{ID: "a1", Name: "nanobots-recap"}}
+	srv := newTestServer(t, map[string]http.HandlerFunc{
+		"/v1/auth/api-key-token": tokenHandler(t),
+		"/v1/agents": func(w http.ResponseWriter, r *http.Request) {
+			listCalls++
+			json.NewEncoder(w).Encode(map[string]any{"agents": existing})
+		},
+	})
+	c := NewClient("1ck_test")
+	c.BaseURL = srv.URL
+	stateDir := t.TempDir()
+	if err := saveAgentCredential(stateDir, "nanobots-recap", agentCredential{AgentID: "a1", APIKey: "ocv_a1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < 5; i++ {
+		if _, _, err := c.EnsureAgent(stateDir, "nanobots-recap", CreateAgentRequest{}); err != nil {
+			t.Fatalf("EnsureAgent %d: %v", i, err)
+		}
+	}
+	if listCalls != 1 {
+		t.Errorf("listCalls = %d, want 1 — the listing should be cached across a swarm's bots", listCalls)
 	}
 }

@@ -147,7 +147,8 @@ func (o *Orchestrator) runBot(run *Run, rs *planner.ResolvedSwarm, botID string,
 	defer o.Callbacks.Unregister(token)
 
 	maxRuntime := time.Duration(nb.Spec.Guardrails.MaxRuntimeSecs) * time.Second
-	exitCode, stderr, err := RunContainer(ContainerSpec{
+	// Exit code and stderr are both already inside RunContainer's error.
+	_, _, err = RunContainer(ContainerSpec{
 		Image: image, User: user,
 		BotDir: nb.SourcePath, RunDir: runDir,
 		Env: map[string]string{
@@ -160,7 +161,11 @@ func (o *Orchestrator) runBot(run *Run, rs *planner.ResolvedSwarm, botID string,
 
 	replayContainerLog(run, botID, runDir)
 	if err != nil {
-		return fmt.Errorf("container exited %d: %w (%s)", exitCode, err, stderr)
+		// RunContainer's error already carries the exit code and the
+		// container's stderr. Re-wrapping produced "container exited 1:
+		// container exited 1: <stderr> (<stderr>)" — the same text three
+		// times in the one line the Runs page shows you.
+		return err
 	}
 
 	outputs, err := collectOutputs(nb, blobs, filepath.Join(runDir, "outputs"))

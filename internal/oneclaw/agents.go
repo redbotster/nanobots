@@ -1,6 +1,9 @@
 package oneclaw
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // ShroudConfig is the subset of 1Claw's real ShroudConfig schema that
 // schema.Guardrails/schema.Model map onto. The live schema has many more
@@ -66,6 +69,40 @@ func (c *Client) ListAgents() ([]Agent, error) {
 	return resp.Agents, nil
 }
 
+// agentListTTL keeps EnsureAgent's existence check to roughly one API call
+// per swarm run rather than one per bot — a five-bot swarm calls EnsureAgent
+// five times in a row, and the answer cannot meaningfully change in between.
+const agentListTTL = 30 * time.Second
+
+func (c *Client) listAgentsCached() ([]Agent, error) {
+	c.agentsMu.Lock()
+	defer c.agentsMu.Unlock()
+	if c.agents != nil && time.Since(c.agentsAt) < agentListTTL {
+		return c.agents, nil
+	}
+	agents, err := c.ListAgents()
+	if err != nil {
+		return nil, err
+	}
+	c.agents, c.agentsAt = agents, time.Now()
+	return agents, nil
+}
+
+func (c *Client) invalidateAgentCache() {
+	c.agentsMu.Lock()
+	defer c.agentsMu.Unlock()
+	c.agents, c.agentsAt = nil, time.Time{}
+}
+
+func agentExists(agents []Agent, id string) bool {
+	for _, a := range agents {
+		if a.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
 // UpdateAgent patches an existing agent — the only current use is flipping
 // memory_enabled on for an agent created before that field existed on
 // CreateAgentRequest (see docs/oneclaw-bridge.md).
@@ -102,18 +139,40 @@ func (c *Client) CreateAgent(req CreateAgentRequest) (agent *Agent, apiKey strin
 // a run we have no record of — we can't recover it, so we return a clear
 // error naming the agent rather than silently proceeding without one.
 func (c *Client) EnsureAgent(stateDir, name string, req CreateAgentRequest) (agentID, apiKey string, err error) {
-	if cred, ok, err := loadAgentCredential(stateDir, name); err != nil {
-		return "", "", err
-	} else if ok {
-		return cred.AgentID, cred.APIKey, nil
-	}
-
-	agents, err := c.ListAgents()
+	agents, err := c.listAgentsCached()
 	if err != nil {
 		return "", "", fmt.Errorf("list agents: %w", err)
 	}
+
+	cred, haveCred, err := loadAgentCredential(stateDir, name)
+	if err != nil {
+		return "", "", err
+	}
+	// Trusting the saved credential blindly was a real trap: an agent
+	// deleted on 1Claw (by anyone, including this repo's own cleanup) left
+	// the local file behind, and every run of that bot then died on an
+	// opaque `shroud: chat failed (401): agent key exchange failed` that no
+	// amount of reading the log explains. The credential is a cache of a
+	// remote fact, so check the fact.
+	if haveCred && agentExists(agents, cred.AgentID) {
+		return cred.AgentID, cred.APIKey, nil
+	}
+
+	// A stale credential is NOT deleted here. An api_key is shown exactly
+	// once and can never be recovered, so throwing one away on the strength
+	// of a listing that might have been partial or momentarily wrong is a
+	// far worse failure than the 401 this is fixing. Instead fall through
+	// and create a replacement — saveAgentCredential overwrites the file on
+	// success, and on failure the old one is still sitting there.
 	for _, a := range agents {
 		if a.Name == name {
+			if haveCred {
+				return "", "", fmt.Errorf(
+					"agent %q on 1Claw is now id=%s, but the credential saved in %s is for id=%s, which no longer exists — "+
+						"an api_key is shown only once, so the current agent's key can't be recovered. "+
+						"Delete it with `1claw agent delete %s` and re-run to get a fresh one.",
+					name, a.ID, stateDir, cred.AgentID, a.ID)
+			}
 			return "", "", fmt.Errorf(
 				"agent %q already exists on 1Claw (id=%s) but Nanobots has no saved credential for it in %s — "+
 					"its api_key was only ever shown once. Delete it with `1claw agent delete %s` and re-run, "+
@@ -127,6 +186,7 @@ func (c *Client) EnsureAgent(stateDir, name string, req CreateAgentRequest) (age
 	if err != nil {
 		return "", "", fmt.Errorf("create agent %q: %w", name, err)
 	}
+	c.invalidateAgentCache() // the list we just read is now one agent short
 	if err := saveAgentCredential(stateDir, name, agentCredential{AgentID: agent.ID, APIKey: key}); err != nil {
 		return "", "", fmt.Errorf("agent %q was created (id=%s) but saving its credential locally failed: %w — "+
 			"it must be deleted and recreated, since its api_key cannot be retrieved again", name, agent.ID, err)
