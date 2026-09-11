@@ -1,0 +1,10 @@
+[
+  {
+    "id": "in_1",
+    "customer_email": "client@example.com",
+    "amount_due": 45000,
+    "due_date": 1757203200,
+    "hosted_invoice_url": "https://invoice.stripe.com/i/in_1",
+    "status": "open"
+  }
+]

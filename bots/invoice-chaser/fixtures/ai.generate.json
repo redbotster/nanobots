@@ -1,0 +1,8 @@
+{
+  "overdue": [
+    { "id": "in_1", "customer_email": "client@example.com", "amount_due": 45000, "days_overdue_bucket": "overdue" }
+  ],
+  "drafts": [
+    { "thread_id": "in_1", "to": "client@example.com", "subject": "Reminder: invoice in_1", "body": "Hi there, just a reminder that invoice in_1 for $450.00 is now overdue. You can view and pay it here: https://invoice.stripe.com/i/in_1. Let me know if you have any questions!" }
+  ]
+}

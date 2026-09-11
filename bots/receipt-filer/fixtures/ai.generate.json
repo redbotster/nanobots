@@ -1,0 +1,8 @@
+{
+  "receipts": [
+    { "message_id": "r1", "vendor": "Vercel", "amount": 47.20, "date": "2026-09-09" },
+    { "message_id": "r2", "vendor": "AWS", "amount": 132.40, "date": "2026-09-09" }
+  ],
+  "count": 2,
+  "total": 179.60
+}

@@ -1,0 +1,68 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: lead-router
+  version: 0.1.0
+  description: Create or update the CRM contact and alert the right person.
+  tags: [sales, crm, routing]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: bare
+
+  services:
+    - id: hubspot
+      provider: hubspot
+      scopes: [crm.objects.contacts.write]
+      required: true
+      connection: demo
+    - id: slack
+      provider: slack
+      scopes: [chat:write]
+      required: true
+      connection: demo
+
+  ports:
+    inputs:
+      - name: enriched
+        type: json
+        required: true
+      - name: owner_rules
+        type: string
+        required: true
+    outputs:
+      - name: contact_id
+        type: string
+      - name: alert_id
+        type: string
+
+  steps:
+    - name: upsert
+      type: service.call
+      service: hubspot
+      op: contacts.upsert
+      params: { email: "{{inputs.enriched.email}}", company: "{{inputs.enriched.company}}" }
+      outputs:
+        contact_id: "{{steps.upsert.output.id}}"
+    - name: alert
+      type: service.call
+      service: slack
+      op: messages.post
+      params:
+        channel: "#sales"
+        text: "New lead routed: {{inputs.enriched.name}} ({{inputs.enriched.company}}) — {{inputs.owner_rules}}"
+      output: alert_id
+
+  guardrails:
+    pii: redact
+    max_runtime_secs: 30
+    network_egress: [api.hubapi.com, slack.com]
+    writes_allowed: [hubspot, slack]
+
+  resources:
+    preset: small
+    memory: 64Mi
+    cpu: 100m
+    image: ghcr.io/nanobots/harness-bare:1.0-slim

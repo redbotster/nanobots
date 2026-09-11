@@ -36,6 +36,20 @@ func TestRenderHTMLToPDFNoChromeFallsBackToHTML(t *testing.T) {
 	}
 }
 
+func TestRenderHTMLToPNGNoChromeFallsBackToHTML(t *testing.T) {
+	t.Setenv("NANOBOTS_CHROME_PATH", "/no/such/binary")
+	dir := t.TempDir()
+	tmplPath := filepath.Join(dir, "t.html")
+	os.WriteFile(tmplPath, []byte("hi"), 0o600)
+	data, mime, err := RenderHTMLToPNG(tmplPath, nil)
+	if err != nil {
+		t.Fatalf("RenderHTMLToPNG: %v", err)
+	}
+	if mime != "text/html" || string(data) != "hi" {
+		t.Errorf("got %q, %q", mime, data)
+	}
+}
+
 func TestRenderHTMLToPDFTimesOutOnAHungChrome(t *testing.T) {
 	// A fake "chrome" that just sleeps — proves a hung renderer fails fast
 	// with a clear error instead of hanging the whole bot run.

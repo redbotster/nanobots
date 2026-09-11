@@ -1,0 +1,4 @@
+[
+  { "id": "r1", "author": "Jordan T.", "rating": 5, "text": "Best coffee in town, and the staff remembered my order!" },
+  { "id": "r2", "author": "Casey M.", "rating": 2, "text": "Waited 25 minutes for a simple order, and it was cold when it arrived." }
+]

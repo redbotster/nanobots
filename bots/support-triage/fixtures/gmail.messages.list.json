@@ -1,0 +1,16 @@
+[
+  {
+    "id": "s1",
+    "from": "casey@example.com",
+    "subject": "How do I export my data?",
+    "date": "2026-09-10T09:00:00Z",
+    "snippet": "Is there a way to export everything to CSV?"
+  },
+  {
+    "id": "s2",
+    "from": "morgan@example.com",
+    "subject": "Charged twice this month, want a refund",
+    "date": "2026-09-10T10:00:00Z",
+    "snippet": "I was billed twice for September and want that fixed."
+  }
+]

@@ -116,8 +116,11 @@ func (r *RemoteDeps) Notify(message, channel string) error {
 }
 
 func (r *RemoteDeps) Render(templatePath string, data any, to string) ([]byte, string, error) {
-	if to == "pdf" {
+	switch to {
+	case "pdf":
 		return RenderHTMLToPDF(templatePath, data)
+	case "png":
+		return RenderHTMLToPNG(templatePath, data)
 	}
 	html, err := RenderHTML(templatePath, data)
 	return html, "text/html", err

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanobots.dev/bots/quote-builder/schemas/quote.json",
+  "title": "Quote",
+  "type": "object",
+  "required": ["customer", "line_items", "subtotal"],
+  "properties": {
+    "customer": { "type": "string" },
+    "line_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["item", "quantity", "unit_price", "total"],
+        "properties": {
+          "item": { "type": "string" },
+          "quantity": { "type": "number" },
+          "unit_price": { "type": "number" },
+          "total": { "type": "number" }
+        }
+      }
+    },
+    "subtotal": { "type": "number" },
+    "notes": { "type": "string" }
+  }
+}

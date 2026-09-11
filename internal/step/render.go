@@ -91,6 +91,57 @@ func RenderHTMLToPDF(templatePath string, data any) (pdfBytes []byte, mime strin
 	return pdf, "application/pdf", nil
 }
 
+// RenderHTMLToPNG is RenderHTMLToPDF's screenshot twin — same headless
+// Chrome subprocess, same host-Chrome-optional fallback, just
+// `--screenshot` instead of `--print-to-pdf`. Used for bots/sheet-reporter's
+// chart_png output: a real, if simple, rasterized chart rather than an SVG
+// or a PDF pretending to be one.
+func RenderHTMLToPNG(templatePath string, data any) (pngBytes []byte, mime string, err error) {
+	html, err := RenderHTML(templatePath, data)
+	if err != nil {
+		return nil, "", err
+	}
+	chrome := findChrome()
+	if chrome == "" {
+		return html, "text/html", nil
+	}
+
+	dir, err := os.MkdirTemp("", "nanobots-render-")
+	if err != nil {
+		return nil, "", err
+	}
+	defer os.RemoveAll(dir)
+	htmlPath := filepath.Join(dir, "in.html")
+	pngPath := filepath.Join(dir, "out.png")
+	if err := os.WriteFile(htmlPath, html, 0o600); err != nil {
+		return nil, "", err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), chromeRenderTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, chrome,
+		"--headless=new",
+		"--disable-gpu",
+		"--no-sandbox",
+		"--user-data-dir="+dir,
+		"--screenshot="+pngPath,
+		"--window-size=640,480",
+		"file://"+htmlPath,
+	)
+	out, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return nil, "", fmt.Errorf("headless chrome render timed out after %s", chromeRenderTimeout)
+	}
+	if err != nil {
+		return nil, "", fmt.Errorf("headless chrome render failed: %w (%s)", err, string(out))
+	}
+	png, err := os.ReadFile(pngPath)
+	if err != nil {
+		return nil, "", fmt.Errorf("read rendered png: %w", err)
+	}
+	return png, "image/png", nil
+}
+
 // findChrome locates a Chrome/Chromium binary. NANOBOTS_CHROME_PATH, when
 // set, is authoritative — an operator who names a binary explicitly and
 // finds nothing there almost certainly wants an error, not this function

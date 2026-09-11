@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanobots.dev/bots/review-responder/schemas/reply_draft.json",
+  "title": "ReviewReplyDraft",
+  "type": "object",
+  "required": ["review_id", "reply"],
+  "properties": {
+    "review_id": { "type": "string" },
+    "reply": { "type": "string" }
+  }
+}

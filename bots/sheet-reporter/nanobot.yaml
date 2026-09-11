@@ -1,0 +1,79 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: sheet-reporter
+  version: 0.1.0
+  description: Answer a plain-English question about a spreadsheet and produce a short report with a chart.
+  tags: [sheets, reporting, analytics]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: openclaw
+    entrypoint: ./bot.md
+
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    max_tokens: 2500
+    temperature: 0.1
+
+  services:
+    - id: sheets
+      provider: google
+      scopes: [spreadsheets.readonly]
+      required: true
+      connection: demo
+
+  ports:
+    inputs:
+      - name: sheet
+        type: string
+        required: true
+      - name: question
+        type: string
+        required: true
+      - name: period
+        type: string
+        required: false
+    outputs:
+      - name: report_md
+        type: string
+      - name: report_json
+        type: json
+        schema: ./schemas/report.json
+      - name: chart_png
+        type: file
+        mime: image/png
+
+  steps:
+    - name: fetch
+      type: service.call
+      service: sheets
+      op: rows.get
+      params: { sheet: "{{inputs.sheet}}" }
+    - name: analyze
+      type: ai.generate
+      prompt_file: ./prompts/analyze.md
+      inputs: { rows: "{{steps.fetch.output}}", question: "{{inputs.question}}", period: "{{inputs.period}}" }
+      outputs:
+        report_md: "{{steps.analyze.output.report_md}}"
+        report_json: "{{steps.analyze.output.report_json}}"
+    - name: chart
+      type: transform.render
+      template: ./templates/chart.html
+      to: png
+      output: chart_png
+
+  guardrails:
+    pii: allow
+    injection_threshold: 0.7
+    max_runtime_secs: 120
+    network_egress: [googleapis.com]
+
+  resources:
+    preset: small
+    memory: 256Mi
+    cpu: 250m
+    image: ghcr.io/nanobots/harness-openclaw:1.4-slim

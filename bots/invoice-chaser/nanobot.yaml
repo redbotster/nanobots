@@ -1,0 +1,76 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: invoice-chaser
+  version: 0.1.0
+  description: Find overdue invoices and draft reminders that escalate in tone by age.
+  tags: [invoicing, stripe, gmail]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: openclaw
+    entrypoint: ./bot.md
+
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    max_tokens: 3000
+    temperature: 0.3
+
+  services:
+    - id: stripe
+      provider: stripe
+      scopes: []
+      required: true
+      connection: demo
+    - id: gmail
+      provider: google
+      scopes: [gmail.compose]
+      required: true
+      connection: demo
+
+  ports:
+    inputs:
+      - name: overdue_days
+        type: string
+        default: "7"
+    outputs:
+      - name: overdue
+        type: list<json>
+      - name: draft_ids
+        type: list<string>
+
+  steps:
+    - name: fetch
+      type: service.call
+      service: stripe
+      op: invoices.list
+      params: { status: open, max: 100 }
+    - name: draft
+      type: ai.generate
+      prompt_file: ./prompts/reminder.md
+      inputs: { invoices: "{{steps.fetch.output}}", overdue_days: "{{inputs.overdue_days}}" }
+      outputs:
+        overdue: "{{steps.draft.output.overdue}}"
+    - name: create
+      type: service.call
+      service: gmail
+      op: drafts.create
+      params: { drafts: "{{steps.draft.output.drafts}}" }
+      outputs:
+        draft_ids: "{{steps.create.output.draft_ids}}"
+
+  guardrails:
+    pii: redact
+    injection_threshold: 0.7
+    max_runtime_secs: 120
+    network_egress: [api.stripe.com, googleapis.com]
+    writes_allowed: [gmail]
+
+  resources:
+    preset: small
+    memory: 256Mi
+    cpu: 250m
+    image: ghcr.io/nanobots/harness-openclaw:1.4-slim

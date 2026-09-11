@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanobots.dev/bots/sheet-reporter/schemas/report.json",
+  "title": "SheetReport",
+  "type": "object",
+  "required": ["summary", "chart"],
+  "properties": {
+    "summary": { "type": "string" },
+    "chart": {
+      "type": "object",
+      "required": ["labels", "values"],
+      "properties": {
+        "labels": { "type": "array", "items": { "type": "string" } },
+        "values": { "type": "array", "items": { "type": "number" } }
+      }
+    }
+  }
+}

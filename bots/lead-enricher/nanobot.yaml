@@ -1,0 +1,67 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: lead-enricher
+  version: 0.1.0
+  description: Given a name, email, or company, find public context and score fit against my ICP.
+  tags: [sales, crm, leads]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: openclaw
+    entrypoint: ./bot.md
+
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    max_tokens: 2000
+    temperature: 0.2
+
+  services:
+    - id: hubspot
+      provider: hubspot
+      scopes: [crm.objects.contacts.read]
+      required: true
+      connection: demo
+
+  ports:
+    inputs:
+      - name: lead
+        type: json
+        required: true
+      - name: icp
+        type: string
+        required: true
+    outputs:
+      - name: enriched
+        type: json
+      - name: fit_score
+        type: string
+
+  steps:
+    - name: lookup
+      type: service.call
+      service: hubspot
+      op: contacts.search
+      params: { email: "{{inputs.lead.email}}" }
+    - name: enrich
+      type: ai.generate
+      prompt_file: ./prompts/enrich.md
+      inputs: { lead: "{{inputs.lead}}", icp: "{{inputs.icp}}", existing_contact: "{{steps.lookup.output}}" }
+      outputs:
+        enriched: "{{steps.enrich.output.enriched}}"
+        fit_score: "{{steps.enrich.output.fit_score}}"
+
+  guardrails:
+    pii: redact
+    injection_threshold: 0.7
+    max_runtime_secs: 90
+    network_egress: [api.hubapi.com]
+
+  resources:
+    preset: small
+    memory: 256Mi
+    cpu: 250m
+    image: ghcr.io/nanobots/harness-openclaw:1.4-slim

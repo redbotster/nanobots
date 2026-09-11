@@ -1,0 +1,16 @@
+[
+  {
+    "id": "r1",
+    "from": "billing@vercel.com",
+    "subject": "Your invoice is ready",
+    "date": "2026-09-09T09:03:00Z",
+    "snippet": "Your invoice for August usage ($47.20) is now available."
+  },
+  {
+    "id": "r2",
+    "from": "receipts@aws.amazon.com",
+    "subject": "Your AWS payment confirmation",
+    "date": "2026-09-09T10:00:00Z",
+    "snippet": "We've received your payment of $132.40."
+  }
+]

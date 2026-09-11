@@ -1,0 +1,12 @@
+{
+  "tickets": [
+    { "id": "s1", "from": "casey@example.com", "subject": "How do I export my data?", "category": "how-to question" },
+    { "id": "s2", "from": "morgan@example.com", "subject": "Charged twice this month, want a refund", "category": "billing / refund" }
+  ],
+  "drafts": [
+    { "thread_id": "s1", "to": "casey@example.com", "subject": "Re: How do I export my data?", "body": "You can export everything to CSV from Settings > Export. Let me know if you run into any trouble!" }
+  ],
+  "escalations": [
+    { "id": "s2", "from": "morgan@example.com", "subject": "Charged twice this month, want a refund", "reason": "refund request — always escalated" }
+  ]
+}

@@ -1,0 +1,87 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: quote-builder
+  version: 0.1.0
+  description: Turn a request into a priced quote PDF from my price sheet.
+  tags: [quotes, sheets, drive]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: openclaw
+    entrypoint: ./bot.md
+
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    max_tokens: 2000
+    temperature: 0.1
+
+  services:
+    - id: sheets
+      provider: google
+      scopes: [spreadsheets.readonly]
+      required: true
+      connection: demo
+    - id: gdrive
+      provider: google
+      scopes: [drive.file]
+      required: true
+      connection: demo
+
+  ports:
+    inputs:
+      - name: request
+        type: json
+        required: true
+      - name: price_sheet
+        type: string
+        required: true
+    outputs:
+      - name: quote_pdf
+        type: file
+        mime: application/pdf
+      - name: quote_json
+        type: json
+        schema: ./schemas/quote.json
+      - name: drive_file_id
+        type: string
+
+  steps:
+    - name: fetch_prices
+      type: service.call
+      service: sheets
+      op: rows.get
+      params: { sheet: "{{inputs.price_sheet}}" }
+    - name: build
+      type: ai.generate
+      prompt_file: ./prompts/quote.md
+      inputs: { request: "{{inputs.request}}", price_sheet: "{{steps.fetch_prices.output}}" }
+      output: quote_json
+    - name: render
+      type: transform.render
+      template: ./templates/quote.html
+      to: pdf
+      output: quote_pdf
+    - name: save
+      type: service.call
+      service: gdrive
+      op: files.create
+      params: { folder: Quotes, file: "{{outputs.quote_pdf}}" }
+      outputs:
+        drive_file_id: "{{steps.save.output.id}}"
+
+  guardrails:
+    pii: allow
+    injection_threshold: 0.7
+    max_runtime_secs: 120
+    network_egress: [googleapis.com]
+    writes_allowed: [gdrive]
+
+  resources:
+    preset: small
+    memory: 256Mi
+    cpu: 250m
+    image: ghcr.io/nanobots/harness-openclaw:1.4-slim

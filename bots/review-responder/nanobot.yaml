@@ -1,0 +1,65 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: review-responder
+  version: 0.1.0
+  description: Draft replies to new customer reviews in the business's tone.
+  tags: [reviews, reputation, drafts]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: openclaw
+    entrypoint: ./bot.md
+
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    max_tokens: 2500
+    temperature: 0.4
+
+  services:
+    - id: gbp
+      provider: google_business_profile
+      scopes: [business.manage]
+      required: true
+      connection: demo
+
+  ports:
+    inputs:
+      - name: since
+        type: datetime
+        default: "{{memory.last_run_at | default: now-24h}}"
+      - name: tone
+        type: string
+        default: "warm and professional"
+    outputs:
+      - name: reply_drafts
+        type: list<json>
+        schema: ./schemas/reply_draft.json
+
+  steps:
+    - name: fetch
+      type: service.call
+      service: gbp
+      op: reviews.list
+      params: { since: "{{inputs.since}}" }
+    - name: draft
+      type: ai.generate
+      prompt_file: ./prompts/reply.md
+      inputs: { reviews: "{{steps.fetch.output}}", tone: "{{inputs.tone}}" }
+      outputs:
+        reply_drafts: "{{steps.draft.output.reply_drafts}}"
+
+  guardrails:
+    pii: redact
+    injection_threshold: 0.7
+    max_runtime_secs: 120
+    network_egress: [mybusiness.googleapis.com]
+
+  resources:
+    preset: small
+    memory: 256Mi
+    cpu: 250m
+    image: ghcr.io/nanobots/harness-openclaw:1.4-slim

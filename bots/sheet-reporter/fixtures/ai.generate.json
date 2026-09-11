@@ -1,0 +1,10 @@
+{
+  "report_md": "Q3 2026 spend by category: Software $3,800 (Jul-Sep), Travel $800 (Aug), Contractors $3,000 (Sep). Software and contractors are the two largest categories.",
+  "report_json": {
+    "summary": "Software ($3,800) and Contractors ($3,000) were the two largest spend categories in Q3 2026.",
+    "chart": {
+      "labels": ["Software", "Travel", "Contractors"],
+      "values": [380, 80, 300]
+    }
+  }
+}

@@ -1,0 +1,77 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: support-triage
+  version: 0.1.0
+  description: Categorise new support mail, draft a reply, and flag anything needing a human.
+  tags: [support, email, triage]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: openclaw
+    entrypoint: ./bot.md
+
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    max_tokens: 4000
+    temperature: 0.2
+
+  services:
+    - id: gmail
+      provider: google
+      scopes: [gmail.readonly, gmail.compose]
+      required: true
+      connection: demo
+
+  ports:
+    inputs:
+      - name: since
+        type: datetime
+        default: "{{memory.last_run_at | default: now-24h}}"
+      - name: kb
+        type: file
+        required: false
+    outputs:
+      - name: tickets
+        type: list<json>
+      - name: draft_ids
+        type: list<string>
+      - name: escalations
+        type: list<json>
+
+  steps:
+    - name: fetch
+      type: service.call
+      service: gmail
+      op: messages.list
+      params: { q: "after:{{inputs.since}} label:support", max: 100 }
+    - name: triage
+      type: ai.generate
+      prompt_file: ./prompts/triage.md
+      inputs: { messages: "{{steps.fetch.output}}" }
+      outputs:
+        tickets: "{{steps.triage.output.tickets}}"
+        escalations: "{{steps.triage.output.escalations}}"
+    - name: create_drafts
+      type: service.call
+      service: gmail
+      op: drafts.create
+      params: { drafts: "{{steps.triage.output.drafts}}" }
+      outputs:
+        draft_ids: "{{steps.create_drafts.output.draft_ids}}"
+
+  guardrails:
+    pii: redact
+    injection_threshold: 0.7
+    max_runtime_secs: 180
+    network_egress: [googleapis.com]
+    writes_allowed: [gmail]
+
+  resources:
+    preset: small
+    memory: 256Mi
+    cpu: 250m
+    image: ghcr.io/nanobots/harness-openclaw:1.4-slim

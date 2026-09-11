@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Chart</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", sans-serif; margin: 24px; width: 560px; }
+  .bar-row { display: flex; align-items: center; margin-bottom: 10px; }
+  .label { width: 120px; font-size: 12px; color: #374151; text-align: right; padding-right: 10px; }
+  .bar { height: 20px; background: #2f6bff; border-radius: 3px; }
+  .value { font-size: 12px; color: #1a1a1a; margin-left: 8px; }
+</style>
+</head>
+<body>
+  {{$root := .}}
+  {{range $i, $label := .report_json.chart.labels}}
+  <div class="bar-row">
+    <div class="label">{{$label}}</div>
+    <div class="bar" style="width: {{index $root.report_json.chart.values $i}}px;"></div>
+    <div class="value">{{index $root.report_json.chart.values $i}}</div>
+  </div>
+  {{end}}
+</body>
+</html>

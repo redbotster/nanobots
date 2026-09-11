@@ -1,0 +1,7 @@
+[
+  { "category": "Software", "amount": 1200, "month": "Jul" },
+  { "category": "Software", "amount": 1200, "month": "Aug" },
+  { "category": "Software", "amount": 1400, "month": "Sep" },
+  { "category": "Travel", "amount": 800, "month": "Aug" },
+  { "category": "Contractors", "amount": 3000, "month": "Sep" }
+]
