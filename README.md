@@ -18,11 +18,11 @@ This repo implements the full 28-brick, 12-swarm launch catalog from `context/NA
 
 - **The bot contract, planner, and Docker-backed local runner**: bots run as real, non-root, read-only-filesystem containers, wired to each other's outputs across separate containers, streamed live over SSE. `nanobots conform` proves every bot honors the contract without Docker; `nanobots plan` type-checks every swarm's snaps against real port types.
 - **A real [1Claw](https://docs.1claw.co) bridge**: Human API key → bearer token exchange, agent creation/deletion, Shroud (LLM proxy) chat completions, vault secrets, agent memory, approval requests, and a Browser Bridge client — all exercised against the real API, not mocked.
-- **Six real, standalone direct-service clients** for what 1Claw doesn't natively cover: Google (`internal/google` — Gmail, Drive, Sheets, Calendar), Slack (`internal/slack`), GitHub (`internal/github`), Stripe (`internal/stripe`), HubSpot (`internal/hubspot`) — each dispatched from `internal/step.LiveDeps` once a bot's service is switched off `connection: demo` **and** a human has connected the account — plus a credential-free `web.fetch` step for reading public pages. None of these is the default connection for any bot out of the box (see [What's real vs. simulated](#whats-real-vs-simulated)).
+- **Eight real, standalone direct-service clients** for what 1Claw doesn't natively cover: Google (`internal/google` — Gmail, Drive, Sheets, Calendar), Slack (`internal/slack`), GitHub (`internal/github`), Stripe (`internal/stripe`), HubSpot (`internal/hubspot`), X (`internal/x`), LinkedIn (`internal/linkedin`) — each dispatched from `internal/step.LiveDeps` once a bot's service is switched off `connection: demo` **and** a human has connected the account — plus a credential-free `web.fetch` step for reading public pages. X and LinkedIn share a small, provider-agnostic OAuth2+PKCE core (`internal/oauth2pkce`) rather than each hand-rolling Google's original loopback-redirect flow. None of these is the default connection for any bot out of the box (see [What's real vs. simulated](#whats-real-vs-simulated)).
 - **An AI composer** ("the head nanobot" — see below) that turns a plain-English request into a validated draft swarm.
 - **A dead-simple WebUI** (Vite + React + TypeScript + Tailwind + Radix) with a basic/advanced mode toggle, a bot library, a swarm gallery, a live run viewer with SSE log streaming and inline approvals, a Settings page where connecting a service is a button or a pasted token, and a visual swarm builder for anyone who wants to build or tweak by hand.
 
-Not built yet: the `kubernetes`/`apple` compile targets, a real dynamic agent loop (see `docs/harnesses.md` — today's harnesses run a fixed, pre-written step list, not an LLM deciding what to do), enforced network-egress guardrails (reported in a bot's declared guardrails, not actually firewalled), per-item fan-out (every "for each X" swarm processes the first item per run — documented per-swarm, see below), real OAuth apps for X/LinkedIn posting and Google Business Profile (those two stay on `connection: demo` with the gap called out in `docs/connections.md`), and the hosted multi-tenant control plane.
+Not built yet: the `kubernetes`/`apple` compile targets, a real dynamic agent loop (see `docs/harnesses.md` — today's harnesses run a fixed, pre-written step list, not an LLM deciding what to do), enforced network-egress guardrails (reported in a bot's declared guardrails, not actually firewalled), per-item fan-out (every "for each X" swarm processes the first item per run — documented per-swarm, see below), a real OAuth integration for Google Business Profile (`review-responder` stays on `connection: demo`, gap called out in `docs/connections.md`), and the hosted multi-tenant control plane.
 
 ## The AI composer — the "head nanobot"
 
@@ -130,6 +130,10 @@ nanoswarm.yaml  →  planner  →  runner  →  N Docker containers, wired toget
                                        │  Drive/Sheets/Calendar, once
                                        │  connection: oauth_native + a
                                        │  connected account)
+                                       ├─ internal/x, internal/linkedin
+                                       │  (direct OAuth2+PKCE via the shared
+                                       │  internal/oauth2pkce core, once
+                                       │  connected)
                                        ├─ internal/github, internal/slack,
                                        │  internal/stripe, internal/hubspot
                                        │  (direct REST, once connected)
@@ -153,7 +157,7 @@ Every branch is reachable from the exact same `nanobot.yaml`, decided per-servic
 
 **The 1Claw bridge** (`internal/oneclaw`): a real client for 1Claw's Human API — API-key-for-bearer-token exchange, agent creation/update (including `memory_enabled`, `shroud_config`), Shroud chat completions, vault create/ensure, vault secret read/write (`PutSecret`/`GetSecret`, verified against `@1claw/openapi-spec`), agent memory get/put, approval request/wait, and a Browser Bridge client (pairing, credential bindings, gated browser sessions — real and tested, currently used for none of this build's bots specifically, because it's a dead end for Google; see `docs/browser-bridge.md`).
 
-**Direct service clients** (`internal/google`, `internal/slack`, `internal/github`, `internal/stripe`, `internal/hubspot`): standalone REST clients for what 1Claw doesn't natively cover. Google is the interesting one — PKCE OAuth, no client secret, a loopback redirect server, direct REST calls to Gmail/Drive/Sheets/Calendar, since 1Claw's own OAuth registry has no Gmail scopes and Browser Bridge is a dead end specifically for Google (it drives a real, CDP-automated browser, and Google refuses sign-in outright on any automation-controlled browser instance). The other four are simpler: a Slack bot token, GitHub personal access token, Stripe secret key, or HubSpot private-app token never expire, so it's paste-once-into-a-vault-secret rather than an OAuth dance (`internal/step/vault_token.go` is the shared "fetch a static secret from the vault at most once per process" logic all four share).
+**Direct service clients** (`internal/google`, `internal/x`, `internal/linkedin`, `internal/slack`, `internal/github`, `internal/stripe`, `internal/hubspot`): standalone REST clients for what 1Claw doesn't natively cover, split into two families. Google, X, and LinkedIn are OAuth flows — Google was built first with its own hand-rolled PKCE+loopback client (no client secret, since 1Claw's own OAuth registry has no Gmail scopes and Browser Bridge is a dead end specifically for Google — it drives a real, CDP-automated browser, and Google refuses sign-in outright on any automation-controlled browser instance); X and LinkedIn came later and share a small, provider-agnostic OAuth2+PKCE core instead (`internal/oauth2pkce`) rather than duplicating that flow a second and third time — X is a true public client like Google (PKCE only, no secret), LinkedIn isn't (it requires a client secret on the token exchange even with PKCE, and may issue no refresh token at all, both documented in `internal/linkedin`'s package doc and handled honestly in `internal/step/linkedin_live.go`). Slack, GitHub, Stripe, and HubSpot are simpler: a token that never expires, so it's paste-once-into-a-vault-secret rather than an OAuth dance (`internal/step/vault_token.go` is the shared "fetch a static secret from the vault at most once per process" logic all four share).
 
 ## What's real vs. simulated
 
@@ -165,7 +169,8 @@ Being explicit about this matters more here than in most projects, because so mu
 | Docker execution: non-root, read-only fs, real container-to-container I/O wiring | Guardrails' `network_egress` allowlist is reported per bot, not enforced as an actual container network policy |
 | The step interpreter, for every harness type, incl. `web.fetch` and PDF/PNG rendering | The *dynamic agent loop* a harness name like `openclaw` implies — every harness today runs the same fixed, pre-written `spec.steps` list, not an LLM deciding what to do (`docs/harnesses.md`) |
 | The Google OAuth client (`internal/google`) — real PKCE flow, real REST calls (Gmail, Drive, Sheets, Calendar), unit-tested against fake servers | No bot ships with a non-demo Google connection by default — every bot's Google service is `connection: demo` until a human deliberately flips it (`docs/connections.md`) |
-| The Slack/GitHub/Stripe/HubSpot clients — real REST calls, unit-tested against fake servers; `notify`'s Slack delivery is genuinely wired, not a no-op, once connected | X/LinkedIn posting (`post-publisher`) and Google Business Profile replies (`review-responder`) need a dedicated OAuth app per service — out of scope for this build, stay on `connection: demo`, called out in `docs/connections.md` the same way Google originally was |
+| The Slack/GitHub/Stripe/HubSpot clients — real REST calls, unit-tested against fake servers; `notify`'s Slack delivery is genuinely wired, not a no-op, once connected | Google Business Profile replies (`review-responder`) need a dedicated integration — out of scope for this pass, stays on `connection: demo`, called out in `docs/connections.md` |
+| The X and LinkedIn OAuth2+PKCE clients (`internal/x`, `internal/linkedin`) and the shared `internal/oauth2pkce` core — real token exchange/refresh, real posting calls, unit-tested against fake servers; wired end to end into `post-publisher`'s `x`/`linkedin` services and the WebUI's Settings page | No bot ships with a non-demo `x`/`linkedin` connection by default — like Google, `post-publisher` stays on `connection: demo` until a human deliberately connects a real account and flips it (`docs/connections.md`); live end-to-end posting hasn't been exercised against a real X/LinkedIn developer app in this build, only against fake test servers |
 | The AI composer — a real Shroud call, a real planner validation pass, a real hydrate-into-the-builder handoff | The composer never auto-saves or auto-runs; a hallucinated bot id or type mismatch surfaces as a normal validation error for the human to see, by design |
 | The unified Connect UI (Settings) — real vault writes/reads, real Google OAuth kicked off server-side | Connections are always whole-port-to-port in the visual builder and the composer (no picking a nested field of a `json` output the way a couple of example swarms do by hand); a swarm's trigger/vars/deploy config has no UI yet; canvas layout isn't persisted |
 | Approvals — a run genuinely blocks, flips to `awaiting_approval`, and waits for a real decision from the WebUI or CLI | The local run queue's approvals aren't mirrored into 1Claw's own approval system/mobile app — that's a separate, real queue (`docs/approvals.md`); per-item fan-out doesn't exist — a batch-producing bot's first item is what a downstream bot acts on, documented per-swarm |
@@ -185,6 +190,9 @@ internal/step/      the universal step interpreter + Demo/Live/Remote Deps backe
 internal/contract/  the conformance test runner (`nanobots conform`)
 internal/oneclaw/   real 1Claw Human API + Shroud + vaults/secrets + memory + agent CRUD + Browser Bridge client
 internal/google/    real Gmail/Drive/Sheets/Calendar OAuth + REST client (PKCE, no client secret)
+internal/oauth2pkce/ shared, provider-agnostic OAuth2+PKCE core (used by internal/x, internal/linkedin)
+internal/x/         real X (Twitter) OAuth2+PKCE client (post a tweet)
+internal/linkedin/  real LinkedIn OAuth2+PKCE client (resolve member URN, post a share)
 internal/slack/     real Slack Web API client (chat.postMessage)
 internal/github/    real GitHub REST client (issues.list)
 internal/stripe/    real Stripe REST client (invoices.list)
@@ -214,10 +222,10 @@ Per the project's own working style, expensive verification is a single consolid
 go build ./... && go vet ./... && go test ./...
 ```
 
-180 table-driven Go tests across every package, including:
+211 table-driven Go tests across every package, including:
 - `internal/contract`'s `TestRunConformanceOnLaunchBots` — auto-discovers and conformance-tests all 30 bots under `bots/` against their own fixtures, no Docker or network.
 - `internal/planner`'s `TestPlanAllExampleSwarms` — auto-discovers and type-checks all 14 swarms under `examples/swarms/`.
-- httptest-mocked 1Claw/Google/Slack/GitHub/Stripe/HubSpot API clients, built against each provider's real, documented endpoint shapes (verified against `@1claw/openapi-spec` and each provider's own docs, not guessed).
+- httptest-mocked 1Claw/Google/Slack/GitHub/Stripe/HubSpot/X/LinkedIn API clients, built against each provider's real, documented endpoint shapes (verified against `@1claw/openapi-spec` and each provider's own docs, not guessed).
 
 ```
 cd web && npx tsc -b && npm run test

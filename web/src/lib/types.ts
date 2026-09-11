@@ -176,7 +176,7 @@ export interface SwarmFull {
   snaps: DraftSnap[];
 }
 
-export type ConnectableService = "google" | "slack" | "github";
+export type ConnectableService = "google" | "slack" | "github" | "stripe" | "hubspot" | "x" | "linkedin";
 
 export interface ConnectionStatus {
   service: ConnectableService;

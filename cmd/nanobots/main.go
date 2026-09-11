@@ -20,11 +20,13 @@ import (
 	"github.com/redbotster/nanobots/internal/contract"
 	"github.com/redbotster/nanobots/internal/daemon"
 	"github.com/redbotster/nanobots/internal/google"
+	"github.com/redbotster/nanobots/internal/linkedin"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/planner"
 	"github.com/redbotster/nanobots/internal/runner"
 	"github.com/redbotster/nanobots/internal/schema"
 	"github.com/redbotster/nanobots/internal/step"
+	"github.com/redbotster/nanobots/internal/x"
 )
 
 func main() {
@@ -288,6 +290,8 @@ func runRun(args []string) error {
 	var slackCfg step.SlackConfig
 	var stripeCfg step.StripeConfig
 	var hubspotCfg step.HubSpotConfig
+	var xCfg step.XConfig
+	var linkedinCfg step.LinkedInConfig
 	if oc.Configured() {
 		vault, err := oc.EnsureVault("nanobots-main")
 		if err != nil {
@@ -303,6 +307,24 @@ func runRun(args []string) error {
 		}
 		if clientID != "" {
 			googleCfg = step.GoogleConfig{ClientID: clientID, VaultID: vault.ID}
+		}
+		xClientID, err := x.LoadClientID("")
+		if err != nil {
+			return err
+		}
+		if xClientID != "" {
+			xCfg = step.XConfig{ClientID: xClientID, VaultID: vault.ID}
+		}
+		liClientID, err := linkedin.LoadClientID("")
+		if err != nil {
+			return err
+		}
+		liClientSecret, err := linkedin.LoadClientSecret("")
+		if err != nil {
+			return err
+		}
+		if liClientID != "" {
+			linkedinCfg = step.LinkedInConfig{ClientID: liClientID, ClientSecret: liClientSecret, VaultID: vault.ID}
 		}
 	}
 
@@ -321,6 +343,7 @@ func runRun(args []string) error {
 		RunWorkDir: runWorkDir, BlobDir: filepath.Join(home, ".nanobots", "blobs"),
 		Google: googleCfg, GitHub: githubCfg, Slack: slackCfg,
 		Stripe: stripeCfg, HubSpot: hubspotCfg,
+		X: xCfg, LinkedIn: linkedinCfg,
 	}
 	srv := &api.Server{
 		Orchestrator: orch, Runs: runner.NewRunStore(), Callbacks: callbacks,

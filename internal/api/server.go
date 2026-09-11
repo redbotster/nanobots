@@ -51,6 +51,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/compose", s.handleCompose)
 	mux.HandleFunc("GET /api/connections", s.handleConnectionsStatus)
 	mux.HandleFunc("POST /api/connections/google/start", s.handleConnectGoogleStart)
+	mux.HandleFunc("POST /api/connections/x/start", s.handleConnectXStart)
+	mux.HandleFunc("POST /api/connections/linkedin/start", s.handleConnectLinkedInStart)
 	mux.HandleFunc("POST /api/connections/{service}", s.handleConnectToken)
 	mux.HandleFunc("POST /api/runs", s.handleStartRun)
 	mux.HandleFunc("GET /api/runs", s.handleListRuns)

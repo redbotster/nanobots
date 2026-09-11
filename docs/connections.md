@@ -16,7 +16,7 @@ A design principle carried through the whole build: wherever a human would norma
 
 Every bot's Google service (Gmail, Drive, Sheets) currently ships as `connection: demo`, even though real Gmail/Drive/Sheets access is now implemented (`internal/google` — PKCE OAuth, no client secret, direct against Google, no browser automation). The obvious first approach — Browser Bridge driving a real logged-in browser to Gmail — was tried and hit a wall: **Google refuses sign-in outright on any CDP/automation-controlled Chrome instance**, confirmed with screenshots (`"This browser or app may not be secure"`), not a guess. That's a deliberate Google policy, not a bug in the bridge or in this code, and not something to work around — spoofing the automation flag to get past Google's own bot detection is out of bounds.
 
-Browser Bridge itself works exactly as documented (see `docs/browser-bridge.md`) and remains the intended `connection` for services with no viable OAuth or static-token path — currently that's just X/LinkedIn posting (`post-publisher`) and Google Business Profile replies (`review-responder`), both of which stay on `connection: demo` until a dedicated OAuth app exists for each. Stripe and HubSpot turned out not to need it — both have long-lived static tokens, so they're wired the same simple way as Slack and GitHub (below).
+Browser Bridge itself works exactly as documented (see `docs/browser-bridge.md`) and remains the intended `connection` for services with no viable OAuth or static-token path — today that's just Google Business Profile replies (`review-responder`), which stays on `connection: demo` until a dedicated OAuth app exists for it (Business Profile is itself a Google API, so the more likely real path is actually extending `internal/google` with its scope, the same way Calendar was added, rather than Browser Bridge — just not done yet). Stripe, HubSpot, X, and LinkedIn all turned out not to need it: the first two have long-lived static tokens (below), and X/LinkedIn have normal OAuth2 flows of their own (next section).
 
 ### Turning on real Gmail/Drive/Sheets (`oauth_native`)
 
@@ -26,6 +26,16 @@ Browser Bridge itself works exactly as documented (see `docs/browser-bridge.md`)
 4. Change a bot's `services[].connection` from `demo` to `oauth_native` in its `nanobot.yaml`.
 
 From then on, every Google-provider service across every bot shares that one connected account (`internal/step/google_live.go`'s `GoogleConfig` is process-wide, not per-bot) — see that file for exactly which `op:` values (`messages.list`, `files.create`, `rows.append`, `events.list`, ...) are implemented and any known shape gaps (e.g. `files.create` has no `filename` input yet, so one gets synthesized; `rows.append` has no column-order mapping yet, so values go in alphabetical-by-key order). `ScopeCalendarReadonly` is included in `DefaultScopes`, so `meeting-prep`/`calendar-scheduler`'s calendar reads work the same way once connected — no separate connect step.
+
+## Turning on real X/LinkedIn posting (`oauth_native`)
+
+`post-publisher`'s two services (`x`, `linkedin`) ship as `connection: demo` by default, same as Google — real posting is implemented (`internal/x`, `internal/linkedin`) but off until you connect an account. Both build on a small, shared, provider-agnostic OAuth2+PKCE core (`internal/oauth2pkce`) rather than each hand-rolling the loopback-redirect dance Google's older client wrote from scratch.
+
+**X (Twitter)**: create an OAuth 2.0 app at [developer.x.com](https://developer.x.com/en/portal/dashboard) with **App type: Native App** (a public client — no secret, PKCE only, the same installed-app pattern as Google's Desktop client) and request the `tweet.read`, `tweet.write`, `users.read`, and `offline.access` scopes (that last one is what makes X return a refresh token at all). Add `X_OAUTH_CLIENT_ID=...` to `~/.secrets/nanobots.env`, restart `nanobotd`, then click **Connect** next to X in Settings.
+
+**LinkedIn**: create an app at [developer.linkedin.com](https://www.linkedin.com/developers/apps) with the **Share on LinkedIn** and **Sign In with LinkedIn using OpenID Connect** products added, which grants the `w_member_social`, `openid`, and `profile` scopes. Unlike X, LinkedIn's OAuth2 implementation isn't a true public client — it requires a client secret on the token exchange even with PKCE also in play — so add both `LINKEDIN_OAUTH_CLIENT_ID=...` and `LINKEDIN_OAUTH_CLIENT_SECRET=...`. Also unlike X, a default LinkedIn app doesn't get a refresh token at all (that needs LinkedIn's separate "Programmatic Refresh Tokens" product access, not assumed here) — if none comes back, the access token itself is stored and used as-is, good for about 60 days, after which reconnecting from Settings is the only option (`internal/step/linkedin_live.go`'s `linkedinTokenSource` documents this fallback in code).
+
+Change `post-publisher`'s `services[].connection` from `demo` to `oauth_native` for `x` and/or `linkedin` independently — you don't need both connected to use one.
 
 ## Slack, GitHub, Stripe, and HubSpot (`api_key_vault`)
 

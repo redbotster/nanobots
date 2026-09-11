@@ -11,7 +11,7 @@ import (
 // service still falling back to fixtures) when oc is configured, or pure
 // DemoDeps otherwise. Both get the same RunQueueApprover so approvals always
 // surface through the run's own queue — see approver.go.
-func BuildDeps(run *Run, botID string, nb *schema.Nanobot, oc *oneclaw.Client, agentID, agentAPIKey string, blobs step.BlobStore, google step.GoogleConfig, github step.GitHubConfig, slack step.SlackConfig, stripeCfg step.StripeConfig, hubspot step.HubSpotConfig) step.Deps {
+func BuildDeps(run *Run, botID string, nb *schema.Nanobot, oc *oneclaw.Client, agentID, agentAPIKey string, blobs step.BlobStore, google step.GoogleConfig, github step.GitHubConfig, slack step.SlackConfig, stripeCfg step.StripeConfig, hubspot step.HubSpotConfig, xCfg step.XConfig, linkedin step.LinkedInConfig) step.Deps {
 	fixturesDir := nb.SourcePath + "/fixtures"
 	approver := &RunQueueApprover{Run: run, Bot: botID, Step: "approve"}
 
@@ -27,5 +27,7 @@ func BuildDeps(run *Run, botID string, nb *schema.Nanobot, oc *oneclaw.Client, a
 	ld.Slack = slack
 	ld.Stripe = stripeCfg
 	ld.HubSpot = hubspot
+	ld.X = xCfg
+	ld.LinkedIn = linkedin
 	return ld
 }

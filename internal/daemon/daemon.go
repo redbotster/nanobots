@@ -13,9 +13,11 @@ import (
 
 	"github.com/redbotster/nanobots/internal/api"
 	"github.com/redbotster/nanobots/internal/google"
+	"github.com/redbotster/nanobots/internal/linkedin"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/runner"
 	"github.com/redbotster/nanobots/internal/step"
+	"github.com/redbotster/nanobots/internal/x"
 )
 
 type Options struct {
@@ -57,6 +59,8 @@ func Run(opts Options) error {
 	var slackCfg step.SlackConfig
 	var stripeCfg step.StripeConfig
 	var hubspotCfg step.HubSpotConfig
+	var xCfg step.XConfig
+	var linkedinCfg step.LinkedInConfig
 	if oc.Configured() {
 		vault, err := oc.EnsureVault("nanobots-main")
 		if err != nil {
@@ -74,6 +78,28 @@ func Run(opts Options) error {
 		if clientID != "" {
 			googleCfg = step.GoogleConfig{ClientID: clientID, VaultID: vault.ID}
 			log.Println("google: OAuth client configured — run `nanobots connect google` once to link an account")
+		}
+
+		xClientID, err := x.LoadClientID(opts.EnvFilePath)
+		if err != nil {
+			return fmt.Errorf("load X OAuth client id: %w", err)
+		}
+		if xClientID != "" {
+			xCfg = step.XConfig{ClientID: xClientID, VaultID: vault.ID}
+			log.Println("x: OAuth client configured — connect an account from Settings")
+		}
+
+		liClientID, err := linkedin.LoadClientID(opts.EnvFilePath)
+		if err != nil {
+			return fmt.Errorf("load LinkedIn OAuth client id: %w", err)
+		}
+		liClientSecret, err := linkedin.LoadClientSecret(opts.EnvFilePath)
+		if err != nil {
+			return fmt.Errorf("load LinkedIn OAuth client secret: %w", err)
+		}
+		if liClientID != "" {
+			linkedinCfg = step.LinkedInConfig{ClientID: liClientID, ClientSecret: liClientSecret, VaultID: vault.ID}
+			log.Println("linkedin: OAuth client configured — connect an account from Settings")
 		}
 	}
 
@@ -110,6 +136,8 @@ func Run(opts Options) error {
 		Slack:         slackCfg,
 		Stripe:        stripeCfg,
 		HubSpot:       hubspotCfg,
+		X:             xCfg,
+		LinkedIn:      linkedinCfg,
 	}
 
 	srv := &api.Server{

@@ -170,3 +170,60 @@ func TestHandleConnectGoogleStartRejectsWhenNoClientIDConfigured(t *testing.T) {
 		t.Fatalf("status = %d, want 400, body: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestHandleConnectTokenRejectsXAndLinkedInAsPastedTokens(t *testing.T) {
+	// X and LinkedIn are OAuth flows, like Google — must go through their
+	// own /start endpoints instead of the generic paste-a-token path.
+	srv := testServerWithOneClaw(t)
+	for _, service := range []string{"x", "linkedin"} {
+		body, _ := json.Marshal(connectTokenRequest{Token: "x"})
+		rec := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/connections/"+service, bytes.NewReader(body)))
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400, body: %s", service, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestHandleConnectXStartRejectsWhenNoClientIDConfigured(t *testing.T) {
+	t.Setenv("NANOBOTS_ENV_FILE", "/nonexistent/path/for/this/test.env")
+	srv := testServerWithOneClaw(t)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/connections/x/start", nil))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400, body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleConnectLinkedInStartRejectsWhenNoClientCredentialsConfigured(t *testing.T) {
+	t.Setenv("NANOBOTS_ENV_FILE", "/nonexistent/path/for/this/test.env")
+	srv := testServerWithOneClaw(t)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/connections/linkedin/start", nil))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400, body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleConnectionsStatusTreatsALinkedInAccessTokenAsConnected(t *testing.T) {
+	// Exercises the fallback in handleConnectionsStatus: a LinkedIn account
+	// connected without a refresh token (linkedin/access_token only) must
+	// still report Connected: true.
+	srv := testServerWithOneClaw(t)
+	vault, err := srv.OneClaw.EnsureVault("nanobots-main")
+	if err != nil {
+		t.Fatalf("EnsureVault: %v", err)
+	}
+	if err := srv.OneClaw.PutSecret(vault.ID, "linkedin/access_token", "tok"); err != nil {
+		t.Fatalf("PutSecret: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/connections", nil))
+	var statuses []connectionStatus
+	json.Unmarshal(rec.Body.Bytes(), &statuses)
+	for _, s := range statuses {
+		if s.Service == "linkedin" && !s.Connected {
+			t.Error("expected linkedin to be Connected via its access_token fallback")
+		}
+	}
+}

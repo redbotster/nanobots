@@ -79,9 +79,26 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
             <p className="mt-3 text-[13px] text-danger">{connectionsError}</p>
           )}
           <div className="mt-4 flex flex-col divide-y divide-edge">
-            <GoogleConnectRow
+            <OAuthConnectRow
+              label="Google"
+              hint="Gmail, Drive, Sheets, Calendar — opens your browser to sign in"
               connected={isConnected("google")}
               onConnected={reloadConnections}
+              connectFn={api.connectGoogleStart}
+            />
+            <OAuthConnectRow
+              label="X"
+              hint="Posting to X — opens your browser to sign in"
+              connected={isConnected("x")}
+              onConnected={reloadConnections}
+              connectFn={api.connectXStart}
+            />
+            <OAuthConnectRow
+              label="LinkedIn"
+              hint="Posting to LinkedIn — opens your browser to sign in"
+              connected={isConnected("linkedin")}
+              onConnected={reloadConnections}
+              connectFn={api.connectLinkedInStart}
             />
             <TokenConnectRow
               service="slack"
@@ -95,6 +112,20 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
               label="GitHub"
               hint="A personal access token, scoped to repo (or public_repo for public repos only)."
               connected={isConnected("github")}
+              onConnected={reloadConnections}
+            />
+            <TokenConnectRow
+              service="stripe"
+              label="Stripe"
+              hint="A secret key from dashboard.stripe.com/apikeys."
+              connected={isConnected("stripe")}
+              onConnected={reloadConnections}
+            />
+            <TokenConnectRow
+              service="hubspot"
+              label="HubSpot"
+              hint="A private app token, scoped to crm.objects.contacts.read/.write."
+              connected={isConnected("hubspot")}
               onConnected={reloadConnections}
             />
           </div>
@@ -139,12 +170,22 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
   );
 }
 
-function GoogleConnectRow({
+// OAuthConnectRow is the shared shape for every service that connects via a
+// real interactive OAuth round trip (Google, X, LinkedIn) rather than a
+// pasted static token — the request blocks while the human approves in
+// their browser, so this shows a "waiting" state for that whole time.
+function OAuthConnectRow({
+  label,
+  hint,
   connected,
   onConnected,
+  connectFn,
 }: {
+  label: string;
+  hint: string;
   connected: boolean;
   onConnected: () => void;
+  connectFn: () => Promise<ConnectionStatus>;
 }) {
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -153,7 +194,7 @@ function GoogleConnectRow({
     setConnecting(true);
     setError(null);
     try {
-      await api.connectGoogleStart();
+      await connectFn();
       onConnected();
     } catch (e) {
       setError(String(e));
@@ -167,8 +208,8 @@ function GoogleConnectRow({
       <div className="flex items-center gap-3">
         <StatusDot tone={connected ? "ok" : "muted"} />
         <div className="min-w-0 flex-1">
-          <div className="text-sm text-ink">Google</div>
-          <div className="text-[11px] text-muted">Gmail, Drive, Sheets — opens your browser to sign in</div>
+          <div className="text-sm text-ink">{label}</div>
+          <div className="text-[11px] text-muted">{hint}</div>
         </div>
         <Button variant="ghost" onClick={connect} disabled={connecting}>
           {connecting ? "Waiting for you to approve…" : connected ? "Reconnect" : "Connect"}

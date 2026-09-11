@@ -65,6 +65,10 @@ export const api = {
     }),
   connectGoogleStart: () =>
     req<ConnectionStatus>("/api/connections/google/start", { method: "POST" }),
+  connectXStart: () =>
+    req<ConnectionStatus>("/api/connections/x/start", { method: "POST" }),
+  connectLinkedInStart: () =>
+    req<ConnectionStatus>("/api/connections/linkedin/start", { method: "POST" }),
   startRun: (swarmPath: string) =>
     req<Run>("/api/runs", {
       method: "POST",

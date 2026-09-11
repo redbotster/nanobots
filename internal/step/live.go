@@ -49,6 +49,14 @@ type LiveDeps struct {
 	stripeTokenCache  *vaultToken
 	HubSpot           HubSpotConfig
 	hubspotTokenCache *vaultToken
+
+	// X/LinkedIn configure direct posting once a real OAuth account is
+	// connected — see x_live.go/linkedin_live.go. Both are zero-value "not
+	// configured" by default, same as every other direct service here.
+	X          XConfig
+	xTS        *xTokenSource
+	LinkedIn   LinkedInConfig
+	linkedinTS *linkedinTokenSource
 }
 
 func NewLiveDeps(oc *oneclaw.Client, shroud *oneclaw.ShroudClient, agentID, fixturesDir string, blobs BlobStore) *LiveDeps {
@@ -102,6 +110,20 @@ func (l *LiveDeps) ServiceCall(svc schema.Service, op string, params map[string]
 			return nil, err
 		}
 		return dispatchHubSpot(client, op, params)
+	}
+	if svc.Provider == "x" {
+		client, err := l.xClient()
+		if err != nil {
+			return nil, err
+		}
+		return dispatchX(client, op, params)
+	}
+	if svc.Provider == "linkedin" {
+		client, err := l.linkedinClient()
+		if err != nil {
+			return nil, err
+		}
+		return dispatchLinkedIn(client, op, params)
 	}
 	call := func() (*oneclaw.ExecuteResult, error) {
 		return l.OneClaw.Execute(l.AgentID, svc.ID, "http", map[string]any{"op": op, "params": params})
