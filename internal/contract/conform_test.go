@@ -61,6 +61,63 @@ func TestRunConformanceOnLaunchBots(t *testing.T) {
 	}
 }
 
+// TestRunConformanceSeedsRealBlobContentForFileInputs proves fixtures/<port>.content
+// actually reaches an ai.generate prompt as real text, not a blob reference —
+// what bots/repurposer's conformance test depends on.
+func TestRunConformanceSeedsRealBlobContentForFileInputs(t *testing.T) {
+	dir := t.TempDir()
+	nanobotYAML := `
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: content-echo-test
+  version: 0.1.0
+spec:
+  harness: { type: bare }
+  ports:
+    inputs:
+      - name: source
+        type: file
+        required: true
+    outputs:
+      - name: echoed
+        type: json
+  steps:
+    - name: echo
+      type: ai.generate
+      prompt_file: ./prompt.md
+      inputs: { source: "{{inputs.source}}" }
+      output: echoed
+`
+	if err := os.WriteFile(filepath.Join(dir, "nanobot.yaml"), []byte(nanobotYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "prompt.md"), []byte("SOURCE:{{source}}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fixturesDir := filepath.Join(dir, "fixtures")
+	if err := os.MkdirAll(fixturesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fixturesDir, "inputs.json"), []byte(`{"source": {"uri": "nbf://placeholder", "mime": "text/plain"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fixturesDir, "source.content"), []byte("the real transcript text"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fixturesDir, "ai.generate.json"), []byte(`{"ok": true}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := RunConformance(dir, "")
+	if err != nil {
+		t.Fatalf("RunConformance: %v", err)
+	}
+	if !report.OK() {
+		t.Fatalf("conformance failed:\n%s", report.String())
+	}
+}
+
 func TestRunConformanceMissingInputsFixtureErrors(t *testing.T) {
 	root := repoRoot(t)
 	_, err := RunConformance(filepath.Join(root, "bots", "email-drive-file"), filepath.Join(root, "bots"))

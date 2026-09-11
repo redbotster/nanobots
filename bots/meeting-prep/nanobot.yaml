@@ -1,0 +1,84 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: meeting-prep
+  version: 0.1.0
+  description: For each meeting today, pull related mail and write a one-page brief.
+  tags: [calendar, gmail, meetings]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: openclaw
+    entrypoint: ./bot.md
+
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    max_tokens: 3000
+    temperature: 0.3
+
+  services:
+    - id: calendar
+      provider: google
+      scopes: [calendar.readonly]
+      required: true
+      connection: demo
+    - id: gmail
+      provider: google
+      scopes: [gmail.readonly]
+      required: true
+      connection: demo
+
+  ports:
+    inputs:
+      - name: date
+        type: datetime
+        default: "{{run.started_at}}"
+    outputs:
+      - name: briefs
+        type: list<json>
+        schema: ./schemas/brief.json
+      - name: brief_md
+        type: file
+        mime: application/pdf
+
+  steps:
+    - name: fetch_events
+      type: service.call
+      service: calendar
+      op: events.list
+      # A real implementation would compute the actual start/end of
+      # inputs.date's day; this passes the same instant for both, which is
+      # harmless against demo fixtures (params are ignored) and a known
+      # simplification for live Calendar access — see docs/connections.md.
+      params: { calendar_id: primary, time_min: "{{inputs.date}}", time_max: "{{inputs.date}}" }
+    - name: fetch_mail
+      type: service.call
+      service: gmail
+      op: messages.list
+      params: { q: "newer_than:3d", max: 50 }
+    - name: brief
+      type: ai.generate
+      prompt_file: ./prompts/brief.md
+      inputs: { events: "{{steps.fetch_events.output}}", mail: "{{steps.fetch_mail.output}}" }
+      outputs:
+        briefs: "{{steps.brief.output.briefs}}"
+    - name: render
+      type: transform.render
+      template: ./templates/brief.html
+      to: pdf
+      output: brief_md
+
+  guardrails:
+    pii: redact
+    injection_threshold: 0.7
+    max_runtime_secs: 180
+    network_egress: [googleapis.com]
+
+  resources:
+    preset: small
+    memory: 256Mi
+    cpu: 250m
+    image: ghcr.io/nanobots/harness-openclaw:1.4-slim

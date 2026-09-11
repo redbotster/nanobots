@@ -1,0 +1,17 @@
+{
+  "generated_at": "Prepared for Friday, Sep 11",
+  "briefs": [
+    {
+      "title": "1:1 with Priya Shah",
+      "time": "10:00 AM",
+      "attendees": ["priya@northwind-consulting.com"],
+      "summary": "Priya wants to move the SOW kickoff from the 10th to the 15th — otherwise ready to sign. Confirm the new date."
+    },
+    {
+      "title": "Contract review call",
+      "time": "2:00 PM",
+      "attendees": ["marcus@webb-legal.com"],
+      "summary": "Marcus flagged section 4.2 (liability caps) as the one open item before this can close. Come ready to discuss."
+    }
+  ]
+}

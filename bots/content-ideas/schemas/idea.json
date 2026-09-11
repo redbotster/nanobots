@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanobots.dev/bots/content-ideas/schemas/idea.json",
+  "title": "PostIdea",
+  "type": "object",
+  "required": ["title", "angle", "format"],
+  "properties": {
+    "title": { "type": "string" },
+    "angle": { "type": "string" },
+    "format": { "type": "string" }
+  }
+}

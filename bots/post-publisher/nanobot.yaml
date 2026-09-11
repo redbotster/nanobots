@@ -1,0 +1,77 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: post-publisher
+  version: 0.1.0
+  description: Publish approved posts to X and LinkedIn.
+  tags: [content, social, publishing]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: bare
+
+  services:
+    - id: x
+      provider: x
+      scopes: [tweet.write]
+      required: false
+      connection: demo
+    - id: linkedin
+      provider: linkedin
+      scopes: [w_member_social]
+      required: false
+      connection: demo
+
+  ports:
+    inputs:
+      - name: posts
+        type: json
+        required: true
+      - name: schedule
+        type: datetime
+        required: false
+    outputs:
+      - name: post_ids
+        type: list<string>
+
+  steps:
+    # Unconditional — this brick's one job is publishing, so the gate can
+    # never be bypassed by a swarm's approval_required_for default (same
+    # rule as email-send-approved/approve).
+    - name: gate
+      type: approve
+      summary: "Publish this post to X and LinkedIn?"
+      risk_tier: medium
+    - name: publish_x
+      type: service.call
+      service: x
+      op: posts.publish
+      params: { text: "{{inputs.posts.x}}" }
+    - name: publish_linkedin
+      type: service.call
+      service: linkedin
+      op: posts.publish
+      params: { text: "{{inputs.posts.linkedin}}" }
+    - name: combine
+      type: transform.pick
+      data: ["{{steps.publish_x.output}}", "{{steps.publish_linkedin.output}}"]
+      output: post_ids
+
+  guardrails:
+    pii: allow
+    max_runtime_secs: 60
+    network_egress: ["api.x.com", "api.linkedin.com"]
+    approval_required_for: ["*"]
+    # Catalog default: max 3 posts/day. Not enforced anywhere yet — this
+    # build has no per-binding daily-execution-cap guardrail (see
+    # NANOBOTS-CATALOG.md's own "what this catalog needs from 1Claw" list,
+    # which asks 1Claw for exactly this). A human is still the actual cap,
+    # via the approval gate above.
+
+  resources:
+    preset: small
+    memory: 64Mi
+    cpu: 100m
+    image: ghcr.io/nanobots/harness-bare:1.0-slim

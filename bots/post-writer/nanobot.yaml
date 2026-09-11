@@ -1,0 +1,54 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: post-writer
+  version: 0.1.0
+  description: Turn one idea into platform-ready posts for X, LinkedIn, and Threads in my voice.
+  tags: [content, social, writing]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: openclaw
+    entrypoint: ./bot.md
+
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    max_tokens: 2000
+    temperature: 0.6
+
+  ports:
+    inputs:
+      - name: idea
+        type: json
+        required: true
+      - name: voice_sample
+        type: file
+        required: false
+      - name: platforms
+        type: list<string>
+        required: false
+    outputs:
+      - name: posts
+        type: json
+        schema: ./schemas/posts.json
+
+  steps:
+    - name: write
+      type: ai.generate
+      prompt_file: ./prompts/write.md
+      inputs: { idea: "{{inputs.idea}}", platforms: "{{inputs.platforms}}" }
+      output: posts
+
+  guardrails:
+    pii: allow
+    injection_threshold: 0.7
+    max_runtime_secs: 90
+
+  resources:
+    preset: small
+    memory: 256Mi
+    cpu: 250m
+    image: ghcr.io/nanobots/harness-openclaw:1.4-slim

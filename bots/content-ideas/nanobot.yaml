@@ -1,0 +1,51 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: content-ideas
+  version: 0.1.0
+  description: Suggest ten post ideas for my niche based on what I've written.
+  tags: [content, social, ideas]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: openclaw
+    entrypoint: ./bot.md
+
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    max_tokens: 2500
+    temperature: 0.6
+
+  ports:
+    inputs:
+      - name: niche
+        type: string
+        required: true
+      - name: past_posts
+        type: file
+        required: false
+    outputs:
+      - name: ideas
+        type: list<json>
+        schema: ./schemas/idea.json
+
+  steps:
+    - name: brainstorm
+      type: ai.generate
+      prompt_file: ./prompts/ideas.md
+      inputs: { niche: "{{inputs.niche}}" }
+      outputs:
+        ideas: "{{steps.brainstorm.output.ideas}}"
+
+  guardrails:
+    pii: allow
+    max_runtime_secs: 60
+
+  resources:
+    preset: small
+    memory: 256Mi
+    cpu: 250m
+    image: ghcr.io/nanobots/harness-openclaw:1.4-slim

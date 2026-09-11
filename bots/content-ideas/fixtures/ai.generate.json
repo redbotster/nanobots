@@ -1,0 +1,14 @@
+{
+  "ideas": [
+    { "title": "The one metric I check every morning", "angle": "founders love a peek behind the curtain", "format": "short post" },
+    { "title": "Why I killed my roadmap and started shipping weekly", "angle": "contrarian, sparks discussion", "format": "thread" },
+    { "title": "5 tools I replaced with a single script", "angle": "practical, saveable", "format": "carousel" },
+    { "title": "What churned users actually told me", "angle": "vulnerability builds trust", "format": "thread" },
+    { "title": "My pricing page before and after", "angle": "visual, concrete", "format": "carousel" },
+    { "title": "The support ticket that changed my roadmap", "angle": "storytelling", "format": "short post" },
+    { "title": "How I price a feature nobody asked for", "angle": "counterintuitive framing", "format": "thread" },
+    { "title": "A week of build-in-public numbers", "angle": "transparency, recurring format", "format": "short post" },
+    { "title": "The onboarding email that doubled activation", "angle": "tactical, shareable", "format": "thread" },
+    { "title": "Why I stopped reading my own analytics dashboard", "angle": "provocative hook", "format": "short post" }
+  ]
+}

@@ -1,0 +1,16 @@
+[
+  {
+    "id": "18f301",
+    "from": "me@example.com",
+    "subject": "Proposal for Q4 engagement",
+    "date": "2026-09-05T09:00:00Z",
+    "snippet": "Hi Jordan, following up with the attached proposal — let me know if you have questions."
+  },
+  {
+    "id": "18f302",
+    "from": "me@example.com",
+    "subject": "Thanks for the intro!",
+    "date": "2026-09-06T09:00:00Z",
+    "snippet": "Appreciate you connecting us — no need to reply, just wanted to say thanks."
+  }
+]

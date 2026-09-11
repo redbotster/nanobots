@@ -246,7 +246,12 @@ func runAIGenerate(nb *schema.Nanobot, s schema.Step, ctx map[string]any, deps D
 	}
 	vars := map[string]any{}
 	for k, v := range s.Inputs {
-		vars[k] = resolveValue(v, ctx)
+		resolved := resolveValue(v, ctx)
+		text, err := resolveFileInputAsText(resolved, deps)
+		if err != nil {
+			return nil, fmt.Errorf("ai.generate input %q: %w", k, err)
+		}
+		vars[k] = text
 	}
 	prompt := renderPromptVars(tmpl, vars)
 
@@ -260,6 +265,37 @@ func runAIGenerate(nb *schema.Nanobot, s schema.Step, ctx map[string]any, deps D
 		return nil, fmt.Errorf("model response was not valid JSON: %w (response: %s)", err, truncate(raw, 200))
 	}
 	return parsed, nil
+}
+
+// resolveFileInputAsText turns a `file`-typed ai.generate input — a
+// FileValue struct (in-process) or its JSON-decoded equivalent
+// map[string]any{"uri":...,"mime":...} (after a round trip through
+// /run/inputs.json) — into its actual text content, read from the blob
+// store, so a prompt can work with a transcript or a blog post
+// (bots/repurposer, bots/meeting-notes-filer) instead of a meaningless blob
+// reference. Treats the bytes as UTF-8 text, which is right for this
+// catalog's text-shaped file inputs (transcripts, markdown, receipts-as-
+// text) and would mangle a genuinely binary file — not a concern for any
+// bot built so far, but worth knowing if one ever needs a binary input here.
+// Anything that isn't a file reference passes through unchanged.
+func resolveFileInputAsText(v any, deps Deps) (any, error) {
+	var uri string
+	switch fv := v.(type) {
+	case FileValue:
+		uri = fv.URI
+	case map[string]any:
+		if u, ok := fv["uri"].(string); ok && strings.HasPrefix(u, "nbf://") {
+			uri = u
+		}
+	}
+	if uri == "" {
+		return v, nil
+	}
+	data, err := deps.Blobs().Read(uri)
+	if err != nil {
+		return nil, fmt.Errorf("read file input: %w", err)
+	}
+	return string(data), nil
 }
 
 func runRender(nb *schema.Nanobot, s schema.Step, ctx map[string]any, lastOutput any, deps Deps) (any, error) {

@@ -1,0 +1,4 @@
+{
+  "sources": ["https://example.com/posts/q3-launch", "https://example.com/posts/pricing-experiment"],
+  "blurbs": ["We shipped the new dashboard three months late but activation is up 18%.", "We tested a usage-based add-on and it outperformed the flat tier 2:1."]
+}

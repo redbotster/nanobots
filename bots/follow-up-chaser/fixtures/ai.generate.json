@@ -1,0 +1,8 @@
+{
+  "stale_threads": [
+    { "id": "18f301", "subject": "Proposal for Q4 engagement", "to": "jordan@example.com", "reason": "asked a direct question, no reply in 3 days" }
+  ],
+  "drafts": [
+    { "thread_id": "18f301", "to": "jordan@example.com", "subject": "Re: Proposal for Q4 engagement", "body": "Hi Jordan, just floating this back to the top of your inbox in case it got buried — happy to answer any questions whenever you get a chance." }
+  ]
+}

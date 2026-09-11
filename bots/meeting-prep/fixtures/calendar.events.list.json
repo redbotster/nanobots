@@ -1,0 +1,16 @@
+[
+  {
+    "id": "e1",
+    "summary": "1:1 with Priya Shah",
+    "start": "2026-09-11T10:00:00-05:00",
+    "end": "2026-09-11T10:30:00-05:00",
+    "attendees": ["priya@northwind-consulting.com"]
+  },
+  {
+    "id": "e2",
+    "summary": "Contract review call",
+    "start": "2026-09-11T14:00:00-05:00",
+    "end": "2026-09-11T14:30:00-05:00",
+    "attendees": ["marcus@webb-legal.com"]
+  }
+]

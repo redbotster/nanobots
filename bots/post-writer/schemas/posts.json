@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanobots.dev/bots/post-writer/schemas/posts.json",
+  "title": "Posts",
+  "description": "The `posts` output port — one platform-ready post per requested platform.",
+  "type": "object",
+  "properties": {
+    "x": { "type": "string" },
+    "linkedin": { "type": "string" },
+    "threads": { "type": "string" }
+  }
+}

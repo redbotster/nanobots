@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Newsletter draft</title>
+<style>
+  body { font-family: -apple-system, "Segoe UI", sans-serif; color: #1a1a1a; margin: 48px; max-width: 640px; }
+  h1 { font-size: 20px; margin: 0 0 16px; }
+  .intro { font-size: 14px; line-height: 1.6; margin-bottom: 28px; }
+  .section { padding: 14px 0; border-top: 1px solid #e5e7eb; }
+  .section:first-of-type { border-top: none; }
+  .heading { font-weight: 600; font-size: 15px; }
+  .body { font-size: 13px; line-height: 1.5; margin: 4px 0; }
+  .link { font-size: 12px; color: #2f6bff; }
+</style>
+</head>
+<body>
+  <h1>{{.subject}}</h1>
+  <p class="intro">{{.intro}}</p>
+  {{range .sections}}
+  <div class="section">
+    <div class="heading">{{.heading}}</div>
+    <p class="body">{{.body}}</p>
+    <div class="link">{{.link}}</div>
+  </div>
+  {{end}}
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanobots.dev/bots/meeting-prep/schemas/brief.json",
+  "title": "MeetingBrief",
+  "description": "One element of the `briefs` output port (a list<json>).",
+  "type": "object",
+  "required": ["title", "time", "summary"],
+  "properties": {
+    "title": { "type": "string" },
+    "time": { "type": "string" },
+    "attendees": { "type": "array", "items": { "type": "string" } },
+    "summary": { "type": "string" }
+  }
+}

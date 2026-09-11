@@ -112,6 +112,33 @@ func RunConformance(botDir, fixturesDir string) (*Report, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// A `file`-typed input whose value in inputs.json is a placeholder
+	// reference (nothing writes real blob content there — most bots never
+	// read the bytes, e.g. drive-save just forwards the reference to a
+	// service.call) won't resolve for a bot that actually needs the file's
+	// *content*, like ai.generate's file-input-to-text resolution
+	// (resolveFileInputAsText in internal/step/interpret.go). For those,
+	// fixtures/<port>.content provides real bytes to seed the blob store
+	// with, so conformance exercises the genuine content, not a stand-in.
+	for _, p := range nb.Spec.Ports.Inputs {
+		if p.Type != "file" {
+			continue
+		}
+		if _, ok := inputs[p.Name]; !ok {
+			continue
+		}
+		content, err := os.ReadFile(filepath.Join(fixturesDir, p.Name+".content"))
+		if err != nil {
+			continue // no real-content fixture for this port; leave inputs.json's value as-is
+		}
+		fv, err := blobs.Write(content, "text/plain")
+		if err != nil {
+			return nil, fmt.Errorf("seed blob store for input %q: %w", p.Name, err)
+		}
+		inputs[p.Name] = map[string]any{"uri": fv.URI, "mime": fv.Mime}
+	}
+
 	deps := step.NewDemoDeps(fixturesDir, blobs)
 	// Conformance checks that a `file` port was produced with the right
 	// shape, not that it's byte-for-byte a real PDF — real rendering is

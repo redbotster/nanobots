@@ -1,0 +1,13 @@
+{
+  "thread": {
+    "posts": [
+      "We shipped the new dashboard this week. 3 months late. Here's what we got wrong.",
+      "We scoped the feature, not the transition — the migration work was invisible in our original estimate.",
+      "Since launch: activation is up 18%.",
+      "The #1 support request (real-time usage view) barely gets asked about anymore.",
+      "Lesson: estimate the migration, not just the feature."
+    ]
+  },
+  "linkedin_post": "We shipped our new dashboard this week — three months later than planned.\n\nThe reason: we scoped the feature itself, not the migration required to ship it. That cost was invisible in our original estimate.\n\nSince launch, activation is up 18%, and the most-requested feature (a real-time usage view) has quietly stopped being requested.",
+  "newsletter_blurb": "Why our dashboard launch ran three months late — and the 18% activation lift it delivered anyway. Read the full breakdown."
+}

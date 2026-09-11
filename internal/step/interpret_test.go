@@ -3,6 +3,9 @@ package step
 import (
 	"encoding/base64"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/redbotster/nanobots/internal/schema"
@@ -23,12 +26,14 @@ type fakeDeps struct {
 	renderResult  []byte
 	renderMime    string
 	blobs         BlobStore
+	gotPrompt     string
 }
 
 func (f *fakeDeps) ServiceCall(svc schema.Service, op string, params map[string]any) (any, error) {
 	return f.serviceResult, f.serviceErr
 }
 func (f *fakeDeps) AIGenerate(prompt string, model schema.Model) (string, error) {
+	f.gotPrompt = prompt
 	return f.aiResult, f.aiErr
 }
 func (f *fakeDeps) Render(templatePath string, data any, to string) ([]byte, string, error) {
@@ -290,6 +295,52 @@ func TestInterpretSwarmVarsAreResolvable(t *testing.T) {
 	if got := wrapped.lastParams["folder"]; got != "Recaps/2026" {
 		t.Errorf("swarm.vars.recap_folder resolved to %#v, want Recaps/2026", got)
 	}
+}
+
+func TestInterpretAIGenerateReadsFileInputAsText(t *testing.T) {
+	blobs := &fakeBlobStore{byURI: map[string][]byte{"nbf://sha256/abc": []byte("Q3 planning transcript: we agreed to ship by Friday.")}}
+	fake := &fakeDeps{aiResult: `{"notes": "shipping by Friday"}`, blobs: blobs}
+	nb := simpleBot(
+		[]schema.Step{{
+			Name: "summarise", Type: "ai.generate",
+			PromptFile: writeTempPromptFile(t, "Transcript: {{transcript}}"),
+			Inputs:     map[string]any{"transcript": FileValue{URI: "nbf://sha256/abc", Mime: "text/plain"}},
+			Output:     "notes",
+		}},
+		[]schema.OutputPort{{Name: "notes", Type: "json"}},
+	)
+	if _, err := Interpret(nb, map[string]any{}, nil, fake); err != nil {
+		t.Fatalf("Interpret: %v", err)
+	}
+	if !strings.Contains(fake.gotPrompt, "we agreed to ship by Friday") {
+		t.Errorf("prompt = %q, want it to contain the file's actual text content, not a blob reference", fake.gotPrompt)
+	}
+}
+
+func TestResolveFileInputAsTextPassesThroughNonFileValues(t *testing.T) {
+	fake := &fakeDeps{}
+	for _, v := range []any{"plain string", float64(42), map[string]any{"other": "field"}, []any{"a", "b"}} {
+		out, err := resolveFileInputAsText(v, fake)
+		if err != nil {
+			t.Fatalf("resolveFileInputAsText(%#v): %v", v, err)
+		}
+		if fmt.Sprint(out) != fmt.Sprint(v) {
+			t.Errorf("resolveFileInputAsText(%#v) = %#v, want unchanged", v, out)
+		}
+	}
+}
+
+// writeTempPromptFile writes tmpl relative to a fresh Nanobot SourcePath —
+// simpleBot doesn't set one, so this test needs its own bot with a real
+// on-disk prompt file for PromptFile to resolve against.
+func writeTempPromptFile(t *testing.T, tmpl string) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "prompt.md")
+	if err := os.WriteFile(path, []byte(tmpl), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 // paramCapturingDeps wraps fakeDeps just to record the params a service.call
