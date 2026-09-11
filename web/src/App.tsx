@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "./lib/api";
 import type { StatusResponse } from "./lib/types";
-import { SwarmView } from "./pages/SwarmView";
+import { SwarmsPage } from "./pages/SwarmsPage";
 import { BotLibrary } from "./pages/BotLibrary";
 import { RunsPage } from "./pages/RunsPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -28,12 +28,16 @@ export default function App() {
   const [page, setPage] = useState<Page>("swarm");
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [apiUnreachable, setApiUnreachable] = useState(false);
+  const [counts, setCounts] = useState<{ bots: number; swarms: number } | null>(null);
 
   useEffect(() => {
     api
       .status()
       .then(setStatus)
       .catch(() => setApiUnreachable(true));
+    Promise.all([api.listBots(), api.listSwarms()])
+      .then(([bots, swarms]) => setCounts({ bots: bots.length, swarms: swarms.length }))
+      .catch(() => {});
   }, []);
 
   return (
@@ -93,12 +97,12 @@ export default function App() {
         </nav>
         <div className="mt-auto border-t border-edge px-5 pt-4 text-xs text-muted">
           <div className="font-display text-ink">Local stack</div>
-          Phase 0/1 build — 2 bots, 1 swarm
+          {counts ? `${counts.bots} bots, ${counts.swarms} swarms` : "…"}
         </div>
       </aside>
 
       <main className="min-h-0 min-w-0 overflow-hidden">
-        {page === "swarm" && <SwarmView />}
+        {page === "swarm" && <SwarmsPage />}
         {page === "bots" && <BotLibrary />}
         {page === "runs" && <RunsPage />}
         {page === "settings" && <SettingsPage status={status} />}

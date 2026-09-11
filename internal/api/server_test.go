@@ -64,6 +64,20 @@ func TestHandleListBots(t *testing.T) {
 	}
 }
 
+func TestHandleListSwarms(t *testing.T) {
+	srv := testServer(t)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/api/swarms", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	for _, want := range []string{"daily-email-recap", "daily-inbox-recap", "morning-brief", "inbox-autopilot"} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Errorf("expected swarm list to mention %q, got: %s", want, rec.Body.String())
+		}
+	}
+}
+
 func TestHandlePlan(t *testing.T) {
 	srv := testServer(t)
 	root := repoRoot(t)

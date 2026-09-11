@@ -83,6 +83,30 @@ func TestResolveSnapValueDrillsIntoField(t *testing.T) {
 	_ = rs
 }
 
+func TestResolveSnapValueIndexesIntoList(t *testing.T) {
+	run := NewRun("s")
+	run.SetBotOutputs("drafter", map[string]any{
+		"draft_ids": []any{"d-1", "d-2", "d-3"},
+	})
+	o := &Orchestrator{}
+	val, err := o.resolveSnapValue(run, schema.Snap{From: "drafter.draft_ids.1", To: "sender.draft_id"})
+	if err != nil {
+		t.Fatalf("resolveSnapValue: %v", err)
+	}
+	if val != "d-2" {
+		t.Errorf("val = %v, want d-2", val)
+	}
+}
+
+func TestResolveSnapValueIndexOutOfRangeErrors(t *testing.T) {
+	run := NewRun("s")
+	run.SetBotOutputs("drafter", map[string]any{"draft_ids": []any{"d-1"}})
+	o := &Orchestrator{}
+	if _, err := o.resolveSnapValue(run, schema.Snap{From: "drafter.draft_ids.5", To: "sender.draft_id"}); err == nil {
+		t.Fatal("expected an out-of-range index to error")
+	}
+}
+
 func TestCollectOutputsScalarAndFile(t *testing.T) {
 	outDir := t.TempDir()
 	os.WriteFile(filepath.Join(outDir, "message_id.json"), []byte(`"abc123"`), 0o644)

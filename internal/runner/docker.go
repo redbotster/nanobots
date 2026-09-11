@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"time"
 )
@@ -24,14 +25,20 @@ var harnessBuild = map[string]struct {
 }
 
 // EnsureHarnessImage builds the harness image for harnessType if it isn't
-// already present locally, returning its tag and run-as user.
+// already present locally, returning its tag and run-as user. There's no
+// content-hash check against internal/step et al — a harness image is only
+// as fresh as the last time it was built, so it's a real, known trap for
+// anyone iterating on the interpreter or a bot's Go-side dependencies while
+// testing swarms locally. Set NANOBOTS_REBUILD_HARNESS=1 to always rebuild
+// rather than trusting whatever's cached (or just `docker rmi` the tag).
 func EnsureHarnessImage(harnessType, repoRoot string) (tag, user string, err error) {
 	h, ok := harnessBuild[harnessType]
 	if !ok {
 		return "", "", fmt.Errorf("harness %q is not implemented in this build (only bare, openclaw)", harnessType)
 	}
+	forceRebuild := os.Getenv("NANOBOTS_REBUILD_HARNESS") != ""
 	check := exec.Command("docker", "image", "inspect", h.Tag)
-	if err := check.Run(); err == nil {
+	if err := check.Run(); err == nil && !forceRebuild {
 		return h.Tag, h.User, nil // already built
 	}
 	build := exec.Command("docker", "build", "-f", h.Dockerfile, "-t", h.Tag, repoRoot)

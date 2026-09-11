@@ -80,11 +80,24 @@ func resolveExpr(inner string, ctx map[string]any) (any, bool) {
 }
 
 // lookupPath walks a dotted path ("inputs.since", "steps.fetch.output.name")
-// through nested map[string]any values in ctx.
+// through nested map[string]any values in ctx. A purely-numeric segment
+// ("draft_ids.0") indexes into a []any instead of a map key — the one way
+// this build has to pull a single element out of a list<T> port (e.g. "the
+// first draft's id" as its own string) rather than a numeric index scheme
+// of its own; see internal/planner's matching support for type-checking it
+// across a snap and internal/runner's for resolving the actual value.
 func lookupPath(ctx map[string]any, path string) (any, bool) {
 	segs := strings.Split(path, ".")
 	var cur any = ctx
 	for _, seg := range segs {
+		if idx, isIndex := listIndex(seg); isIndex {
+			arr, ok := cur.([]any)
+			if !ok || idx < 0 || idx >= len(arr) {
+				return nil, false
+			}
+			cur = arr[idx]
+			continue
+		}
 		m, ok := cur.(map[string]any)
 		if !ok {
 			return nil, false
@@ -95,4 +108,27 @@ func lookupPath(ctx map[string]any, path string) (any, bool) {
 		}
 	}
 	return cur, true
+}
+
+// ListIndex reports whether seg is a non-negative integer list index — the
+// exported form, for internal/planner (type-checking a snap that indexes
+// into a list<T> port) and internal/runner (resolving that snap's actual
+// value at run time) to use the exact same rule this package does.
+func ListIndex(seg string) (int, bool) { return listIndex(seg) }
+
+// listIndex reports whether seg is a non-negative integer list index.
+func listIndex(seg string) (int, bool) {
+	if seg == "" {
+		return 0, false
+	}
+	for _, r := range seg {
+		if r < '0' || r > '9' {
+			return 0, false
+		}
+	}
+	n := 0
+	for _, r := range seg {
+		n = n*10 + int(r-'0')
+	}
+	return n, true
 }

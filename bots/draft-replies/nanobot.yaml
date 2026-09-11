@@ -38,6 +38,7 @@ spec:
         type: list<string>
       - name: drafts
         type: list<json>
+        schema: ./schemas/draft.json
 
   steps:
     - name: write

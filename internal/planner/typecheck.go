@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/redbotster/nanobots/internal/schema"
+	"github.com/redbotster/nanobots/internal/step"
 )
 
 // SnapCheck is the outcome of type-checking one snap.
@@ -113,18 +114,32 @@ func resolveEndpointType(rs *ResolvedSwarm, ref string, isOutput bool) (schema.P
 	if err != nil {
 		return schema.ParsedType{}, fmt.Errorf("bot %q port %q: %w", ep.BotID, ep.Port, err)
 	}
-	if len(ep.Fields) == 0 {
+	fields := ep.Fields
+	// A purely-numeric segment indexes into a list<T> port, peeling off one
+	// level of nesting per index — "draft_ids.0" on a list<string> port
+	// resolves to plain string, no schema file needed (there's nothing to
+	// look up: the element type is already known from the port declaration
+	// itself). See internal/step.ListIndex for the matching runtime rule.
+	for base.Base == "list" && len(fields) > 0 {
+		if _, isIndex := step.ListIndex(fields[0]); !isIndex {
+			return schema.ParsedType{}, fmt.Errorf("port %q is a list — %q must be a numeric index, not a field name",
+				ep.Port, fields[0])
+		}
+		base = *base.List
+		fields = fields[1:]
+	}
+	if len(fields) == 0 {
 		return base, nil
 	}
 	if base.Base != schema.PortJSON {
 		return schema.ParsedType{}, fmt.Errorf("port %q is %s, not json — cannot access field %q",
-			ep.Port, base, strings.Join(ep.Fields, "."))
+			ep.Port, base, strings.Join(fields, "."))
 	}
 	if schemaFile == "" {
 		return schema.ParsedType{}, fmt.Errorf("port %q has no schema: file to resolve field %q against",
-			ep.Port, strings.Join(ep.Fields, "."))
+			ep.Port, strings.Join(fields, "."))
 	}
-	return resolveFieldType(filepath.Join(rb.Nanobot.SourcePath, schemaFile), ep.Fields)
+	return resolveFieldType(filepath.Join(rb.Nanobot.SourcePath, schemaFile), fields)
 }
 
 // resolveFieldType walks a JSON Schema file's `properties` tree following

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanobots.dev/bots/inbox-triage/schemas/triaged_count.json",
+  "title": "TriagedCount",
+  "type": "object",
+  "required": ["urgent", "later", "ignored", "total", "headline", "brief"],
+  "properties": {
+    "urgent": { "type": "integer" },
+    "later": { "type": "integer" },
+    "ignored": { "type": "integer" },
+    "total": { "type": "integer" },
+    "headline": { "type": "string", "description": "One short sentence summarizing the triage." },
+    "brief": { "type": "string", "description": "A short multi-line plain-text brief, one line per urgent/later item." }
+  }
+}

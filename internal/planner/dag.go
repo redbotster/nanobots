@@ -34,13 +34,29 @@ func BuildDAG(rs *ResolvedSwarm) (*DAG, error) {
 		if fromEp.BotID == toEp.BotID {
 			return nil, fmt.Errorf("snap %s -> %s: a bot cannot snap into itself", snap.From, snap.To)
 		}
-		d.Edges[fromEp.BotID] = append(d.Edges[fromEp.BotID], toEp.BotID)
+		// Two snaps between the same pair of bots (e.g. a draft's id and its
+		// subject both flowing from "replies" to "sender") must not become
+		// two edges — indegree would count that dependency twice and the
+		// printed DAG would show the target bot twice for one real
+		// dependency.
+		if !containsString(d.Edges[fromEp.BotID], toEp.BotID) {
+			d.Edges[fromEp.BotID] = append(d.Edges[fromEp.BotID], toEp.BotID)
+		}
 	}
 
 	if _, err := d.TopoSort(); err != nil {
 		return nil, err
 	}
 	return d, nil
+}
+
+func containsString(xs []string, x string) bool {
+	for _, v := range xs {
+		if v == x {
+			return true
+		}
+	}
+	return false
 }
 
 // TopoSort returns a valid run order, or an error naming a cycle.

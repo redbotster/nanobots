@@ -6,5 +6,12 @@
   "later": [
     { "id": "19a1a2", "from": "The Overview <newsletter@overview.example>", "subject": "This week in design systems", "reason": "Newsletter worth skimming" }
   ],
-  "counts": { "urgent": 2, "later": 1, "ignored": 1, "total": 4 }
+  "counts": {
+    "urgent": 2,
+    "later": 1,
+    "ignored": 1,
+    "total": 4,
+    "headline": "2 urgent, 1 to read later, 1 ignored.",
+    "brief": "Urgent:\n- Marcus Webb: wants a call before you sign the contract\n- Priya Shah: needs confirmation on the kickoff date moving to the 15th\n\nLater:\n- The Overview newsletter: design systems roundup"
+  }
 }

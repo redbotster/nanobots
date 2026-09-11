@@ -1,0 +1,52 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanoswarm
+metadata:
+  name: inbox-autopilot
+  description: Every 2 hours during work hours, triage the inbox, draft replies to anything urgent, and send the first one once you approve it.
+  owner: me@example.com
+
+# Catalog's S3 is "inbox-triage -> draft-replies -> approve ->
+# email-send-approved", and describes the one approval as "send each reply"
+# — implying one approval per drafted reply. This build's swarm engine runs
+# every bot exactly once per run, with no per-item fan-out/loop and no
+# conditional execution based on an upstream bot's output (the standalone
+# `approve` brick's approved:boolean has nothing to actually gate). So this
+# swarm processes the first urgent thread only, and skips the standalone
+# `approve` brick entirely: email-send-approved's own built-in gate (which
+# cannot be bypassed — see its nanobot.yaml) is "the one approval" instead
+# of a redundant second one. Real per-thread iteration is future work, not
+# a hidden simplification.
+
+spec:
+  defaults:
+    model: { provider: anthropic, name: claude-sonnet-4-6 }
+    guardrails:
+      pii: redact
+      injection_threshold: 0.7
+      daily_budget_usd: 5
+      approval_required_for: [email.send]
+    resources: { preset: small }
+
+  trigger:
+    type: cron
+    expr: "0 */2 * * 1-5"
+    timezone: America/Chicago
+
+  bots:
+    - id: triage
+      use: inbox-triage@0.1.0
+    - id: replies
+      use: draft-replies@0.1.0
+    - id: sender
+      use: email-send-approved@0.1.0
+
+  snaps:
+    - from: triage.urgent
+      to: replies.threads
+    - from: replies.draft_ids.0
+      to: sender.draft_id
+    - from: replies.drafts.0.subject
+      to: sender.summary
+
+  deploy:
+    target: local

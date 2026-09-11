@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanobots.dev/bots/draft-replies/schemas/draft.json",
+  "title": "Draft",
+  "description": "The shape of one element of the `drafts` output port (a list<json>) — describes what's inside each item, not the array itself.",
+  "type": "object",
+  "required": ["thread_id", "to", "subject", "body"],
+  "properties": {
+    "thread_id": { "type": "string" },
+    "to": { "type": "string" },
+    "subject": { "type": "string" },
+    "body": { "type": "string" }
+  }
+}

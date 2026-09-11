@@ -1,0 +1,48 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanoswarm
+metadata:
+  name: morning-brief
+  description: Every weekday morning, triage the inbox into a one-page brief and let me know it's ready.
+  owner: me@example.com
+
+# Catalog's S2 is "inbox-triage + meeting-prep -> render-pdf -> notify".
+# meeting-prep (brick 6) is Tranche C and isn't built yet, so this is the
+# inbox half only — a real simplification, not a hidden one. Add
+# meeting-prep's contribution back once it exists, by snapping its brief
+# alongside inbox-triage's into render-pdf.
+
+spec:
+  defaults:
+    model: { provider: anthropic, name: claude-sonnet-4-6 }
+    guardrails:
+      pii: redact
+      injection_threshold: 0.7
+      daily_budget_usd: 5
+    resources: { preset: small }
+
+  vars:
+    notify_channel: "slack:#me"
+
+  trigger:
+    type: cron
+    expr: "30 6 * * 1-5"
+    timezone: America/Chicago
+
+  bots:
+    - id: triage
+      use: inbox-triage@0.1.0
+    - id: brief
+      use: render-pdf@0.1.0
+    - id: notifier
+      use: notify@0.1.0
+      inputs:
+        channel: "{{vars.notify_channel}}"
+
+  snaps:
+    - from: triage.triaged_count.brief
+      to: brief.content
+    - from: triage.triaged_count.headline
+      to: notifier.message
+
+  deploy:
+    target: local

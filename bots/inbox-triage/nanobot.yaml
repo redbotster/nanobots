@@ -41,6 +41,7 @@ spec:
         type: list<json>
       - name: triaged_count
         type: json
+        schema: ./schemas/triaged_count.json
 
   steps:
     - name: fetch

@@ -78,6 +78,17 @@ func (o *Orchestrator) resolveSnapValue(run *Run, snap schema.Snap) (any, error)
 		return nil, fmt.Errorf("upstream bot %q produced no output %q", from.BotID, from.Port)
 	}
 	for _, field := range from.Fields {
+		if idx, isIndex := step.ListIndex(field); isIndex {
+			arr, ok := val.([]any)
+			if !ok {
+				return nil, fmt.Errorf("%s.%s is not a list, cannot index [%d]", from.BotID, from.Port, idx)
+			}
+			if idx < 0 || idx >= len(arr) {
+				return nil, fmt.Errorf("%s.%s has %d item(s), index %d is out of range", from.BotID, from.Port, len(arr), idx)
+			}
+			val = arr[idx]
+			continue
+		}
 		m, ok := val.(map[string]any)
 		if !ok {
 			return nil, fmt.Errorf("%s.%s is not an object, cannot read field %q", from.BotID, from.Port, field)

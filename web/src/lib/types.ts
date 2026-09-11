@@ -105,3 +105,9 @@ export interface Run {
 export interface StatusResponse {
   oneclaw_configured: boolean;
 }
+
+export interface SwarmSummary {
+  path: string;
+  name: string;
+  description: string;
+}

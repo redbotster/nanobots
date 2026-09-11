@@ -1,0 +1,50 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanoswarm
+metadata:
+  name: daily-inbox-recap
+  description: Every weekday morning, recap my inbox to a PDF in Drive and let me know it's ready.
+  owner: me@example.com
+
+# Catalog's S1 (NANOBOTS-CATALOG.md): "recap-emails-to-pdf -> drive-save ->
+# notify". recap-emails-to-pdf already uploads to Drive itself (its own
+# `upload` step, matching its declared drive_file_id output) — routing its
+# rendered PDF through drive-save again would just upload the same file
+# twice. This swarm uses recap's own upload instead and skips the redundant
+# hop; drive-save exists and passes conformance on its own for swarms that
+# actually need a separate save step (e.g. one bot renders, a different bot
+# owns "where things get filed").
+
+spec:
+  defaults:
+    model: { provider: anthropic, name: claude-sonnet-4-6 }
+    guardrails:
+      pii: redact
+      injection_threshold: 0.7
+      daily_budget_usd: 5
+    resources: { preset: small }
+
+  vars:
+    recap_folder: "Recaps/2026"
+    notify_channel: "slack:#me"
+
+  trigger:
+    type: cron
+    expr: "0 7 * * 1-5"
+    timezone: America/Chicago
+
+  bots:
+    - id: recap
+      use: recap-emails-to-pdf@0.3.0
+      inputs:
+        label: INBOX
+    - id: notifier
+      use: notify@0.1.0
+      inputs:
+        channel: "{{vars.notify_channel}}"
+
+  snaps:
+    - from: recap.recap_json.headline
+      to: notifier.message
+
+  deploy:
+    target: local

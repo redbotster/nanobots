@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import { useRun } from "../lib/useRun";
-import type { BotSummary, PlanResult } from "../lib/types";
+import type { BotSummary, PlanResult, SwarmSummary } from "../lib/types";
 import { BotBrick } from "../components/BotBrick";
 import { SnapTrail } from "../components/SnapTrail";
 import { Sheet } from "../components/Sheet";
@@ -12,9 +12,14 @@ import { YamlView } from "../components/YamlView";
 import { Button } from "../components/Button";
 import { StatusDot } from "../components/StatusDot";
 
-const SWARM_PATH = "examples/swarms/daily-email-recap.yaml";
-
-export function SwarmView() {
+export function SwarmView({
+  swarm,
+  onBack,
+}: {
+  swarm: SwarmSummary;
+  onBack: () => void;
+}) {
+  const SWARM_PATH = swarm.path;
   const [plan, setPlan] = useState<PlanResult | null>(null);
   const [bots, setBots] = useState<Record<string, BotSummary>>({});
   const [selected, setSelected] = useState<string | null>(null);
@@ -25,11 +30,14 @@ export function SwarmView() {
   const { run } = useRun(runId);
 
   useEffect(() => {
+    setPlan(null);
+    setSelected(null);
+    setRunId(null);
     api.plan(SWARM_PATH).then(setPlan).catch(() => {});
     api.listBots().then((list) => {
       setBots(Object.fromEntries(list.map((b) => [b.id, b])));
     });
-  }, []);
+  }, [SWARM_PATH]);
 
   const order = plan?.order ?? [];
   const botIdOf = useMemo(() => {
@@ -70,13 +78,16 @@ export function SwarmView() {
   return (
     <div className="grid h-full grid-rows-[1fr_260px] sm:grid-rows-[1fr_280px]">
       <section className="overflow-auto p-6 sm:p-8">
+        <button
+          onClick={onBack}
+          className="mb-3 flex items-center gap-1 font-display text-xs text-muted hover:text-ink"
+        >
+          ← Swarms
+        </button>
         <h1 className="font-display text-xl font-medium text-ink">
-          {plan?.swarm ?? "daily-email-recap"}
+          {plan?.swarm ?? swarm.name}
         </h1>
-        <p className="mt-1 max-w-xl text-sm text-muted">
-          Weekdays at 7:00 AM, Chicago. Two bots, one snap, one approval
-          before anything leaves your inbox.
-        </p>
+        <p className="mt-1 max-w-xl text-sm text-muted">{swarm.description}</p>
 
         <div className="mt-3 flex items-center gap-3">
           <Button variant="primary" onClick={runOnce} disabled={starting || isBusy}>

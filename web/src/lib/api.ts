@@ -1,4 +1,10 @@
-import type { BotSummary, PlanResult, Run, StatusResponse } from "./types";
+import type {
+  BotSummary,
+  PlanResult,
+  Run,
+  StatusResponse,
+  SwarmSummary,
+} from "./types";
 
 async function reqText(path: string): Promise<string> {
   const res = await fetch(path);
@@ -22,6 +28,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   status: () => req<StatusResponse>("/api/status"),
   listBots: () => req<BotSummary[]>("/api/bots"),
+  listSwarms: () => req<SwarmSummary[]>("/api/swarms"),
   plan: (path: string) =>
     req<PlanResult>(`/api/swarms/plan?path=${encodeURIComponent(path)}`),
   swarmYAML: (path: string) =>
