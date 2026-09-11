@@ -16,13 +16,13 @@ A nanobot is a container that follows one contract. Any harness that can read a 
 
 ## What the container never gets
 
-No bot container ever holds a real 1Claw credential, not even a short-lived one. Every step that needs the outside world — `service.call`, `ai.generate`, `memory.get`/`put`, `approve`, `notify` — is a callback to nanobotd instead, authenticated with a random per-run token that means nothing outside that one run. See `internal/step.RemoteDeps` and `docs/oneclaw-bridge.md`.
+No bot container ever holds a real 1Claw credential, not even a short-lived one. Every step that needs the outside world — `service.call`, `ai.generate`, `web.fetch`, `memory.get`/`put`, `approve`, `notify` — is a callback to nanobotd instead, authenticated with a random per-run token that means nothing outside that one run. See `internal/step.RemoteDeps` and `docs/oneclaw-bridge.md`.
 
 `transform.render` and `transform.now` run entirely inside the container — rendering needs no credential, so there's no reason to round-trip it through nanobotd.
 
 ## Conformance
 
-`nanobots conform ./bots/<id>` (and the same logic under `go test`, see `internal/contract`) proves a bot honors its own declared ports without needing Docker or a network: it runs the bot's `spec.steps` in-process against `DemoDeps`, which serves fixture data from `./bots/<id>/fixtures/*.json` — one file per `<service-id>.<op>.json`, plus `ai.generate.json` and `inputs.json`. A bot whose declared output port is never produced, or comes back the wrong type, fails conformance.
+`nanobots conform ./bots/<id>` (and the same logic under `go test`, see `internal/contract`) proves a bot honors its own declared ports without needing Docker or a network: it runs the bot's `spec.steps` in-process against `DemoDeps`, which serves fixture data from `./bots/<id>/fixtures/*.json` — one file per `<service-id>.<op>.json`, plus `ai.generate.json` and `inputs.json`. A bot whose declared output port is never produced, or comes back the wrong type, fails conformance. If a `file`-typed input port's actual bytes matter (e.g. a bot that reads the file's text for an `ai.generate` prompt, not just passes it through), add `fixtures/<port>.content` with real bytes — conformance seeds the blob store from it before running; without one, the port resolves to a fake, non-dereferenceable URI, which is fine for a bot that never reads the content.
 
 ## Try it
 

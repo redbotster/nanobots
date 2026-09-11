@@ -4,7 +4,7 @@
 
 ## What it's for here
 
-Per `docs/connections.md`, Browser Bridge is the default `connection` strategy for any service 1Claw has no native OAuth for. It's real, working infrastructure in this build — just not exercised by either example bot's Gmail/Drive access, because Google specifically blocks the pattern (see below). It's what a later tranche's Stripe/HubSpot/X/LinkedIn bricks are expected to use.
+Per `docs/connections.md`, Browser Bridge is the default `connection` strategy for any service with no viable OAuth or static-token path. It's real, working infrastructure in this build — just not exercised by any bot's `service.call` yet. Gmail/Drive don't use it because Google specifically blocks the pattern (see below); Stripe and HubSpot didn't end up needing it either, since both have long-lived static tokens simple enough to just paste into a vault secret (`docs/connections.md`). What's left that still needs it: X/LinkedIn posting (`post-publisher`) and Google Business Profile replies (`review-responder`), both of which stay on `connection: demo` until a dedicated OAuth app exists for each — Browser Bridge remains the fallback if that ever isn't worth building per-service.
 
 ## The Google finding
 

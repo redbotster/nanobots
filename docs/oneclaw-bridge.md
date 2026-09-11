@@ -21,6 +21,10 @@ For each bot instance in a run, `internal/runner.Orchestrator` calls `EnsureAgen
 
 `memory.get`/`memory.put` steps still degrade gracefully (log a warning, continue) rather than fail a run outright if a memory call ever fails for some other reason — it's "since last run" bookkeeping, not a correctness requirement, so that defense stays even though the root cause here is fixed.
 
+## A real limit worth knowing about: the account's agent cap
+
+`EnsureAgent` finds-or-creates by name, so it's idempotent across runs — but every distinct bot name in every swarm you've ever run against this account eventually gets its own agent, and 1Claw plans cap how many an account can hold (10 on the pro tier this was built against). Running out shows up as a 403 `"Agent limit reached"` from `EnsureAgent`, right when a swarm tries to run a bot whose agent doesn't exist yet. There's no code-level workaround — and this codebase never deletes an agent on its own, since agent memory (`memory.get`/`memory.put`'s "since last run" state) lives on it — but freeing a slot is safe: delete an agent you don't need (`Client.DeleteAgent`, or 1Claw's own dashboard) and the next run against that bot name just creates a fresh one.
+
 ## Try it
 
 ```

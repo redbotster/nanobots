@@ -4,10 +4,10 @@
 
 **This build doesn't implement that yet.** Both `bare` and `openclaw` run the exact same universal step interpreter (`internal/step.Interpret`) against a bot's declared `spec.steps`, in the order they're written. The only real difference between the two harness images (`harness/bare`, `harness/openclaw`) is:
 
-- `bare` is distroless with no browser at all — `transform.render`'s `to: pdf` (real HTML→PDF via headless Chrome) isn't available, so `bare` bots either don't render, or render to plain HTML/other non-PDF output.
-- `openclaw` adds headless Chromium for that PDF rendering and, later, actual browser-driven steps.
+- `bare` is distroless with no browser at all — `transform.render`'s `to: pdf`/`to: png` (real HTML→PDF or HTML→screenshot via headless Chrome) isn't available, so `bare` bots either don't render, or render to plain HTML/other non-image output.
+- `openclaw` adds headless Chromium for that PDF/PNG rendering and, later, actual browser-driven steps.
 
-`ai.generate` works identically on both — it's a plain HTTPS callback to nanobotd's Shroud bridge (`internal/step.RemoteDeps.AIGenerate`), not a local model or anything Chromium-shaped, so it needs nothing `bare`'s distroless image doesn't already have. `bots/competitor-watch` is `bare` and uses `ai.generate` for exactly this reason — the catalog's own "bare + ai.generate" note for that brick is correct, and this doc previously said otherwise.
+`ai.generate` and `web.fetch` both work identically on either harness — each is a plain HTTPS callback to nanobotd (`internal/step.RemoteDeps.AIGenerate`/`.WebFetch`), not a local model, browser, or anything Chromium-shaped, so neither needs anything `bare`'s distroless image doesn't already have. `bots/competitor-watch` is `bare` and uses both `web.fetch` and `ai.generate` for exactly this reason — the catalog's own "bare + ai.generate" note for that brick is correct, and this doc previously said otherwise.
 
 Neither one reasons about *how* to accomplish a step — the steps are already fully specified in YAML, and the interpreter just runs them. That's honest for what this build's two example bots need (their steps are fully deterministic already), but it's not the dynamic agent loop the harness names imply, and it's not pretended to be one anywhere in the code.
 
