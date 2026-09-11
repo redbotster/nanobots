@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 
 	"github.com/redbotster/nanobots/internal/api"
+	"github.com/redbotster/nanobots/internal/google"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/runner"
 	"github.com/redbotster/nanobots/internal/step"
@@ -44,6 +45,27 @@ func Run(opts Options) error {
 		log.Println("1Claw: no key configured — running fully in demo mode")
 	}
 
+	// Google (Gmail/Drive/Sheets) is configured only once both a client id
+	// exists and 1Claw has a vault to hold the connected account's refresh
+	// token — resolved once here, not per-run, since EnsureVault is a real
+	// network call. See internal/step/google_live.go and
+	// docs/connections.md for what a bot needs to actually use this
+	// (a `connection: oauth_native` service and a completed
+	// `nanobots connect google`).
+	var googleCfg step.GoogleConfig
+	clientID, err := google.LoadClientID(opts.EnvFilePath)
+	if err != nil {
+		return fmt.Errorf("load Google OAuth client id: %w", err)
+	}
+	if clientID != "" && oc.Configured() {
+		vault, err := oc.EnsureVault("nanobots-main")
+		if err != nil {
+			return fmt.Errorf("ensure 1Claw vault for Google credentials: %w", err)
+		}
+		googleCfg = step.GoogleConfig{ClientID: clientID, VaultID: vault.ID}
+		log.Println("google: OAuth client configured — run `nanobots connect google` once to link an account")
+	}
+
 	stateDir, err := oneclaw.DefaultStateDir()
 	if err != nil {
 		return err
@@ -72,6 +94,7 @@ func Run(opts Options) error {
 		AgentStateDir: stateDir,
 		RunWorkDir:    runWorkDir,
 		BlobDir:       blobDir,
+		Google:        googleCfg,
 	}
 
 	srv := &api.Server{

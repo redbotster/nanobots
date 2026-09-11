@@ -6,6 +6,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -18,6 +19,7 @@ import (
 	"github.com/redbotster/nanobots/internal/api"
 	"github.com/redbotster/nanobots/internal/contract"
 	"github.com/redbotster/nanobots/internal/daemon"
+	"github.com/redbotster/nanobots/internal/google"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/planner"
 	"github.com/redbotster/nanobots/internal/runner"
@@ -43,6 +45,8 @@ func main() {
 		err = runUp(args)
 	case "run":
 		err = runRun(args)
+	case "connect":
+		err = runConnect(args)
 	case "init", "add", "save", "publish", "compile":
 		fmt.Fprintf(os.Stderr, "nanobots %s: not implemented in this build yet\n", cmd)
 		os.Exit(1)
@@ -69,6 +73,7 @@ commands:
   schema --out <dir>                      regenerate schemas/*.json from the Go types in internal/schema
   up [--addr host:port]                   start nanobotd (REST+SSE API) in the foreground
   run -f <swarm.yaml> [--bots <dir>]       run a swarm to completion, printing its log; prompts on approvals
+  connect google                          link a real Gmail/Drive/Sheets account (one-time OAuth in your browser)
   init, add, save, publish, compile        not implemented in this build yet`)
 }
 
@@ -171,6 +176,54 @@ func runUp(args []string) error {
 	return daemon.Run(daemon.Options{Addr: addr, RepoRoot: root, BotsDir: filepath.Join(root, "bots")})
 }
 
+// runConnect handles `nanobots connect <service>`. Today that's just
+// "google": a one-time interactive OAuth round trip (see
+// internal/google.Connect) whose refresh token gets stored in 1Claw's vault,
+// never on local disk — every bot with a Google service and
+// `connection: oauth_native` then shares this one connected account (see
+// docs/connections.md).
+func runConnect(args []string) error {
+	if len(args) != 1 || args[0] != "google" {
+		return fmt.Errorf("usage: nanobots connect google")
+	}
+	clientID, err := google.LoadClientID("")
+	if err != nil {
+		return err
+	}
+	if clientID == "" {
+		return fmt.Errorf("GOOGLE_OAUTH_CLIENT_ID is not set — add it to ~/.secrets/nanobots.env " +
+			"(a Google Cloud \"Desktop app\" OAuth client id; see docs/connections.md)")
+	}
+	apiKey, err := oneclaw.LoadAPIKey("")
+	if err != nil {
+		return err
+	}
+	oc := oneclaw.NewClient(apiKey)
+	if !oc.Configured() {
+		return fmt.Errorf("ONECLAW_API_KEY is not set — the connected account's refresh token needs a 1Claw vault to live in")
+	}
+
+	fmt.Println("Opening your browser to sign in to Google — grant access, then come back here.")
+	tr, err := google.Connect(context.Background(), clientID, google.DefaultScopes)
+	if err != nil {
+		return err
+	}
+	if tr.RefreshToken == "" {
+		return fmt.Errorf("google did not return a refresh token — try again (this can happen if consent wasn't re-prompted)")
+	}
+
+	vault, err := oc.EnsureVault("nanobots-main")
+	if err != nil {
+		return fmt.Errorf("ensure 1Claw vault: %w", err)
+	}
+	if err := oc.PutSecret(vault.ID, "google/refresh_token", tr.RefreshToken); err != nil {
+		return fmt.Errorf("store refresh token in 1Claw vault: %w", err)
+	}
+	fmt.Println("Connected. Gmail/Drive/Sheets bots with connection: oauth_native can now run live " +
+		"(restart nanobotd if it's already running).")
+	return nil
+}
+
 // runRun runs one swarm to completion without the WebUI: it starts the same
 // orchestrator + callback server nanobotd would, on an ephemeral port, prints
 // the log as it happens, and prompts on the terminal for any `approve` step
@@ -230,6 +283,17 @@ func runRun(args []string) error {
 		return err
 	}
 
+	var googleCfg step.GoogleConfig
+	if clientID, err := google.LoadClientID(""); err != nil {
+		return err
+	} else if clientID != "" && oc.Configured() {
+		vault, err := oc.EnsureVault("nanobots-main")
+		if err != nil {
+			return fmt.Errorf("ensure 1Claw vault for Google credentials: %w", err)
+		}
+		googleCfg = step.GoogleConfig{ClientID: clientID, VaultID: vault.ID}
+	}
+
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return err
@@ -243,6 +307,7 @@ func runRun(args []string) error {
 		CallbackAddr: "http://host.docker.internal:" + port,
 		Callbacks:    callbacks, OneClaw: oc, AgentStateDir: stateDir,
 		RunWorkDir: runWorkDir, BlobDir: filepath.Join(home, ".nanobots", "blobs"),
+		Google: googleCfg,
 	}
 	srv := &api.Server{
 		Orchestrator: orch, Runs: runner.NewRunStore(), Callbacks: callbacks,

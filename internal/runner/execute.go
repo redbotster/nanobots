@@ -27,6 +27,7 @@ type Orchestrator struct {
 	AgentStateDir string
 	RunWorkDir    string // per-run container workspaces live under here
 	BlobDir       string // nanobotd's own persistent blob store
+	Google        step.GoogleConfig
 }
 
 // ExecuteSwarm plans swarmPath, then runs it in the background, returning
@@ -127,7 +128,7 @@ func (o *Orchestrator) runBot(run *Run, rs *planner.ResolvedSwarm, botID string,
 	if err != nil {
 		return err
 	}
-	deps := BuildDeps(run, botID, nb, o.OneClaw, agentID, agentAPIKey, blobs)
+	deps := BuildDeps(run, botID, nb, o.OneClaw, agentID, agentAPIKey, blobs, o.Google)
 
 	token := uuid.NewString()
 	o.Callbacks.Register(token, deps)

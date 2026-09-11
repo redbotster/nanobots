@@ -25,20 +25,31 @@ import (
 
 const DefaultBaseURL = "https://api.1claw.co"
 
-// LoadAPIKey reads ONECLAW_API_KEY from a dotenv-style file (KEY=VALUE per
-// line, '#' comments allowed). path defaults to $NANOBOTS_ENV_FILE, then
-// ~/.secrets/nanobots.env. Returns ("", nil) if the file or the key is
-// absent — the caller decides whether that means "run in demo mode".
-func LoadAPIKey(path string) (string, error) {
-	if path == "" {
-		path = os.Getenv("NANOBOTS_ENV_FILE")
+// DefaultEnvFilePath resolves the dotenv file every LoadEnvValue caller
+// reads from by default: $NANOBOTS_ENV_FILE, falling back to
+// ~/.secrets/nanobots.env.
+func DefaultEnvFilePath() (string, error) {
+	if p := os.Getenv("NANOBOTS_ENV_FILE"); p != "" {
+		return p, nil
 	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return home + "/.secrets/nanobots.env", nil
+}
+
+// LoadEnvValue reads one KEY=VALUE line out of a dotenv-style file ('#'
+// comments allowed, quotes around the value stripped). path="" uses
+// DefaultEnvFilePath(). Returns ("", nil) if the file or the key is absent —
+// callers decide what an absent value means for them.
+func LoadEnvValue(path, key string) (string, error) {
 	if path == "" {
-		home, err := os.UserHomeDir()
+		var err error
+		path, err = DefaultEnvFilePath()
 		if err != nil {
 			return "", err
 		}
-		path = home + "/.secrets/nanobots.env"
 	}
 	f, err := os.Open(path)
 	if err != nil {
@@ -56,7 +67,7 @@ func LoadAPIKey(path string) (string, error) {
 			continue
 		}
 		k, v, ok := strings.Cut(line, "=")
-		if !ok || strings.TrimSpace(k) != "ONECLAW_API_KEY" {
+		if !ok || strings.TrimSpace(k) != key {
 			continue
 		}
 		v = strings.TrimSpace(v)
@@ -64,6 +75,14 @@ func LoadAPIKey(path string) (string, error) {
 		return v, nil
 	}
 	return "", sc.Err()
+}
+
+// LoadAPIKey reads ONECLAW_API_KEY from a dotenv-style file. path defaults
+// to $NANOBOTS_ENV_FILE, then ~/.secrets/nanobots.env. Returns ("", nil) if
+// the file or the key is absent — the caller decides whether that means
+// "run in demo mode".
+func LoadAPIKey(path string) (string, error) {
+	return LoadEnvValue(path, "ONECLAW_API_KEY")
 }
 
 // Client is a 1Claw Human API client bound to one API key.

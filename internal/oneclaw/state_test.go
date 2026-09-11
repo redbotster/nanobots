@@ -32,6 +32,22 @@ func TestLoadAPIKeyMissingFileReturnsEmpty(t *testing.T) {
 	}
 }
 
+func TestLoadEnvValueReadsAnyKeyFromTheSameFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "nanobots.env")
+	content := "ONECLAW_API_KEY=1ck_abc123\nGOOGLE_OAUTH_CLIENT_ID=123-abc.apps.googleusercontent.com\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := LoadEnvValue(path, "GOOGLE_OAUTH_CLIENT_ID")
+	if err != nil {
+		t.Fatalf("LoadEnvValue: %v", err)
+	}
+	if got != "123-abc.apps.googleusercontent.com" {
+		t.Errorf("got = %q", got)
+	}
+}
+
 func TestAgentCredentialRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	if err := saveAgentCredential(dir, "bot-a", agentCredential{AgentID: "a1", APIKey: "ocv_x"}); err != nil {

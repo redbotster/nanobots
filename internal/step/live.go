@@ -30,6 +30,13 @@ type LiveDeps struct {
 
 	// Approver, when set, overrides Approve entirely (see Approve below).
 	Approver Approver
+
+	// Google configures direct Gmail/Drive/Sheets access for services with
+	// provider: google and a non-demo connection (see google_live.go). Zero
+	// value means "not configured" — such a service call fails with a clear
+	// error rather than silently falling back to anything.
+	Google   GoogleConfig
+	googleTS *googleTokenSource
 }
 
 func NewLiveDeps(oc *oneclaw.Client, shroud *oneclaw.ShroudClient, agentID, fixturesDir string, blobs BlobStore) *LiveDeps {
@@ -55,6 +62,13 @@ func NewLiveDeps(oc *oneclaw.Client, shroud *oneclaw.ShroudClient, agentID, fixt
 func (l *LiveDeps) ServiceCall(svc schema.Service, op string, params map[string]any) (any, error) {
 	if svc.Connection == schema.ConnectionDemo || svc.Connection == "" {
 		return l.Demo.ServiceCall(svc, op, params)
+	}
+	if svc.Provider == "google" {
+		client, err := l.googleClient()
+		if err != nil {
+			return nil, err
+		}
+		return dispatchGoogle(client, op, params, l.Blobstore)
 	}
 	call := func() (*oneclaw.ExecuteResult, error) {
 		return l.OneClaw.Execute(l.AgentID, svc.ID, "http", map[string]any{"op": op, "params": params})
