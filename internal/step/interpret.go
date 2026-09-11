@@ -78,10 +78,11 @@ func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, deps Deps) (*R
 
 		case "memory.get":
 			// Best-effort: memory is "since last run" bookkeeping, not a
-			// correctness requirement — a backend that can't store it yet
-			// (e.g. TODO(1claw#memory-enable): memory_enabled has no
-			// documented way to turn on via the public API) degrades to
-			// "nothing remembered" rather than failing the whole run.
+			// correctness requirement — a backend that can't store it for
+			// any reason degrades to "nothing remembered" rather than
+			// failing the whole run. (Was load-bearing for a real gap —
+			// memory_enabled had no way to turn on via the public API —
+			// fixed in @1claw/openapi-spec 0.61.1; see docs/oneclaw-bridge.md.)
 			var found bool
 			var memErr error
 			out, found, memErr = deps.MemoryGet(nb.Metadata.Name, s.Key)

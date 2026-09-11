@@ -25,6 +25,17 @@ type CreateAgentRequest struct {
 	SystemPrompt            string        `json:"system_prompt,omitempty"`
 	ExecutionIntentsEnabled bool          `json:"execution_intents_enabled,omitempty"`
 	VaultIDs                []string      `json:"vault_ids,omitempty"`
+	// MemoryEnabled turns on durable key-value/semantic memory for this
+	// agent. Added to @1claw/openapi-spec in 0.61.1 — see
+	// docs/oneclaw-bridge.md for the gap this closed.
+	MemoryEnabled bool `json:"memory_enabled,omitempty"`
+}
+
+// UpdateAgentRequest is the (partial) request body for PATCH
+// /v1/agents/{agent_id}. Only the field Nanobots actually needs to flip
+// post-creation is included.
+type UpdateAgentRequest struct {
+	MemoryEnabled *bool `json:"memory_enabled,omitempty"`
 }
 
 // Agent mirrors the subset of the live Agent object Nanobots reads back.
@@ -34,6 +45,7 @@ type Agent struct {
 	Description   string `json:"description,omitempty"`
 	IsActive      bool   `json:"is_active"`
 	ShroudEnabled bool   `json:"shroud_enabled"`
+	MemoryEnabled bool   `json:"memory_enabled"`
 	CreatedAt     string `json:"created_at,omitempty"`
 }
 
@@ -52,6 +64,17 @@ func (c *Client) ListAgents() ([]Agent, error) {
 		return nil, err
 	}
 	return resp.Agents, nil
+}
+
+// UpdateAgent patches an existing agent — the only current use is flipping
+// memory_enabled on for an agent created before that field existed on
+// CreateAgentRequest (see docs/oneclaw-bridge.md).
+func (c *Client) UpdateAgent(agentID string, req UpdateAgentRequest) (*Agent, error) {
+	var agent Agent
+	if err := c.do("PATCH", "/v1/agents/"+agentID, req, &agent); err != nil {
+		return nil, err
+	}
+	return &agent, nil
 }
 
 // CreateAgent registers a new agent. The returned api_key (ocv_...) is shown

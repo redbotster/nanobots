@@ -140,6 +140,7 @@ func agentRequestFor(nb *schema.Nanobot) oneclaw.CreateAgentRequest {
 	g := nb.Spec.Guardrails
 	return oneclaw.CreateAgentRequest{
 		ShroudEnabled: true,
+		MemoryEnabled: true,
 		ShroudConfig: &oneclaw.ShroudConfig{
 			PIIPolicy:             orDefault(g.PII, "redact"),
 			InjectionThreshold:    orDefaultF(g.InjectionThreshold, 0.7),

@@ -15,9 +15,11 @@ The Human API key lives only in `nanobotd`'s process memory, loaded once at star
 
 For each bot instance in a run, `internal/runner.Orchestrator` calls `EnsureAgent` — find-or-create a 1Claw agent named `nanobots-<bot-name>`, with `shroud_enabled: true` and a `shroud_config` built from the bot's own `spec.guardrails` (`pii`, `injection_threshold`, `daily_budget_usd`) and `spec.model.provider`. That agent's id + key become the `LiveDeps` a bot's steps run against — see `docs/bot-contract.md` for how a step actually reaches this from inside a container.
 
-## A known gap
+## A gap that got fixed mid-build
 
-`memory_enabled` shows up on `GET /v1/agents` responses but isn't a settable field on either `CreateAgentRequest` or `UpdateAgentRequest` in `@1claw/openapi-spec@0.61.0`, despite `docs.1claw.co` claiming a `PATCH` works. `memory.get`/`memory.put` steps degrade gracefully (log a warning, continue) rather than fail a run over it — see the TODO in `internal/step/interpret.go`.
+`memory_enabled` originally showed up on `GET /v1/agents` responses but wasn't a settable field on either `CreateAgentRequest` or `UpdateAgentRequest` in `@1claw/openapi-spec@0.61.0`, so a normally-created agent 403'd on its first `memory.put`. Filed with the exact repro; the 1Claw team shipped `memory_enabled` on both request schemas in `0.61.1`. `internal/runner.agentRequestFor` now sets it on every new agent, and `Client.UpdateAgent` (`PATCH /v1/agents/{agent_id}`) exists to flip it on an agent created before the fix — used once, live, to fix the two example bots' own agents.
+
+`memory.get`/`memory.put` steps still degrade gracefully (log a warning, continue) rather than fail a run outright if a memory call ever fails for some other reason — it's "since last run" bookkeeping, not a correctness requirement, so that defense stays even though the root cause here is fixed.
 
 ## Try it
 
