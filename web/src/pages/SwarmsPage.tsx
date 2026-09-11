@@ -187,7 +187,7 @@ export function SwarmsPage({ uiMode }: { uiMode: UIMode }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-display text-xl font-medium text-ink">Swarms</h1>
-          <p className="mt-1 text-sm text-muted">
+          <p className="mt-1 hidden text-sm text-muted sm:block">
             Saved graphs of bots snapped together — pick one to see it run, live.
           </p>
         </div>
@@ -272,8 +272,11 @@ export function SwarmsPage({ uiMode }: { uiMode: UIMode }) {
         ))}
       </div>
 
+      {swarms === null && !error && (
+        <p className="mt-5 text-sm text-muted/60">Loading swarms…</p>
+      )}
       {swarms?.length === 0 && (
-        <p className="mt-8 text-sm text-muted">
+        <p className="mt-6 text-sm text-muted">
           No swarms found in examples/swarms/.
         </p>
       )}

@@ -4,14 +4,18 @@ export function Switch({
   checked,
   onCheckedChange,
   label,
+  labelClassName = "",
 }: {
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   label?: string;
+  /** Lets a caller hide the text label at narrow widths (the switch itself
+   * still reads fine on its own) without duplicating this component. */
+  labelClassName?: string;
 }) {
   return (
     <label className="flex items-center gap-2 text-xs text-muted">
-      {label}
+      {label && <span className={labelClassName}>{label}</span>}
       <RadixSwitch.Root
         checked={checked}
         onCheckedChange={onCheckedChange}

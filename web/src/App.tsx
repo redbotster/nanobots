@@ -64,8 +64,12 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   }, []);
 
   return (
-    <div className="grid h-screen grid-rows-[56px_1fr] pb-16 sm:pb-0 sm:grid-cols-[200px_1fr]">
-      <header className="col-span-full flex items-center gap-5 border-b border-edge bg-void/80 px-5 backdrop-blur">
+    // min-w-0 matters: without it the implicit grid column sizes to the
+    // header's min-content width, and a too-wide header drags the entire
+    // shell into horizontal scroll on a phone (it did — 429px on a 390px
+    // viewport) rather than the header itself adapting.
+    <div className="grid h-screen min-w-0 grid-rows-[56px_1fr] pb-16 sm:pb-0 sm:grid-cols-[200px_1fr]">
+      <header className="col-span-full flex min-w-0 items-center gap-3 border-b border-edge bg-void/80 px-4 backdrop-blur sm:gap-5 sm:px-5">
         <button
           onClick={onLogout}
           className="flex items-center gap-2.5 font-display text-lg font-bold tracking-[0.14em] text-ink"
@@ -74,41 +78,59 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           <span className="inline-block h-5 w-2.5 bg-tron shadow-glow-sm" />
           nanobots
         </button>
-        <div className="ml-auto flex items-center gap-4">
+        {/* Everything here degrades to icon-only at phone widths — the dot
+            alone still says "connected / demo / unreachable", and each
+            control keeps a title for the full wording. */}
+        <div className="ml-auto flex min-w-0 items-center gap-3 sm:gap-4">
           {notifyPermission === "default" && (
             <button
               onClick={enableNotifications}
-              className="text-xs text-muted underline decoration-dotted hover:text-ink"
+              className="shrink-0 text-xs text-muted underline decoration-dotted hover:text-ink"
               title="Get a browser notification the moment something needs your approval"
             >
-              🔔 Enable approval alerts
+              🔔<span className="hidden sm:inline"> Enable approval alerts</span>
             </button>
           )}
           <Switch
             checked={uiMode === "advanced"}
             onCheckedChange={(checked) => setUiMode(checked ? "advanced" : "basic")}
             label="Advanced"
+            labelClassName="hidden sm:inline"
           />
-          <div className="flex items-center gap-2 text-xs text-muted">
-          {apiUnreachable ? (
-            <>
-              <StatusDot tone="danger" />
-              nanobotd unreachable — run{" "}
-              <code className="text-ink">nanobots up</code>
-            </>
-          ) : status ? (
-            <>
-              <StatusDot tone={status.oneclaw_configured ? "ok" : "warn"} />
-              {status.oneclaw_configured
-                ? "1Claw connected"
-                : "Demo mode — no 1Claw key configured"}
-            </>
-          ) : (
-            <>
-              <StatusDot />
-              connecting…
-            </>
-          )}
+          <div
+            className="flex min-w-0 items-center gap-2 text-xs text-muted"
+            title={
+              apiUnreachable
+                ? "nanobotd unreachable — run `nanobots up`"
+                : status
+                  ? status.oneclaw_configured
+                    ? "1Claw connected"
+                    : "Demo mode — no 1Claw key configured"
+                  : "connecting…"
+            }
+          >
+            {apiUnreachable ? (
+              <>
+                <StatusDot tone="danger" />
+                <span className="hidden truncate sm:inline">
+                  nanobotd unreachable — run <code className="text-ink">nanobots up</code>
+                </span>
+              </>
+            ) : status ? (
+              <>
+                <StatusDot tone={status.oneclaw_configured ? "ok" : "warn"} />
+                <span className="hidden truncate sm:inline">
+                  {status.oneclaw_configured
+                    ? "1Claw connected"
+                    : "Demo mode — no 1Claw key configured"}
+                </span>
+              </>
+            ) : (
+              <>
+                <StatusDot />
+                <span className="hidden truncate sm:inline">connecting…</span>
+              </>
+            )}
           </div>
         </div>
       </header>

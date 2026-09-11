@@ -14,7 +14,9 @@ const tone: Record<Run["status"], "ok" | "warn" | "danger" | "muted"> = {
 };
 
 export function RunsPage() {
-  const [runs, setRuns] = useState<Run[]>([]);
+  // null (not []) until the first fetch lands, so the empty state doesn't
+  // flash "nothing has run yet" at someone who does in fact have runs.
+  const [runs, setRuns] = useState<Run[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -28,13 +30,13 @@ export function RunsPage() {
     return <RunDetail runId={selectedId} onBack={() => setSelectedId(null)} />;
   }
 
-  const sorted = [...runs].sort((a, b) => b.started_at.localeCompare(a.started_at));
+  const sorted = [...(runs ?? [])].sort((a, b) => b.started_at.localeCompare(a.started_at));
   const needsApproval = sorted.filter((r) => r.status === "awaiting_approval");
 
   return (
     <div className="h-full overflow-auto p-5 sm:p-6">
       <h1 className="font-display text-xl font-medium text-ink">Runs</h1>
-      <p className="mt-1 text-sm text-muted">
+      <p className="mt-1 hidden text-sm text-muted sm:block">
         Every time a swarm ran this session, local to this nanobotd — history
         doesn't persist across a restart yet. Click one to watch it live or
         see what it produced, even if it started somewhere else.
@@ -48,8 +50,9 @@ export function RunsPage() {
         </div>
       )}
 
-      {sorted.length === 0 && (
-        <p className="mt-8 text-sm text-muted">
+      {runs === null && <p className="mt-6 text-sm text-muted/60">Loading runs…</p>}
+      {runs !== null && sorted.length === 0 && (
+        <p className="mt-6 text-sm text-muted">
           Nothing has run yet. Open a swarm and hit Run once.
         </p>
       )}

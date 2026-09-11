@@ -45,7 +45,7 @@ export function BotLibrary() {
   return (
     <div className="h-full overflow-auto p-5 sm:p-6">
       <h1 className="font-display text-xl font-medium text-ink">Bot library</h1>
-      <p className="mt-1 text-sm text-muted">
+      <p className="mt-1 hidden text-sm text-muted sm:block">
         Every bot declares typed ports — any bot here can be snapped into a
         swarm you build, including ones nobody's thought of yet. Flip a
         service's switch to connect an account and make that bot run for
@@ -85,8 +85,11 @@ export function BotLibrary() {
         </section>
       ))}
 
+      {bots === null && !error && (
+        <p className="mt-5 text-sm text-muted/60">Loading bots…</p>
+      )}
       {bots?.length === 0 && (
-        <p className="mt-8 text-sm text-muted">
+        <p className="mt-6 text-sm text-muted">
           No bots found in the bots/ directory.
         </p>
       )}
