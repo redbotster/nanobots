@@ -181,6 +181,18 @@ export function BuilderPage({
 
   const removeSnap = (index: number) => setSnaps((prev) => prev.filter((_, i) => i !== index));
 
+  // Lets a human pick a nested field of a json/list<json> output from the
+  // Inspector (e.g. "recap.recap_json" -> "recap.recap_json.headline")
+  // instead of only ever being possible by hand-editing the saved YAML —
+  // the canvas itself still only draws whole-port-to-port lines (see
+  // BuilderCanvas's own doc comment), so this is deliberately a text
+  // suffix on the existing connection, not a new visual affordance. A bad
+  // field name surfaces exactly the way any other type mismatch already
+  // does: a real validation error from the same planner a save goes
+  // through, not a silent acceptance.
+  const editSnapFrom = (index: number, newFrom: string) =>
+    setSnaps((prev) => prev.map((s, i) => (i === index ? { ...s, from: newFrom } : s)));
+
   const selectedBot = bots.find((b) => b.instanceId === selected) ?? null;
   const selectedDef = selectedBot ? botDefs[selectedBot.botId] : null;
 
@@ -306,6 +318,7 @@ export function BuilderPage({
                   [selectedBot.instanceId]: { ...prev[selectedBot.instanceId], [port]: value },
                 }))
               }
+              onEditSnapFrom={editSnapFrom}
               onClose={() => setSelected(null)}
             />
           )}

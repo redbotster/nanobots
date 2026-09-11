@@ -112,6 +112,34 @@ func TestHandleListSwarms(t *testing.T) {
 	}
 }
 
+func TestHandleListSwarmsReportsServiceLiveness(t *testing.T) {
+	srv := testServer(t)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/api/swarms", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var swarms []SwarmSummary
+	if err := json.Unmarshal(rec.Body.Bytes(), &swarms); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	var found *SwarmSummary
+	for i := range swarms {
+		if swarms[i].Name == "daily-email-recap" || strings.Contains(swarms[i].Path, "daily-email-recap") {
+			found = &swarms[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("daily-email-recap not found in listing")
+	}
+	if found.ServicesTotal == 0 {
+		t.Error("expected daily-email-recap to declare at least one service")
+	}
+	if found.ServicesLive != 0 {
+		t.Errorf("ServicesLive = %d, want 0 — every shipped bot defaults to connection: demo", found.ServicesLive)
+	}
+}
+
 func TestHandlePlan(t *testing.T) {
 	srv := testServer(t)
 	root := repoRoot(t)

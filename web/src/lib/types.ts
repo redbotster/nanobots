@@ -128,6 +128,8 @@ export interface SwarmSummary {
   path: string;
   name: string;
   description: string;
+  services_live: number;
+  services_total: number;
 }
 
 /** One bot instance in a swarm draft, as the visual builder edits it — the
@@ -183,11 +185,49 @@ export interface ConnectionStatus {
   connected: boolean;
 }
 
-/** The "head nanobot" composer's response: a draft swarm assembled from a
- * plain-English request, already validated against the real planner —
- * see internal/api/compose.go. Never auto-saved; only ever handed to the
- * builder for a human to review. */
+/** When the composer determines no combination of the real catalog can
+ * satisfy a request, it returns this instead of a draft — see
+ * internal/api/compose.go's composeGapPayload. The WebUI offers to start a
+ * foundry job (see FoundryJob) from here, but only if the human opts in. */
+export interface ComposeGap {
+  missing_capability: string;
+  suggested_inputs?: Port[];
+  suggested_outputs?: Port[];
+}
+
+/** The "head nanobot" composer's response: either a draft swarm assembled
+ * from a plain-English request, already validated against the real
+ * planner (never auto-saved; only ever handed to the builder for a human
+ * to review), or a declared gap — never both. See internal/api/compose.go. */
 export interface ComposeResult {
-  draft: SaveSwarmRequest;
-  plan: PlanResult;
+  draft?: SaveSwarmRequest;
+  plan?: PlanResult;
+  gap?: ComposeGap;
+}
+
+/** The subset of a run/job's shape RunLog actually reads — widened from
+ * Run so the same log+approval UI renders a foundry job identically to a
+ * swarm run, without RunLog needing to know which one it's showing. */
+export interface LoggableJob {
+  id: string;
+  log: LogEntry[];
+  pending_approvals: PendingApproval[] | null;
+}
+
+/** One foundry job (internal/foundry.Job, wire shape from
+ * internal/api/foundry.go's foundryJobToJSON) — the escalation path behind
+ * a composer gap. `bot` only appears once conformance passes, just before
+ * the human review gate opens. */
+export interface FoundryJob extends LoggableJob {
+  status: RunStatus;
+  started_at: string;
+  finished_at?: string;
+  error?: string;
+  request: string;
+  missing_capability: string;
+  bot_id?: string;
+  iterations: number;
+  conform_ok: boolean;
+  outcome?: "promoted" | "rejected" | "conform_failed" | "sandbox_violation" | "timeout" | "";
+  bot?: BotSummary;
 }

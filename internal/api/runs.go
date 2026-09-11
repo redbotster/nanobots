@@ -81,10 +81,10 @@ func runToJSON(run *runner.Run) map[string]any {
 	return map[string]any{
 		"id":                run.ID,
 		"swarm_name":        run.SwarmName,
-		"status":            run.Status,
+		"status":            run.GetStatus(),
 		"started_at":        run.StartedAt,
-		"finished_at":       run.FinishedAt,
-		"error":             run.Error,
+		"finished_at":       run.GetFinishedAt(),
+		"error":             run.GetError(),
 		"log":               run.LogEntries(),
 		"pending_approvals": pending,
 		"outputs":           run.AllOutputs(),

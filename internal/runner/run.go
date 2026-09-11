@@ -136,6 +136,32 @@ func (r *Run) SetError(err error) {
 	r.mu.Unlock()
 }
 
+// GetStatus/GetError/GetFinishedAt are synchronized reads of the fields
+// SetStatus/SetError mutate under r.mu — found necessary (not
+// hypothetical: caught by go test -race) once a second consumer besides
+// this run's own goroutine started polling a live run's JSON shape
+// (internal/foundry's Job embeds *Run and is polled the same way an
+// in-progress swarm run already was via runToJSON). ID/SwarmName/StartedAt
+// are write-once at NewRun and never mutated again, so reading them
+// directly elsewhere isn't a race the same way.
+func (r *Run) GetStatus() RunStatus {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.Status
+}
+
+func (r *Run) GetError() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.Error
+}
+
+func (r *Run) GetFinishedAt() time.Time {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.FinishedAt
+}
+
 func (r *Run) SetBotOutputs(botID string, outputs map[string]any) {
 	r.mu.Lock()
 	r.outputs[botID] = outputs

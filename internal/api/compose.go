@@ -16,6 +16,7 @@ import (
 
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/planner"
+	"github.com/redbotster/nanobots/internal/schema"
 )
 
 const composeAgentName = "nanobots-composer"
@@ -24,9 +25,25 @@ type composeRequest struct {
 	Message string `json:"message"`
 }
 
+// composeGapPayload is what the model returns instead of a draft when it
+// determines no combination of the real catalog can satisfy the request —
+// see composePrompt's second legal output shape. This is what a caller
+// (the WebUI's gap panel, eventually the foundry) uses to brief a coding
+// agent on exactly what's missing, rather than guessing from a rejected
+// draft.
+type composeGapPayload struct {
+	MissingCapability string              `json:"missing_capability"`
+	SuggestedInputs   []schema.InputPort  `json:"suggested_inputs,omitempty"`
+	SuggestedOutputs  []schema.OutputPort `json:"suggested_outputs,omitempty"`
+}
+
+// composeResponse carries exactly one of Draft or Gap, never both — a
+// pointer/omitempty pair rather than a single struct, since a gap has no
+// meaningful zero-value draft to fall back on.
 type composeResponse struct {
-	Draft saveSwarmRequest `json:"draft"`
-	Plan  planResponse     `json:"plan"`
+	Draft *saveSwarmRequest  `json:"draft,omitempty"`
+	Plan  *planResponse      `json:"plan,omitempty"`
+	Gap   *composeGapPayload `json:"gap,omitempty"`
 }
 
 func (s *Server) handleCompose(w http.ResponseWriter, r *http.Request) {
@@ -69,18 +86,20 @@ func (s *Server) handleCompose(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("compose: %w", err))
 		return
 	}
-	draft, err := parseComposeDraft(raw)
+	draft, gap, err := parseComposeResponse(raw)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("compose produced an unusable response: %w", err))
+		return
+	}
+	if gap != nil {
+		writeJSON(w, http.StatusOK, composeResponse{Gap: gap})
 		return
 	}
 
 	sw := draftToNanoswarm(draft.Name, draft.Description, "", draft.Bots, draft.Snaps)
 	result, resolveErr := planner.PlanSwarm(sw, s.BotsDir)
-	writeJSON(w, http.StatusOK, composeResponse{
-		Draft: draft,
-		Plan:  buildPlanResponse(draft.Name, result, resolveErr),
-	})
+	plan := buildPlanResponse(draft.Name, result, resolveErr)
+	writeJSON(w, http.StatusOK, composeResponse{Draft: draft, Plan: &plan})
 }
 
 // composePrompt enumerates the real, live catalog — id, name, description,
@@ -135,26 +154,57 @@ Rules:
 - If a bot's required input isn't fed by a snap, either give it a literal value in that bot's own "inputs" map, or leave it for the human to fill in — never invent a snap from a port that doesn't exist to satisfy it.
 - Prefer bots whose job already includes an approval gate (their bot.md/description says so) for anything that sends, posts, pays, or deletes.
 - Output raw JSON only, no prose, no markdown fences.
+
+If, and only if, no combination of the catalog above — even with reasonable snaps — can accomplish this request, respond instead with exactly this shape and nothing else:
+
+{
+  "gap": true,
+  "missing_capability": "one precise sentence describing what capability is missing",
+  "suggested_inputs": [{"name": "...", "type": "..."}],
+  "suggested_outputs": [{"name": "...", "type": "..."}]
+}
+
+Only use this if the catalog genuinely cannot do it — don't reach for it just because the best-fit swarm is a little awkward.
 `)
 	return b.String()
 }
 
-// parseComposeDraft tolerates a model wrapping its JSON in a markdown code
-// fence (a common enough real-world response shape that internal/step's own
-// ai.generate handling strips it too) before parsing.
-func parseComposeDraft(raw string) (saveSwarmRequest, error) {
+// parseComposeResponse tolerates a model wrapping its JSON in a markdown
+// code fence (a common enough real-world response shape that internal/step's
+// own ai.generate handling strips it too), then peeks at a "gap" discriminator
+// before committing to either full unmarshal — see composeGapPayload's doc
+// comment for what a gap response means and who consumes it.
+func parseComposeResponse(raw string) (draft *saveSwarmRequest, gap *composeGapPayload, err error) {
 	cleaned := strings.TrimSpace(raw)
 	cleaned = strings.TrimPrefix(cleaned, "```json")
 	cleaned = strings.TrimPrefix(cleaned, "```")
 	cleaned = strings.TrimSuffix(cleaned, "```")
 	cleaned = strings.TrimSpace(cleaned)
 
-	var draft saveSwarmRequest
-	if err := json.Unmarshal([]byte(cleaned), &draft); err != nil {
-		return saveSwarmRequest{}, fmt.Errorf("model response was not valid JSON: %w", err)
+	var peek struct {
+		Gap bool `json:"gap"`
 	}
-	if draft.Name == "" {
-		return saveSwarmRequest{}, fmt.Errorf("model response had no swarm name")
+	if err := json.Unmarshal([]byte(cleaned), &peek); err != nil {
+		return nil, nil, fmt.Errorf("model response was not valid JSON: %w", err)
 	}
-	return draft, nil
+
+	if peek.Gap {
+		var g composeGapPayload
+		if err := json.Unmarshal([]byte(cleaned), &g); err != nil {
+			return nil, nil, fmt.Errorf("model's gap response was malformed: %w", err)
+		}
+		if strings.TrimSpace(g.MissingCapability) == "" {
+			return nil, nil, fmt.Errorf("model declared a gap but gave no missing_capability")
+		}
+		return nil, &g, nil
+	}
+
+	var d saveSwarmRequest
+	if err := json.Unmarshal([]byte(cleaned), &d); err != nil {
+		return nil, nil, fmt.Errorf("model response was not valid JSON: %w", err)
+	}
+	if d.Name == "" {
+		return nil, nil, fmt.Errorf("model response had no swarm name")
+	}
+	return &d, nil, nil
 }

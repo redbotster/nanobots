@@ -123,14 +123,62 @@ func TestHandleComposeRejectsUnparsableModelResponse(t *testing.T) {
 	}
 }
 
-func TestParseComposeDraftStripsMarkdownCodeFence(t *testing.T) {
+func TestParseComposeResponseStripsMarkdownCodeFence(t *testing.T) {
 	raw := "```json\n{\"name\": \"X\", \"bots\": [], \"snaps\": []}\n```"
-	draft, err := parseComposeDraft(raw)
+	draft, gap, err := parseComposeResponse(raw)
 	if err != nil {
-		t.Fatalf("parseComposeDraft: %v", err)
+		t.Fatalf("parseComposeResponse: %v", err)
+	}
+	if gap != nil {
+		t.Fatalf("expected no gap, got %+v", gap)
 	}
 	if draft.Name != "X" {
 		t.Errorf("draft = %+v", draft)
+	}
+}
+
+func TestParseComposeResponseParsesAGap(t *testing.T) {
+	raw := `{"gap": true, "missing_capability": "post to a personal blog", "suggested_inputs": [{"name": "post", "type": "string"}]}`
+	draft, gap, err := parseComposeResponse(raw)
+	if err != nil {
+		t.Fatalf("parseComposeResponse: %v", err)
+	}
+	if draft != nil {
+		t.Fatalf("expected no draft, got %+v", draft)
+	}
+	if gap == nil || gap.MissingCapability != "post to a personal blog" {
+		t.Fatalf("gap = %+v", gap)
+	}
+	if len(gap.SuggestedInputs) != 1 || gap.SuggestedInputs[0].Name != "post" {
+		t.Errorf("suggested inputs = %+v", gap.SuggestedInputs)
+	}
+}
+
+func TestParseComposeResponseRejectsGapWithoutMissingCapability(t *testing.T) {
+	raw := `{"gap": true}`
+	if _, _, err := parseComposeResponse(raw); err == nil {
+		t.Fatal("expected an error for a gap with no missing_capability")
+	}
+}
+
+func TestHandleComposeReturnsGapWhenModelDeclaresOne(t *testing.T) {
+	modelResponse := `{"gap": true, "missing_capability": "text my smart lights on and off"}`
+	srv := testServerForCompose(t, modelResponse)
+	body, _ := json.Marshal(composeRequest{Message: "text my smart lights on and off"})
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/compose", bytes.NewReader(body)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 for a declared gap, body: %s", rec.Code, rec.Body.String())
+	}
+	var resp composeResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Draft != nil || resp.Plan != nil {
+		t.Fatalf("expected no draft/plan on a gap response, got %+v", resp)
+	}
+	if resp.Gap == nil || resp.Gap.MissingCapability != "text my smart lights on and off" {
+		t.Fatalf("gap = %+v", resp.Gap)
 	}
 }
 

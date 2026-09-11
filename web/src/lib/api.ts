@@ -3,6 +3,8 @@ import type {
   ComposeResult,
   ConnectableService,
   ConnectionStatus,
+  FoundryJob,
+  Port,
   PlanResult,
   Run,
   SaveSwarmRequest,
@@ -34,6 +36,11 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   status: () => req<StatusResponse>("/api/status"),
+  setupOneClawKey: (apiKey: string) =>
+    req<{ ok: boolean; restart_required: boolean }>("/api/setup/oneclaw-key", {
+      method: "POST",
+      body: JSON.stringify({ api_key: apiKey }),
+    }),
   listBots: () => req<BotSummary[]>("/api/bots"),
   listSwarms: () => req<SwarmSummary[]>("/api/swarms"),
   plan: (path: string) =>
@@ -69,6 +76,11 @@ export const api = {
     req<ConnectionStatus>("/api/connections/x/start", { method: "POST" }),
   connectLinkedInStart: () =>
     req<ConnectionStatus>("/api/connections/linkedin/start", { method: "POST" }),
+  setBotServiceConnection: (botId: string, serviceId: string, live: boolean) =>
+    req<BotSummary>(`/api/bots/${botId}/services/${serviceId}/connection`, {
+      method: "POST",
+      body: JSON.stringify({ live }),
+    }),
   startRun: (swarmPath: string) =>
     req<Run>("/api/runs", {
       method: "POST",
@@ -78,6 +90,28 @@ export const api = {
   listRuns: () => req<Run[]>("/api/runs"),
   decideApproval: (runId: string, approvalId: string, approved: boolean) =>
     req<{ ok: boolean }>(`/api/runs/${runId}/approvals/${approvalId}/decide`, {
+      method: "POST",
+      body: JSON.stringify({ approved, decided_by: "you" }),
+    }),
+  startFoundryJob: (
+    request: string,
+    missingCapability: string,
+    suggestedInputs?: Port[],
+    suggestedOutputs?: Port[],
+  ) =>
+    req<FoundryJob>("/api/foundry", {
+      method: "POST",
+      body: JSON.stringify({
+        request,
+        missing_capability: missingCapability,
+        suggested_inputs: suggestedInputs,
+        suggested_outputs: suggestedOutputs,
+      }),
+    }),
+  getFoundryJob: (id: string) => req<FoundryJob>(`/api/foundry/${id}`),
+  listFoundryJobs: () => req<FoundryJob[]>("/api/foundry"),
+  decideFoundryReview: (jobId: string, approvalId: string, approved: boolean) =>
+    req<{ ok: boolean }>(`/api/foundry/${jobId}/approvals/${approvalId}/decide`, {
       method: "POST",
       body: JSON.stringify({ approved, decided_by: "you" }),
     }),
@@ -95,6 +129,22 @@ export function subscribeRunEvents(
   onEntry: (entry: import("./types").LogEntry) => void,
 ): () => void {
   const source = new EventSource(`/api/runs/${runId}/events`);
+  source.onmessage = (ev) => {
+    try {
+      onEntry(JSON.parse(ev.data));
+    } catch {
+      // ignore malformed frames rather than tearing down the stream
+    }
+  };
+  return () => source.close();
+}
+
+/** Mirrors subscribeRunEvents exactly, for a foundry job's log. */
+export function subscribeFoundryEvents(
+  jobId: string,
+  onEntry: (entry: import("./types").LogEntry) => void,
+): () => void {
+  const source = new EventSource(`/api/foundry/${jobId}/events`);
   source.onmessage = (ev) => {
     try {
       onEntry(JSON.parse(ev.data));

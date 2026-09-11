@@ -1,13 +1,6 @@
 import { useMemo, useState } from "react";
 import type { BotSummary, ConnectionStatus } from "../../lib/types";
-
-function categoryOf(bot: BotSummary): string {
-  const providers = new Set(bot.services.map((s) => s.provider));
-  if (providers.size === 0) return "Utility";
-  if (providers.has("google")) return "Google";
-  if (providers.has("github")) return "GitHub";
-  return [...providers].map((p) => p[0].toUpperCase() + p.slice(1)).join(" + ");
-}
+import { categoryOf } from "../../lib/botCategory";
 
 /** Small "demo" / "live" / "not connected" pills per unique provider a bot
  * declares — "demo" reads the bot's own YAML default (every shipped bot

@@ -23,7 +23,10 @@ import (
 	"time"
 )
 
-const DefaultBaseURL = "https://api.1claw.co"
+// DefaultBaseURL is a var, not a const, purely so tests can point a
+// throwaway Client at an httptest server instead of the real 1Claw API —
+// mirrors DefaultShroudURL in shroud.go for the same reason.
+var DefaultBaseURL = "https://api.1claw.co"
 
 // DefaultEnvFilePath resolves the dotenv file every LoadEnvValue caller
 // reads from by default: $NANOBOTS_ENV_FILE, falling back to
@@ -75,6 +78,72 @@ func LoadEnvValue(path, key string) (string, error) {
 		return v, nil
 	}
 	return "", sc.Err()
+}
+
+// WriteEnvValue upserts one KEY=VALUE line in the same dotenv-style file
+// LoadEnvValue reads — every other line (including comments and every
+// other key) is left exactly as it was. path="" uses DefaultEnvFilePath().
+// Creates the file (and its directory) at mode 0600 if it doesn't exist
+// yet, since this file holds real credentials — matching the sensitivity
+// internal/oneclaw/state.go already treats agent credentials with.
+//
+// This exists so the WebUI's Settings page can offer "paste your key here"
+// for ONECLAW_API_KEY the same way it already does for a Slack/GitHub
+// token — those land in a 1Claw vault; this one can't (nothing can decrypt
+// a vault without it), so the dotenv file is genuinely the only place for
+// it to live, but a human should never have to open a text editor to put
+// it there.
+func WriteEnvValue(path, key, value string) error {
+	if path == "" {
+		var err error
+		path, err = DefaultEnvFilePath()
+		if err != nil {
+			return err
+		}
+	}
+
+	var lines []string
+	if raw, err := os.ReadFile(path); err == nil {
+		lines = strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
+		if len(lines) == 1 && lines[0] == "" {
+			lines = nil
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+
+	newLine := key + "=" + value
+	replaced := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		k, _, ok := strings.Cut(trimmed, "=")
+		if ok && strings.TrimSpace(k) == key {
+			lines[i] = newLine
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		lines = append(lines, newLine)
+	}
+
+	if dir := dirOf(path); dir != "" {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return err
+		}
+	}
+	return os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600)
+}
+
+func dirOf(path string) string {
+	i := strings.LastIndexByte(path, '/')
+	if i < 0 {
+		return ""
+	}
+	return path[:i]
 }
 
 // LoadAPIKey reads ONECLAW_API_KEY from a dotenv-style file. path defaults

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { Run } from "../lib/types";
+import type { LoggableJob } from "../lib/types";
 import { api } from "../lib/api";
 import { Button } from "./Button";
 
@@ -7,8 +7,22 @@ function timeOf(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour12: false });
 }
 
-export function RunLog({ run }: { run: Run | null }) {
+/** Renders a run or a foundry job's live log identically — both are
+ * LoggableJob-shaped (id/log/pending_approvals), so this never needs to
+ * know which one it's showing. onDecide defaults to the swarm-run
+ * approval endpoint; pass FoundryJobPage's own handler to route a
+ * decision to /api/foundry/... instead. */
+export function RunLog({
+  run,
+  onDecide,
+}: {
+  run: LoggableJob | null;
+  onDecide?: (approvalId: string, approved: boolean) => void;
+}) {
   const endRef = useRef<HTMLDivElement>(null);
+  const decide = onDecide ?? ((approvalId: string, approved: boolean) => {
+    if (run) api.decideApproval(run.id, approvalId, approved);
+  });
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
@@ -65,14 +79,11 @@ export function RunLog({ run }: { run: Run | null }) {
             <Button
               variant="ghost"
               className="border-edge text-muted"
-              onClick={() => api.decideApproval(run.id, pa.id, false)}
+              onClick={() => decide(pa.id, false)}
             >
               Skip
             </Button>
-            <Button
-              variant="primary"
-              onClick={() => api.decideApproval(run.id, pa.id, true)}
-            >
+            <Button variant="primary" onClick={() => decide(pa.id, true)}>
               Approve
             </Button>
           </div>

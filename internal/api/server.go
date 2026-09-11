@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"path/filepath"
 
+	"github.com/redbotster/nanobots/internal/foundry"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/runner"
 	"github.com/redbotster/nanobots/internal/step"
@@ -28,6 +29,19 @@ type Server struct {
 	// this repo's real examples/swarms/. Defaults to
 	// filepath.Join(filepath.Dir(BotsDir), "examples", "swarms") when empty.
 	SwarmsDir string
+
+	// Foundry/FoundryJobs back the compose escalation path (see
+	// internal/foundry and internal/api/foundry.go) — nil is fine (the same
+	// "not configured" shape every other optional integration here uses);
+	// handleStartFoundryJob returns a clear error rather than a nil-pointer
+	// panic when they're unset.
+	Foundry     *foundry.Orchestrator
+	FoundryJobs *foundry.JobStore
+
+	// EnvFilePath is where handleSetupOneClawKey writes ONECLAW_API_KEY —
+	// "" resolves to oneclaw.DefaultEnvFilePath(), the same file every
+	// other credential-loading call in this build already reads from.
+	EnvFilePath string
 }
 
 func (s *Server) swarmsDir() string {
@@ -41,7 +55,9 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /api/status", s.handleStatus)
+	mux.HandleFunc("POST /api/setup/oneclaw-key", s.handleSetupOneClawKey)
 	mux.HandleFunc("GET /api/bots", s.handleListBots)
+	mux.HandleFunc("POST /api/bots/{id}/services/{serviceId}/connection", s.handleSetBotServiceConnection)
 	mux.HandleFunc("GET /api/swarms", s.handleListSwarms)
 	mux.HandleFunc("GET /api/swarms/plan", s.handlePlan)
 	mux.HandleFunc("GET /api/swarms/yaml", s.handleSwarmYAML)
@@ -59,6 +75,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/runs/{id}", s.handleGetRun)
 	mux.HandleFunc("GET /api/runs/{id}/events", s.handleRunEvents)
 	mux.HandleFunc("POST /api/runs/{id}/approvals/{approvalID}/decide", s.handleDecideApproval)
+	mux.HandleFunc("POST /api/foundry", s.handleStartFoundryJob)
+	mux.HandleFunc("GET /api/foundry", s.handleListFoundryJobs)
+	mux.HandleFunc("GET /api/foundry/{id}", s.handleGetFoundryJob)
+	mux.HandleFunc("GET /api/foundry/{id}/events", s.handleFoundryJobEvents)
+	mux.HandleFunc("POST /api/foundry/{id}/approvals/{approvalID}/decide", s.handleDecideFoundryReview)
 	mux.HandleFunc("GET /api/blobs/{uri}", s.handleGetBlob)
 
 	mux.HandleFunc("POST /internal/steps/service_call", s.handleStepServiceCall)

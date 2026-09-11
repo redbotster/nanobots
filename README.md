@@ -4,7 +4,7 @@
 
 Nanobots is a local-first system for composing single-job AI/deterministic containers ("nanobots") into typed, DAG-shaped workflows ("nanoswarms"), with secrets, OAuth, LLM routing, and guardrails delegated to [1Claw](https://docs.1claw.co).
 
-The full product spec lives in [`context/NANOBOTS-BLUEPRINT.md`](context/NANOBOTS-BLUEPRINT.md) and [`context/NANOBOTS-CATALOG.md`](context/NANOBOTS-CATALOG.md). Treat those as the source of truth for the YAML schemas and the launch catalog; this README covers what's actually built, and is kept in sync with it — if something here contradicts the code, the code wins. `docs/` has one page per concept — contract, connections, harnesses, approvals, the 1Claw bridge, Browser Bridge — each ending in how to run it for real.
+The full product spec lives in [`context/NANOBOTS-BLUEPRINT.md`](context/NANOBOTS-BLUEPRINT.md) and [`context/NANOBOTS-CATALOG.md`](context/NANOBOTS-CATALOG.md). Treat those as the source of truth for the YAML schemas and the launch catalog; this README covers what's actually built, and is kept in sync with it — if something here contradicts the code, the code wins. `docs/` has one page per concept — contract, connections, harnesses, approvals, the 1Claw bridge, Browser Bridge, the foundry, the scheduler — each ending in how to run it for real.
 
 ## Why nanobots, not one big agent
 
@@ -34,7 +34,8 @@ This repo implements the full 28-brick, 12-swarm launch catalog from `context/NA
 - **A real [1Claw](https://docs.1claw.co) bridge**: Human API key → bearer token exchange, agent creation/deletion, Shroud (LLM proxy) chat completions, vault secrets, agent memory, approval requests, and a Browser Bridge client — all exercised against the real API, not mocked.
 - **Eight real, standalone direct-service clients** for what 1Claw doesn't natively cover: Google (`internal/google` — Gmail, Drive, Sheets, Calendar), Slack (`internal/slack`), GitHub (`internal/github`), Stripe (`internal/stripe`), HubSpot (`internal/hubspot`), X (`internal/x`), LinkedIn (`internal/linkedin`) — each dispatched from `internal/step.LiveDeps` once a bot's service is switched off `connection: demo` **and** a human has connected the account — plus a credential-free `web.fetch` step for reading public pages. X and LinkedIn share a small, provider-agnostic OAuth2+PKCE core (`internal/oauth2pkce`) rather than each hand-rolling Google's original loopback-redirect flow. None of these is the default connection for any bot out of the box (see [What's real vs. simulated](#whats-real-vs-simulated)).
 - **An AI composer** ("the head nanobot" — see below) that turns a plain-English request into a validated draft swarm.
-- **A dead-simple WebUI** (Vite + React + TypeScript + Tailwind + Radix) with a basic/advanced mode toggle, a bot library, a swarm gallery, a live run viewer with SSE log streaming and inline approvals, a Settings page where connecting a service is a button or a pasted token, and a visual swarm builder for anyone who wants to build or tweak by hand.
+- **A dead-simple WebUI** (Vite + React + TypeScript + Tailwind + Radix) with a basic/advanced mode toggle, a bot library (searchable, grouped by service, with a per-service demo/live switch that connects an account inline), a swarm gallery showing at a glance how much of each swarm is live vs. demo, a live run viewer with SSE log streaming and inline approvals, browser notifications when something needs your approval, a Settings page where connecting a service — including 1Claw itself — is a button or a pasted token, and a visual swarm builder (including picking a nested field of a `json` output, not just whole-port connections) for anyone who wants to build or tweak by hand.
+- **A real scheduler**: every catalog swarm's `trigger: {type: cron, ...}` now actually fires — see `docs/scheduler.md`. Previously nothing in this build ever executed one; every run was a human clicking Run.
 
 Not built yet: the `kubernetes`/`apple` compile targets, a real dynamic agent loop (see `docs/harnesses.md` — today's harnesses run a fixed, pre-written step list, not an LLM deciding what to do), enforced network-egress guardrails (reported in a bot's declared guardrails, not actually firewalled), per-item fan-out (every "for each X" swarm processes the first item per run — documented per-swarm, see below), a real OAuth integration for Google Business Profile (`review-responder` stays on `connection: demo`, gap called out in `docs/connections.md`), and the hosted multi-tenant control plane.
 
@@ -52,6 +53,10 @@ Type that into the box at the top of **Swarms** and click **Automate it**. Under
 4. The validated draft opens directly in the visual builder, pre-populated — you see the assembled swarm on the canvas immediately, free to rename, tweak, or delete a node before saving.
 
 **It never saves or runs anything by itself.** Every swarm the composer proposes still goes through the same human-reviews-before-it's-real path as one built by hand — consistent with this whole product's approval-first philosophy: nothing acts without a human seeing it first.
+
+### The foundry — when the catalog genuinely can't do it
+
+If no combination of existing bots can satisfy the request, the composer says so instead of guessing (`{"gap": true, "missing_capability": "..."}`), and the WebUI offers to escalate: a sandboxed coding agent (Claude Code, running inside its own Docker container — see `docs/foundry.md` for why a container and not just CLI permission flags) authors a brand-new bot, self-tests it against the real conformance runner, and opens the same human-approval gate a swarm's `approve` step uses before the bot ever becomes part of the real catalog. Approve it and the composer automatically retries your original request. This needs its own `ANTHROPIC_API_KEY` (see `docs/foundry.md`) — a real, separate prerequisite from `ONECLAW_API_KEY`, since 1Claw's Shroud proxy can't back a multi-turn, tool-using coding session.
 
 ## Basic vs. advanced mode
 
@@ -211,16 +216,18 @@ internal/slack/     real Slack Web API client (chat.postMessage)
 internal/github/    real GitHub REST client (issues.list)
 internal/stripe/    real Stripe REST client (invoices.list)
 internal/hubspot/   real HubSpot CRM REST client (contact search/upsert)
+internal/foundry/   the composer's escalation path — a sandboxed coding agent authors a new bot on a real gap, self-tests it, and gates it behind human approval
+internal/scheduler/ a real cron scheduler — polls examples/swarms/ and fires any swarm whose trigger is due, no dependency
 internal/runner/    Docker-backed orchestrator: builds harness images, runs bots, wires I/O
-internal/api/       REST+SSE handlers, incl. the visual builder's + Connect UI's + AI composer's endpoints and the container callback endpoints
+internal/api/       REST+SSE handlers, incl. the visual builder's + Connect UI's + AI composer's + foundry's endpoints and the container callback endpoints
 internal/daemon/    wires the above together; shared by cmd/nanobotd and `nanobots up`
-harness/            Dockerfiles for the bot runtime images (bare, openclaw)
+harness/            Dockerfiles for the bot runtime images (bare, openclaw) and the foundry's own agent sandbox (foundry-agent)
 schemas/            Generated JSON Schema for Nanobot / Nanoswarm
 bots/               Individual nanobots (nanobot.yaml + instructions + fixtures) — 30 today
 examples/swarms/    Example nanoswarms — 14 today
 web/                WebUI — Vite + React + TypeScript + Tailwind + Radix primitives
-  src/pages/           LandingPage, BotLibrary, SwarmsPage (composer + gallery), SwarmView, BuilderPage, RunsPage, RunDetail, SettingsPage
-  src/components/      shared UI (run log, results, snap trail, YAML drawer, basic/advanced Switch, ...)
+  src/pages/           LandingPage, BotLibrary, SwarmsPage (composer + gallery + gap/foundry flow), SwarmView, BuilderPage, FoundryJobPage, RunsPage, RunDetail, SettingsPage
+  src/components/      shared UI (run log, results, snap trail, YAML drawer, basic/advanced Switch, BotCard, ...)
   src/components/builder/  the visual swarm builder's canvas, grouped palette, and per-node inspector
   src/lib/uiMode.ts    basic/advanced mode hook (localStorage-backed)
 docs/               Concept docs, each ending in how to run it for real

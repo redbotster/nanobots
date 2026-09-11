@@ -4,6 +4,7 @@
 package daemon
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -12,10 +13,12 @@ import (
 	"path/filepath"
 
 	"github.com/redbotster/nanobots/internal/api"
+	"github.com/redbotster/nanobots/internal/foundry"
 	"github.com/redbotster/nanobots/internal/google"
 	"github.com/redbotster/nanobots/internal/linkedin"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/runner"
+	"github.com/redbotster/nanobots/internal/scheduler"
 	"github.com/redbotster/nanobots/internal/step"
 	"github.com/redbotster/nanobots/internal/x"
 )
@@ -103,6 +106,17 @@ func Run(opts Options) error {
 		}
 	}
 
+	// Independent of 1Claw entirely — the foundry's sandboxed coding agent
+	// needs its own Anthropic credential (see internal/foundry/agent_claude.go's
+	// doc comment on why Shroud can't back this).
+	anthropicKey, err := oneclaw.LoadEnvValue(opts.EnvFilePath, "ANTHROPIC_API_KEY")
+	if err != nil {
+		return fmt.Errorf("load Anthropic API key: %w", err)
+	}
+	if anthropicKey != "" {
+		log.Println("foundry: ANTHROPIC_API_KEY configured — the composer can escalate a real gap to a coding agent")
+	}
+
 	stateDir, err := oneclaw.DefaultStateDir()
 	if err != nil {
 		return err
@@ -120,6 +134,7 @@ func Run(opts Options) error {
 	if err := os.MkdirAll(runWorkDir, 0o755); err != nil {
 		return err
 	}
+	foundryWorkDir := filepath.Join(home, ".nanobots", "foundry")
 
 	callbacks := runner.NewCallbackRegistry()
 	orch := &runner.Orchestrator{
@@ -140,6 +155,15 @@ func Run(opts Options) error {
 		LinkedIn:      linkedinCfg,
 	}
 
+	foundryOrch := &foundry.Orchestrator{Config: foundry.Config{
+		RepoRoot:      opts.RepoRoot,
+		BotsDir:       opts.BotsDir,
+		WorkDir:       foundryWorkDir,
+		AgentStateDir: stateDir,
+		OneClaw:       oc,
+		Agent:         &foundry.ClaudeCLIAgent{RepoRoot: opts.RepoRoot, APIKey: anthropicKey},
+	}}
+
 	srv := &api.Server{
 		Orchestrator: orch,
 		Runs:         runner.NewRunStore(),
@@ -147,7 +171,22 @@ func Run(opts Options) error {
 		OneClaw:      oc,
 		BotsDir:      opts.BotsDir,
 		Blobs:        blobs,
+		Foundry:      foundryOrch,
+		FoundryJobs:  foundry.NewJobStore(),
+		EnvFilePath:  opts.EnvFilePath,
 	}
+
+	// Closes a real gap this build has had since its first commit: cron
+	// triggers were declared in every catalog swarm's YAML but nothing
+	// ever fired one — see internal/scheduler's own doc comment. Runs for
+	// the life of the process, same as the HTTP server itself; no
+	// graceful-shutdown story either has one yet.
+	sched := &scheduler.Scheduler{
+		Orchestrator: orch,
+		Runs:         srv.Runs,
+		SwarmsDir:    filepath.Join(filepath.Dir(opts.BotsDir), "examples", "swarms"),
+	}
+	go sched.Run(context.Background())
 
 	log.Printf("nanobotd listening on http://%s (bots: %s)", opts.Addr, opts.BotsDir)
 	return http.ListenAndServe(opts.Addr, srv.Handler())

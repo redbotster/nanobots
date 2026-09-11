@@ -9,6 +9,7 @@ import { LandingPage } from "./pages/LandingPage";
 import { StatusDot } from "./components/StatusDot";
 import { Switch } from "./components/Switch";
 import { useUIMode } from "./lib/uiMode";
+import { useApprovalNotifications } from "./lib/useApprovalNotifications";
 
 type Page = "swarm" | "bots" | "runs" | "settings";
 
@@ -41,7 +42,8 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [apiUnreachable, setApiUnreachable] = useState(false);
   const [counts, setCounts] = useState<{ bots: number; swarms: number } | null>(null);
-  const [pendingApprovals, setPendingApprovals] = useState(0);
+  const { count: pendingApprovals, permission: notifyPermission, requestPermission: enableNotifications } =
+    useApprovalNotifications();
 
   // Basic mode hides the bot library nav entry entirely — if a user was on
   // it and switches to basic, don't leave them on an orphaned page.
@@ -61,23 +63,6 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       .catch(() => {});
   }, []);
 
-  // Polled independently of whichever page is open, so "you have an
-  // approval waiting" shows up in the nav even if you're looking at the bot
-  // library — the exact gap RunDetail exists to close for the Runs page
-  // itself.
-  useEffect(() => {
-    const check = () =>
-      api
-        .listRuns()
-        .then((runs) =>
-          setPendingApprovals(runs.filter((r) => r.status === "awaiting_approval").length),
-        )
-        .catch(() => {});
-    check();
-    const id = setInterval(check, 2000);
-    return () => clearInterval(id);
-  }, []);
-
   return (
     <div className="grid h-screen grid-rows-[56px_1fr] pb-16 sm:pb-0 sm:grid-cols-[200px_1fr]">
       <header className="col-span-full flex items-center gap-5 border-b border-edge bg-void/80 px-5 backdrop-blur">
@@ -90,6 +75,15 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           nanobots
         </button>
         <div className="ml-auto flex items-center gap-4">
+          {notifyPermission === "default" && (
+            <button
+              onClick={enableNotifications}
+              className="text-xs text-muted underline decoration-dotted hover:text-ink"
+              title="Get a browser notification the moment something needs your approval"
+            >
+              🔔 Enable approval alerts
+            </button>
+          )}
           <Switch
             checked={uiMode === "advanced"}
             onCheckedChange={(checked) => setUiMode(checked ? "advanced" : "basic")}
