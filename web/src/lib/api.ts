@@ -1,5 +1,6 @@
 import type {
   BotSummary,
+  ComposeResult,
   ConnectableService,
   ConnectionStatus,
   PlanResult,
@@ -50,6 +51,11 @@ export const api = {
     req<SaveSwarmResult>("/api/swarms", {
       method: "POST",
       body: JSON.stringify(draft),
+    }),
+  compose: (message: string) =>
+    req<ComposeResult>("/api/compose", {
+      method: "POST",
+      body: JSON.stringify({ message }),
     }),
   listConnections: () => req<ConnectionStatus[]>("/api/connections"),
   connectToken: (service: ConnectableService, token: string) =>

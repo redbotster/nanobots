@@ -9,7 +9,9 @@ import (
 	"time"
 )
 
-const DefaultShroudURL = "https://shroud.1claw.co"
+// DefaultShroudURL is a var, not a const, purely so tests can point a
+// ShroudClient at an httptest server instead of the real Shroud endpoint.
+var DefaultShroudURL = "https://shroud.1claw.co"
 
 // ShroudClient talks to 1Claw's Shroud LLM proxy directly — a different host
 // than the Human API, authenticated with an agent's own id:api_key pair

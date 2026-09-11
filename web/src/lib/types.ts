@@ -182,3 +182,12 @@ export interface ConnectionStatus {
   service: ConnectableService;
   connected: boolean;
 }
+
+/** The "head nanobot" composer's response: a draft swarm assembled from a
+ * plain-English request, already validated against the real planner —
+ * see internal/api/compose.go. Never auto-saved; only ever handed to the
+ * builder for a human to review. */
+export interface ComposeResult {
+  draft: SaveSwarmRequest;
+  plan: PlanResult;
+}

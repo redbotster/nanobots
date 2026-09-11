@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
-import type { BotSummary, ConnectionStatus, PlanResult, SwarmFull, SwarmSummary } from "../lib/types";
+import type {
+  BotSummary,
+  ConnectionStatus,
+  DraftBot,
+  DraftSnap,
+  PlanResult,
+  SaveSwarmRequest,
+  SwarmSummary,
+} from "../lib/types";
 import { BuilderCanvas, type CanvasSnap, type PlacedBot } from "../components/builder/BuilderCanvas";
 import { BuilderPalette } from "../components/builder/BuilderPalette";
 import { BuilderInspector } from "../components/builder/BuilderInspector";
@@ -37,15 +45,20 @@ function defaultPosition(index: number) {
  */
 export function BuilderPage({
   existing,
+  composedDraft,
   onDone,
 }: {
   existing?: SwarmSummary;
+  /** A draft from the AI composer (POST /api/compose) to pre-load — same
+   * treatment as a template, minus the "copy" suffix, since this is the
+   * user's own first draft, not a clone of something else. */
+  composedDraft?: SaveSwarmRequest;
   onDone: (savedPath?: string) => void;
 }) {
   const [botDefs, setBotDefs] = useState<Record<string, BotSummary>>({});
   const [connections, setConnections] = useState<ConnectionStatus[]>([]);
-  const [name, setName] = useState(existing?.name ?? "");
-  const [description, setDescription] = useState(existing?.description ?? "");
+  const [name, setName] = useState(existing?.name ?? composedDraft?.name ?? "");
+  const [description, setDescription] = useState(existing?.description ?? composedDraft?.description ?? "");
   const [bots, setBots] = useState<PlacedBot[]>([]);
   const [snaps, setSnaps] = useState<CanvasSnap[]>([]);
   const [inputValues, setInputValues] = useState<Record<string, Record<string, string>>>({});
@@ -66,9 +79,10 @@ export function BuilderPage({
   }, []);
 
   // Places a loaded swarm's bots in a simple grid and pre-fills manual input
-  // values — shared by hydrating an existing swarm to edit and cloning one
-  // as a starting template for a new one.
-  const hydrateFrom = (full: SwarmFull) => {
+  // values — shared by hydrating an existing swarm to edit, cloning one as a
+  // starting template, and loading the AI composer's draft, since all three
+  // are just "a bots[]/snaps[] list to put on the canvas."
+  const hydrateFrom = (full: { bots: DraftBot[]; snaps: DraftSnap[] }) => {
     const placed = full.bots.map((b, i) => {
       const [botId] = b.use.split("@");
       const pos = defaultPosition(i);
@@ -93,6 +107,15 @@ export function BuilderPage({
     if (!existing) return;
     api.swarmFull(existing.path).then(hydrateFrom).catch((e) => setLoadError(String(e)));
   }, [existing]);
+
+  // The AI composer already validated this draft server-side (see
+  // internal/api/compose.go) — hydrating it here just puts it on the
+  // canvas for review; nothing is saved or run until the human does that
+  // themselves.
+  useEffect(() => {
+    if (!composedDraft) return;
+    hydrateFrom(composedDraft);
+  }, [composedDraft]);
 
   const startFromTemplate = async (template: SwarmSummary) => {
     try {

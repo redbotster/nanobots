@@ -48,6 +48,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/swarms/full", s.handleGetSwarmFull)
 	mux.HandleFunc("POST /api/swarms/validate", s.handleValidateSwarm)
 	mux.HandleFunc("POST /api/swarms", s.handleSaveSwarm)
+	mux.HandleFunc("POST /api/compose", s.handleCompose)
 	mux.HandleFunc("GET /api/connections", s.handleConnectionsStatus)
 	mux.HandleFunc("POST /api/connections/google/start", s.handleConnectGoogleStart)
 	mux.HandleFunc("POST /api/connections/{service}", s.handleConnectToken)

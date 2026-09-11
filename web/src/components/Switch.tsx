@@ -1,0 +1,24 @@
+import * as RadixSwitch from "@radix-ui/react-switch";
+
+export function Switch({
+  checked,
+  onCheckedChange,
+  label,
+}: {
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  label?: string;
+}) {
+  return (
+    <label className="flex items-center gap-2 text-xs text-muted">
+      {label}
+      <RadixSwitch.Root
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+        className="relative h-5 w-9 shrink-0 rounded-full bg-panel-2 outline-none transition-colors data-[state=checked]:bg-tron/60"
+      >
+        <RadixSwitch.Thumb className="block h-3.5 w-3.5 translate-x-1 rounded-full bg-ink transition-transform data-[state=checked]:translate-x-[18px]" />
+      </RadixSwitch.Root>
+    </label>
+  );
+}

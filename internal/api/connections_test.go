@@ -46,6 +46,18 @@ func fakeOneClaw(t *testing.T) *oneclaw.Client {
 			json.NewEncoder(w).Encode(map[string]any{"id": "s1", "path": path, "type": "generic", "value": val, "version": 1})
 		}
 	})
+	mux.HandleFunc("/v1/agents", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			var body map[string]any
+			json.NewDecoder(r.Body).Decode(&body)
+			json.NewEncoder(w).Encode(map[string]any{
+				"agent":   map[string]any{"id": "agent-1", "name": body["name"]},
+				"api_key": "ocv_test",
+			})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{"agents": []map[string]string{}})
+	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	oc := oneclaw.NewClient("1ck_test")

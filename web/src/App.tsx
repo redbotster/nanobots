@@ -7,6 +7,8 @@ import { RunsPage } from "./pages/RunsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { LandingPage } from "./pages/LandingPage";
 import { StatusDot } from "./components/StatusDot";
+import { Switch } from "./components/Switch";
+import { useUIMode } from "./lib/uiMode";
 
 type Page = "swarm" | "bots" | "runs" | "settings";
 
@@ -35,10 +37,19 @@ export default function App() {
 
 function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [page, setPage] = useState<Page>("swarm");
+  const [uiMode, setUiMode] = useUIMode();
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [apiUnreachable, setApiUnreachable] = useState(false);
   const [counts, setCounts] = useState<{ bots: number; swarms: number } | null>(null);
   const [pendingApprovals, setPendingApprovals] = useState(0);
+
+  // Basic mode hides the bot library nav entry entirely — if a user was on
+  // it and switches to basic, don't leave them on an orphaned page.
+  useEffect(() => {
+    if (uiMode === "basic" && page === "bots") setPage("swarm");
+  }, [uiMode, page]);
+
+  const visibleNav = uiMode === "basic" ? NAV.filter((item) => item.id !== "bots") : NAV;
 
   useEffect(() => {
     api
@@ -78,7 +89,13 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           <span className="inline-block h-5 w-2.5 bg-tron shadow-glow-sm" />
           nanobots
         </button>
-        <div className="ml-auto flex items-center gap-2 text-xs text-muted">
+        <div className="ml-auto flex items-center gap-4">
+          <Switch
+            checked={uiMode === "advanced"}
+            onCheckedChange={(checked) => setUiMode(checked ? "advanced" : "basic")}
+            label="Advanced"
+          />
+          <div className="flex items-center gap-2 text-xs text-muted">
           {apiUnreachable ? (
             <>
               <StatusDot tone="danger" />
@@ -98,12 +115,13 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
               connecting…
             </>
           )}
+          </div>
         </div>
       </header>
 
       <aside className="hidden border-r border-edge py-4 sm:flex sm:flex-col">
         <nav className="flex flex-col gap-0.5">
-          {NAV.map((item) => (
+          {visibleNav.map((item) => (
             <button
               key={item.id}
               onClick={() => setPage(item.id)}
@@ -138,14 +156,14 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       </aside>
 
       <main className="min-h-0 min-w-0 overflow-hidden">
-        {page === "swarm" && <SwarmsPage />}
+        {page === "swarm" && <SwarmsPage uiMode={uiMode} />}
         {page === "bots" && <BotLibrary />}
         {page === "runs" && <RunsPage />}
         {page === "settings" && <SettingsPage status={status} />}
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 flex h-16 border-t border-edge bg-void/95 backdrop-blur sm:hidden">
-        {NAV.map((item) => (
+        {visibleNav.map((item) => (
           <button
             key={item.id}
             onClick={() => setPage(item.id)}

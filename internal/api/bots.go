@@ -24,11 +24,13 @@ type BotSummary struct {
 	Guardrails  schema.Guardrails   `json:"guardrails"`
 }
 
-func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
+// listBotSummaries scans s.BotsDir the same way for every caller — the
+// bot library endpoint and the AI composer's catalog prompt both need
+// exactly this, and must never drift apart.
+func (s *Server) listBotSummaries() ([]BotSummary, error) {
 	entries, err := os.ReadDir(s.BotsDir)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+		return nil, err
 	}
 	var bots []BotSummary
 	for _, e := range entries {
@@ -48,5 +50,14 @@ func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
 			Guardrails: nb.Spec.Guardrails,
 		})
 	}
-	writeJSON(w, http.StatusOK, nonNil(bots))
+	return nonNil(bots), nil
+}
+
+func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
+	bots, err := s.listBotSummaries()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, bots)
 }
