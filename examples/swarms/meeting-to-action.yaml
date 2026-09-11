@@ -1,0 +1,59 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanoswarm
+metadata:
+  name: meeting-to-action
+  description: When a new transcript lands in Drive, file the notes, flag action items to Slack, and draft follow-ups.
+  owner: me@example.com
+
+# Catalog's S11: drive-watch -> meeting-notes-filer -> notify (action items)
+# -> draft-replies (follow-ups). One honest shape looseness: draft-replies
+# expects `threads:list<json>` shaped like email threads ({id, from,
+# subject, snippet}), but meeting-notes-filer's `action_items` is shaped
+# like {owner, task, due} — both are just `list<json>` with no schema
+# enforced on draft-replies' input side, so the whole-list snap type-checks,
+# but draft-replies' own prompt (which expects thread-shaped fields) won't
+# find what it's looking for. A real fix needs matching shapes or a
+# swarm-level reshaping step, neither of which this build has; documented
+# rather than hidden, same as lead-to-meeting.yaml's similar case.
+
+spec:
+  defaults:
+    model: { provider: anthropic, name: claude-sonnet-4-6 }
+    guardrails:
+      pii: redact
+      injection_threshold: 0.7
+      daily_budget_usd: 5
+    resources: { preset: small }
+
+  vars:
+    watch_folder: "Transcripts"
+    action_items_channel: "slack:#team"
+
+  trigger:
+    type: event
+    expr: "drive.file.created"
+
+  bots:
+    - id: watcher
+      use: drive-watch@0.1.0
+      inputs:
+        folder: "{{vars.watch_folder}}"
+    - id: notes
+      use: meeting-notes-filer@0.1.0
+    - id: alert
+      use: notify@0.1.0
+      inputs:
+        channel: "{{vars.action_items_channel}}"
+    - id: followups
+      use: draft-replies@0.1.0
+
+  snaps:
+    - from: watcher.file
+      to: notes.transcript
+    - from: notes.decisions.0
+      to: alert.message
+    - from: notes.action_items
+      to: followups.threads
+
+  deploy:
+    target: local

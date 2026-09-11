@@ -1,8 +1,10 @@
 package planner
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/redbotster/nanobots/internal/schema"
@@ -47,6 +49,41 @@ func TestPlanDailyEmailRecap(t *testing.T) {
 	}
 	if len(order) != 2 || order[0] != "recap" || order[1] != "mailer" {
 		t.Errorf("expected run order [recap mailer], got %v", order)
+	}
+}
+
+// TestPlanAllExampleSwarms sweeps every swarm under examples/swarms/, so a
+// new or edited swarm that stops type-checking fails a test immediately
+// instead of only being caught by hand-running `nanobots plan` — the same
+// discovery pattern internal/contract's allBotIDs uses for bots.
+func TestPlanAllExampleSwarms(t *testing.T) {
+	root := repoRoot(t)
+	botsDir := filepath.Join(root, "bots")
+	swarmsDir := filepath.Join(root, "examples", "swarms")
+
+	entries, err := os.ReadDir(swarmsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
+			continue
+		}
+		found = true
+		name := e.Name()
+		t.Run(name, func(t *testing.T) {
+			result, err := Plan(filepath.Join(swarmsDir, name), botsDir)
+			if err != nil {
+				t.Fatalf("Plan: %v", err)
+			}
+			if !result.OK() {
+				t.Fatalf("swarm %s failed to type-check:\n%s", name, result.Report())
+			}
+		})
+	}
+	if !found {
+		t.Fatal("no swarms found under examples/swarms/ — did the test find the wrong repo root?")
 	}
 }
 

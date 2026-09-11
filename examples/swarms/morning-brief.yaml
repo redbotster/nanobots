@@ -2,14 +2,20 @@ apiVersion: nanobots.dev/v1alpha1
 kind: Nanoswarm
 metadata:
   name: morning-brief
-  description: Every weekday morning, triage the inbox into a one-page brief and let me know it's ready.
+  description: Every weekday morning, triage the inbox and prep today's meetings into one brief.
   owner: me@example.com
 
 # Catalog's S2 is "inbox-triage + meeting-prep -> render-pdf -> notify".
-# meeting-prep (brick 6) is Tranche C and isn't built yet, so this is the
-# inbox half only — a real simplification, not a hidden one. Add
-# meeting-prep's contribution back once it exists, by snapping its brief
-# alongside inbox-triage's into render-pdf.
+# meeting-prep(6) exists now, but it renders its *own* PDF internally
+# (transform.render -> brief_md) rather than producing raw content a shared
+# render-pdf step could combine with inbox-triage's — and this build's snaps
+# connect one output to one input, with no way to merge two bots' data into
+# a single render-pdf call. So both bots run here, each producing its own
+# document (inbox-triage's via the shared render-pdf bot, meeting-prep's own
+# brief_md standalone) rather than one combined PDF; notify fires off
+# inbox-triage's headline, same as before. A real merge would need
+# render-pdf's template (or meeting-prep's own) to accept both bots' data
+# directly — a bigger change than either bot was built for.
 
 spec:
   defaults:
@@ -31,6 +37,8 @@ spec:
   bots:
     - id: triage
       use: inbox-triage@0.1.0
+    - id: meetings
+      use: meeting-prep@0.1.0
     - id: brief
       use: render-pdf@0.1.0
     - id: notifier

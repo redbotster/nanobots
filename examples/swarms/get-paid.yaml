@@ -1,0 +1,51 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanoswarm
+metadata:
+  name: get-paid
+  description: Every Monday, find overdue invoices, send the first reminder once approved, and confirm it went out.
+  owner: me@example.com
+
+# Catalog's S10 is "invoice-chaser -> approve -> email-send-approved ->
+# notify", "the batch of reminders" as the one approval. Standalone
+# `approve` is skipped, same reason as every other swarm here —
+# email-send-approved's own built-in gate is the one approval. No per-item
+# fan-out, so only the first overdue invoice's reminder gets sent per run.
+
+spec:
+  defaults:
+    model: { provider: anthropic, name: claude-sonnet-4-6 }
+    guardrails:
+      pii: redact
+      injection_threshold: 0.7
+      daily_budget_usd: 5
+      approval_required_for: [email.send]
+    resources: { preset: small }
+
+  vars:
+    notify_channel: "slack:#finance"
+
+  trigger:
+    type: cron
+    expr: "0 8 * * 1"
+    timezone: America/Chicago
+
+  bots:
+    - id: chaser
+      use: invoice-chaser@0.1.0
+    - id: sender
+      use: email-send-approved@0.1.0
+    - id: notifier
+      use: notify@0.1.0
+      inputs:
+        channel: "{{vars.notify_channel}}"
+
+  snaps:
+    - from: chaser.draft_ids.0
+      to: sender.draft_id
+    - from: chaser.overdue.0.customer_email
+      to: sender.summary
+    - from: sender.message_id
+      to: notifier.message
+
+  deploy:
+    target: local

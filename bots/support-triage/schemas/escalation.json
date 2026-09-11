@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanobots.dev/bots/support-triage/schemas/escalation.json",
+  "title": "Escalation",
+  "type": "object",
+  "required": ["id", "from", "subject", "reason"],
+  "properties": {
+    "id": { "type": "string" },
+    "from": { "type": "string" },
+    "subject": { "type": "string" },
+    "reason": { "type": "string" }
+  }
+}

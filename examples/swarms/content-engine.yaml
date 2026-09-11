@@ -1,0 +1,52 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanoswarm
+metadata:
+  name: content-engine
+  description: Every Monday, brainstorm post ideas, write up the first one, and publish it once approved.
+  owner: me@example.com
+
+# Catalog's S5 is "content-ideas -> post-writer -> approve -> post-publisher
+# (scheduled across the week)", approving "the week's batch" at once. This
+# build has no per-item fan-out or a real scheduler beyond one cron trigger
+# per swarm, so this snaps content-ideas' first idea into post-writer and
+# publishes just that one post per run — skipping the standalone `approve`
+# brick in favor of post-publisher's own built-in, un-bypassable gate, the
+# same pattern as inbox-autopilot.yaml/never-drop-a-thread.yaml. Running
+# this swarm daily rather than weekly would get closer to "spread across
+# the week" without needing real fan-out.
+
+spec:
+  defaults:
+    model: { provider: anthropic, name: claude-sonnet-4-6 }
+    guardrails:
+      pii: allow
+      injection_threshold: 0.7
+      daily_budget_usd: 5
+    resources: { preset: small }
+
+  vars:
+    niche: "indie SaaS founders building dev tools"
+
+  trigger:
+    type: cron
+    expr: "0 9 * * 1"
+    timezone: America/Chicago
+
+  bots:
+    - id: ideas
+      use: content-ideas@0.1.0
+      inputs:
+        niche: "{{vars.niche}}"
+    - id: writer
+      use: post-writer@0.1.0
+    - id: publisher
+      use: post-publisher@0.1.0
+
+  snaps:
+    - from: ideas.ideas.0
+      to: writer.idea
+    - from: writer.posts
+      to: publisher.posts
+
+  deploy:
+    target: local

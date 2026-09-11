@@ -1,0 +1,58 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanoswarm
+metadata:
+  name: repurpose-everything
+  description: When a new file lands in Drive/Published, repurpose it into posts and publish once approved.
+  owner: me@example.com
+
+# Catalog's S6 is "drive-watch -> repurposer -> newsletter-drafter +
+# post-writer -> approve -> post-publisher". newsletter-drafter is dropped
+# here: it needs sources:list<string>/blurbs:list<string> (multiple linked
+# items), while repurposer produces one file's worth of singular outputs —
+# bridging that shape gap would need a swarm-level reshaping step this
+# build doesn't have (a snap is always one field to one field; only a bot's
+# own steps, like transform.pick, can build a new shape, and only from that
+# bot's own data). post-writer bridges cleanly instead: its `posts:json`
+# output already matches post-publisher's expected shape exactly, so it's
+# what turns repurposer's semi-structured `thread` into something
+# publishable. Standalone `approve` is skipped for the same reason as every
+# other swarm here — post-publisher's own built-in gate is the one approval.
+
+spec:
+  defaults:
+    model: { provider: anthropic, name: claude-sonnet-4-6 }
+    guardrails:
+      pii: allow
+      injection_threshold: 0.7
+      daily_budget_usd: 5
+    resources: { preset: small }
+
+  vars:
+    watch_folder: "Published"
+
+  trigger:
+    type: event
+    expr: "drive.file.created"
+
+  bots:
+    - id: watcher
+      use: drive-watch@0.1.0
+      inputs:
+        folder: "{{vars.watch_folder}}"
+    - id: repurposer
+      use: repurposer@0.1.0
+    - id: writer
+      use: post-writer@0.1.0
+    - id: publisher
+      use: post-publisher@0.1.0
+
+  snaps:
+    - from: watcher.file
+      to: repurposer.source
+    - from: repurposer.thread
+      to: writer.idea
+    - from: writer.posts
+      to: publisher.posts
+
+  deploy:
+    target: local

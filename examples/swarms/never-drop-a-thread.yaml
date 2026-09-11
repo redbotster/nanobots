@@ -1,0 +1,43 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanoswarm
+metadata:
+  name: never-drop-a-thread
+  description: Every afternoon, find sent threads that never got a reply and draft a nudge for the first one.
+  owner: me@example.com
+
+# Catalog's S4 is "follow-up-chaser -> approve -> email-send-approved",
+# "send each nudge". Same simplification as inbox-autopilot.yaml: this
+# build's swarm engine has no per-item fan-out, so this processes the first
+# stale thread only, and the standalone `approve` brick is skipped in favor
+# of email-send-approved's own built-in, un-bypassable gate — "the one
+# approval" either way.
+
+spec:
+  defaults:
+    model: { provider: anthropic, name: claude-sonnet-4-6 }
+    guardrails:
+      pii: redact
+      injection_threshold: 0.7
+      daily_budget_usd: 5
+      approval_required_for: [email.send]
+    resources: { preset: small }
+
+  trigger:
+    type: cron
+    expr: "0 16 * * 1-5"
+    timezone: America/Chicago
+
+  bots:
+    - id: chaser
+      use: follow-up-chaser@0.1.0
+    - id: sender
+      use: email-send-approved@0.1.0
+
+  snaps:
+    - from: chaser.draft_ids.0
+      to: sender.draft_id
+    - from: chaser.stale_threads.0.subject
+      to: sender.summary
+
+  deploy:
+    target: local

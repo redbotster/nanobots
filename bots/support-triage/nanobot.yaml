@@ -37,10 +37,12 @@ spec:
     outputs:
       - name: tickets
         type: list<json>
+        schema: ./schemas/ticket.json
       - name: draft_ids
         type: list<string>
       - name: escalations
         type: list<json>
+        schema: ./schemas/escalation.json
 
   steps:
     - name: fetch

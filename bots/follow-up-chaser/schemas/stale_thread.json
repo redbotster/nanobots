@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanobots.dev/bots/follow-up-chaser/schemas/stale_thread.json",
+  "title": "StaleThread",
+  "type": "object",
+  "required": ["id", "subject", "to", "reason"],
+  "properties": {
+    "id": { "type": "string" },
+    "subject": { "type": "string" },
+    "to": { "type": "string" },
+    "reason": { "type": "string" }
+  }
+}

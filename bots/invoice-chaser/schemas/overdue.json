@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanobots.dev/bots/invoice-chaser/schemas/overdue.json",
+  "title": "OverdueInvoice",
+  "type": "object",
+  "required": ["id", "customer_email", "amount_due", "days_overdue_bucket"],
+  "properties": {
+    "id": { "type": "string" },
+    "customer_email": { "type": "string" },
+    "amount_due": { "type": "number" },
+    "days_overdue_bucket": { "type": "string" }
+  }
+}

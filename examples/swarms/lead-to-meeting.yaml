@@ -1,0 +1,71 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanoswarm
+metadata:
+  name: lead-to-meeting
+  description: Log a new website lead, enrich and route it, and draft a scheduling reply once approved.
+  owner: me@example.com
+
+# Catalog's S7: form-to-sheet -> lead-enricher -> lead-router, with
+# lead-enricher's enriched contact also feeding calendar-scheduler ->
+# approve -> email-send-approved. Standalone `approve` is skipped, same
+# reason as every other swarm here — email-send-approved's own built-in
+# gate is the one approval, on the exact draft calendar-scheduler created.
+#
+# One honest shape looseness: calendar-scheduler's `thread` input expects a
+# `{from, subject, snippet}`-shaped object (an email thread), but
+# lead-enricher's `enriched` output is `{name, email, company, notes}` (a
+# contact) — both are just `type: json` with no schema on calendar-scheduler's
+# side, so the snap type-checks, but the fields calendar-scheduler's own
+# prompt reads (thread.from/thread.subject) won't actually be present at
+# runtime. A real fix needs either a shared shape or a swarm-level reshaping
+# step, neither of which this build has; documented here rather than hidden.
+
+spec:
+  defaults:
+    model: { provider: anthropic, name: claude-sonnet-4-6 }
+    guardrails:
+      pii: redact
+      injection_threshold: 0.7
+      daily_budget_usd: 5
+      approval_required_for: [email.send]
+    resources: { preset: small }
+
+  vars:
+    icp: "Small design agencies (2-15 people) that bill clients hourly and need better reporting."
+
+  trigger:
+    type: webhook
+    expr: "website.form.submitted"
+
+  bots:
+    - id: intake
+      use: form-to-sheet@0.1.0
+      inputs:
+        sheet: "Leads-2026"
+    - id: enricher
+      use: lead-enricher@0.1.0
+      inputs:
+        icp: "{{vars.icp}}"
+    - id: router
+      use: lead-router@0.1.0
+      inputs:
+        owner_rules: "route by industry fit"
+    - id: scheduler
+      use: calendar-scheduler@0.1.0
+    - id: sender
+      use: email-send-approved@0.1.0
+
+  snaps:
+    - from: intake.row
+      to: enricher.lead
+    - from: enricher.enriched
+      to: router.enriched
+    - from: enricher.enriched
+      to: scheduler.thread
+    - from: scheduler.draft_id
+      to: sender.draft_id
+    - from: enricher.fit_score
+      to: sender.summary
+
+  deploy:
+    target: local

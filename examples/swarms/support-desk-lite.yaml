@@ -1,0 +1,56 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanoswarm
+metadata:
+  name: support-desk-lite
+  description: Every 30 minutes, triage support mail, flag anything urgent to Slack, and send the first drafted reply once approved.
+  owner: me@example.com
+
+# Catalog's S8 is "support-triage -> draft-replies -> notify (escalations)
+# -> approve -> email-send-approved". draft-replies is dropped: support-triage
+# already drafts its own replies internally (its `draft_ids` output), so a
+# second, separate drafting bot has nothing left to do — support-triage
+# doesn't produce the `threads:list<json>` draft-replies would need as
+# input anyway. Standalone `approve` is skipped for the same reason as
+# every other swarm here — email-send-approved's own built-in gate is the
+# one approval. No per-item fan-out, so only the first drafted reply gets
+# sent per run (the same limitation documented on every multi-item swarm
+# in this build).
+
+spec:
+  defaults:
+    model: { provider: anthropic, name: claude-sonnet-4-6 }
+    guardrails:
+      pii: redact
+      injection_threshold: 0.7
+      daily_budget_usd: 5
+      approval_required_for: [email.send]
+    resources: { preset: small }
+
+  vars:
+    escalation_channel: "slack:#support"
+
+  trigger:
+    type: cron
+    expr: "*/30 * * * *"
+    timezone: America/Chicago
+
+  bots:
+    - id: triage
+      use: support-triage@0.1.0
+    - id: alert
+      use: notify@0.1.0
+      inputs:
+        channel: "{{vars.escalation_channel}}"
+    - id: sender
+      use: email-send-approved@0.1.0
+
+  snaps:
+    - from: triage.escalations.0.reason
+      to: alert.message
+    - from: triage.draft_ids.0
+      to: sender.draft_id
+    - from: triage.tickets.0.subject
+      to: sender.summary
+
+  deploy:
+    target: local

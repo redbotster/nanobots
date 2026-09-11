@@ -1,0 +1,66 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanoswarm
+metadata:
+  name: weekly-client-report
+  description: Every Friday, build a client's spend report, save it to Drive, and email them the link once approved.
+  owner: me@example.com
+
+# Catalog's S12 is "sheet-reporter -> render-pdf -> drive-save -> approve ->
+# email-send-approved". email-send-approved needs an *existing Gmail draft*
+# (draft_id) — drive-save only ever produces a Drive file + link, never a
+# draft, so there's nothing for it to send. email-drive-file fits what this
+# chain actually produces instead: its whole job is "email a link to a
+# Drive file", with its own built-in, un-bypassable approval gate already
+# (see its nanobot.yaml) — the same "skip the standalone approve brick"
+# pattern used throughout this catalog's swarms, just with the bot that
+# actually matches this chain's shape rather than one that needs a draft.
+# One values file per client (the catalog's own note) isn't modeled here —
+# this build has no per-client parameterization/template overlay yet.
+
+spec:
+  defaults:
+    model: { provider: anthropic, name: claude-sonnet-4-6 }
+    guardrails:
+      pii: allow
+      injection_threshold: 0.7
+      daily_budget_usd: 5
+      approval_required_for: [email.send]
+    resources: { preset: small }
+
+  vars:
+    client_email: "client@example.com"
+
+  trigger:
+    type: cron
+    expr: "0 15 * * 5"
+    timezone: America/Chicago
+
+  bots:
+    - id: reporter
+      use: sheet-reporter@0.1.0
+      inputs:
+        sheet: "ClientSpend-2026"
+        question: "How much did the client spend by category this week?"
+        period: "this week"
+    - id: pdf
+      use: render-pdf@0.1.0
+    - id: saver
+      use: drive-save@0.1.0
+      inputs:
+        folder: "Client Reports/2026"
+    - id: mailer
+      use: email-drive-file@1.1.0
+      inputs:
+        to: "{{vars.client_email}}"
+        subject: "Your weekly report"
+
+  snaps:
+    - from: reporter.report_md
+      to: pdf.content
+    - from: pdf.pdf
+      to: saver.file
+    - from: saver.file_id
+      to: mailer.file_id
+
+  deploy:
+    target: local

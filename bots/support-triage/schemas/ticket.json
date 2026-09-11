@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanobots.dev/bots/support-triage/schemas/ticket.json",
+  "title": "Ticket",
+  "type": "object",
+  "required": ["id", "from", "subject", "category"],
+  "properties": {
+    "id": { "type": "string" },
+    "from": { "type": "string" },
+    "subject": { "type": "string" },
+    "category": { "type": "string" }
+  }
+}

@@ -37,6 +37,7 @@ spec:
     outputs:
       - name: stale_threads
         type: list<json>
+        schema: ./schemas/stale_thread.json
       - name: draft_ids
         type: list<string>
 

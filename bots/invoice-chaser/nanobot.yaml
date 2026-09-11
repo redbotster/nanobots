@@ -39,6 +39,7 @@ spec:
     outputs:
       - name: overdue
         type: list<json>
+        schema: ./schemas/overdue.json
       - name: draft_ids
         type: list<string>
 
