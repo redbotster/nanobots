@@ -36,7 +36,7 @@ export function Sheet({
                 </Dialog.Description>
               )}
             </div>
-            <Dialog.Close className="rounded p-1 text-muted hover:bg-white/5 hover:text-ink">
+            <Dialog.Close className="rounded p-1 text-muted hover:bg-tron/10 hover:text-ink">
               ✕
             </Dialog.Close>
           </div>

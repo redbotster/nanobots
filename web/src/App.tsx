@@ -10,6 +10,7 @@ import { StatusDot } from "./components/StatusDot";
 import { Switch } from "./components/Switch";
 import { useUIMode } from "./lib/uiMode";
 import { useApprovalNotifications } from "./lib/useApprovalNotifications";
+import { useTheme } from "./lib/theme";
 
 type Page = "swarm" | "bots" | "runs" | "settings";
 
@@ -44,6 +45,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [counts, setCounts] = useState<{ bots: number; swarms: number } | null>(null);
   const { count: pendingApprovals, permission: notifyPermission, requestPermission: enableNotifications } =
     useApprovalNotifications();
+  const { theme, resolved: resolvedTheme, setTheme } = useTheme();
 
   // Basic mode hides the bot library nav entry entirely — if a user was on
   // it and switches to basic, don't leave them on an orphaned page.
@@ -91,6 +93,22 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
               🔔<span className="hidden sm:inline"> Enable approval alerts</span>
             </button>
           )}
+          {/* One button, one job: flip to the other theme. "System" is a
+              real third state but it belongs in Settings — putting a
+              three-way cycle up here would make the common action
+              unpredictable. */}
+          <button
+            onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+            className="shrink-0 text-sm text-muted transition-colors hover:text-ink"
+            title={
+              theme === "system"
+                ? `Following your system theme (${resolvedTheme}) — click for ${resolvedTheme === "dark" ? "light" : "dark"}`
+                : `${resolvedTheme[0].toUpperCase()}${resolvedTheme.slice(1)} theme — click for ${resolvedTheme === "dark" ? "light" : "dark"}`
+            }
+            aria-label="Toggle light and dark theme"
+          >
+            {resolvedTheme === "dark" ? "☀" : "☾"}
+          </button>
           <Switch
             checked={uiMode === "advanced"}
             onCheckedChange={(checked) => setUiMode(checked ? "advanced" : "basic")}

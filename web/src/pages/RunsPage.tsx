@@ -27,7 +27,13 @@ export function RunsPage() {
   }, []);
 
   if (selectedId) {
-    return <RunDetail runId={selectedId} onBack={() => setSelectedId(null)} />;
+    return (
+      <RunDetail
+        runId={selectedId}
+        onBack={() => setSelectedId(null)}
+        onOpenRun={setSelectedId}
+      />
+    );
   }
 
   const sorted = [...(runs ?? [])].sort((a, b) => b.started_at.localeCompare(a.started_at));
@@ -80,6 +86,14 @@ export function RunsPage() {
               <div className="text-[11px] text-muted" title={new Date(run.started_at).toLocaleString()}>
                 {relativeTime(run.started_at)} · {run.id.slice(0, 8)}
               </div>
+              {/* One line of the failure right here — enough to tell "Docker
+                  isn't running" from "the bot crashed" without opening it.
+                  Only failed rows pay the extra line. */}
+              {run.status === "failed" && run.error && (
+                <div className="truncate text-[11px] text-danger" title={run.error}>
+                  {run.error.split("\n")[0]}
+                </div>
+              )}
             </div>
             <div className="text-xs text-muted">{run.status.replace("_", " ")}</div>
           </button>

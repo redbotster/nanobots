@@ -4,8 +4,97 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------------------------------------------------------------------------
+   Theme tokens.
+
+   Dark is the default and the design's native state; light is a real second
+   theme, not an inversion — the cyan accent is darkened to #0089b3 so it
+   still passes as body text and as a border against white, which #00d4ff
+   does not.
+
+   Three states, deliberately: an explicit choice stamps data-theme on <html>
+   and wins in both directions; no attribute means "follow the OS", which is
+   the media query below. Order matters — the explicit [data-theme="light"]
+   block comes last so it beats a dark OS preference.
+   --------------------------------------------------------------------------- */
+
 :root {
   color-scheme: dark;
+
+  --c-void: 5 7 13;
+  --c-panel: 11 17 31;
+  --c-panel-2: 16 26 46;
+  --c-edge: rgba(0, 212, 255, 0.16);
+  --c-edge-strong: rgba(0, 212, 255, 0.4);
+  --c-tron: 0 212 255;
+  --c-deep: 47 107 255;
+  --c-glow: 191 243 255;
+  --c-ink: 227 237 246;
+  --c-muted: 124 147 171;
+  --c-warn: 255 159 67;
+  --c-ok: 61 220 155;
+  --c-danger: 255 93 108;
+
+  --c-grid: rgba(0, 212, 255, 0.035);
+  --c-selection: rgba(0, 212, 255, 0.3);
+  --c-scrollbar: rgba(0, 212, 255, 0.35);
+  --c-glow-shadow: rgba(0, 212, 255, 0.25);
+  --c-glow-shadow-sm: rgba(0, 212, 255, 0.2);
+}
+
+/* The light values are written twice on purpose. Plain CSS has no way to
+   share one declaration block between a media query and an attribute
+   selector, and collapsing them into a single `:root:not([data-theme="dark"])`
+   inside the media query would lose the explicit-light-on-a-dark-OS case.
+   Keep the two blocks in sync. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+
+    --c-void: 244 247 251;
+    --c-panel: 255 255 255;
+    --c-panel-2: 234 240 247;
+    --c-edge: rgba(6, 90, 120, 0.16);
+    --c-edge-strong: rgba(6, 120, 160, 0.42);
+    --c-tron: 0 137 179;
+    --c-deep: 42 88 214;
+    --c-glow: 11 111 142;
+    --c-ink: 13 27 42;
+    --c-muted: 90 113 134;
+    --c-warn: 181 106 0;
+    --c-ok: 13 143 95;
+    --c-danger: 208 38 56;
+
+    --c-grid: rgba(6, 120, 160, 0.05);
+    --c-selection: rgba(0, 137, 179, 0.22);
+    --c-scrollbar: rgba(6, 120, 160, 0.3);
+    --c-glow-shadow: rgba(0, 137, 179, 0.18);
+    --c-glow-shadow-sm: rgba(0, 137, 179, 0.14);
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --c-void: 244 247 251;
+  --c-panel: 255 255 255;
+  --c-panel-2: 234 240 247;
+  --c-edge: rgba(6, 90, 120, 0.16);
+  --c-edge-strong: rgba(6, 120, 160, 0.42);
+  --c-tron: 0 137 179;
+  --c-deep: 42 88 214;
+  --c-glow: 11 111 142;
+  --c-ink: 13 27 42;
+  --c-muted: 90 113 134;
+  --c-warn: 181 106 0;
+  --c-ok: 13 143 95;
+  --c-danger: 208 38 56;
+
+  --c-grid: rgba(6, 120, 160, 0.05);
+  --c-selection: rgba(0, 137, 179, 0.22);
+  --c-scrollbar: rgba(6, 120, 160, 0.3);
+  --c-glow-shadow: rgba(0, 137, 179, 0.18);
+  --c-glow-shadow-sm: rgba(0, 137, 179, 0.14);
 }
 
 html,
@@ -16,22 +105,22 @@ body,
 
 body {
   margin: 0;
-  background: #05070d;
+  background: rgb(var(--c-void));
   background-image:
-    linear-gradient(rgba(0, 212, 255, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 212, 255, 0.035) 1px, transparent 1px);
+    linear-gradient(var(--c-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--c-grid) 1px, transparent 1px);
   background-size: 44px 44px;
-  color: #e3edf6;
+  color: rgb(var(--c-ink));
   font-family: "IBM Plex Sans", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
-  background: rgba(0, 212, 255, 0.3);
+  background: var(--c-selection);
 }
 
 * {
-  scrollbar-color: rgba(0, 212, 255, 0.35) transparent;
+  scrollbar-color: var(--c-scrollbar) transparent;
   scrollbar-width: thin;
 }
 

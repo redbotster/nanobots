@@ -3,6 +3,7 @@ import { api } from "../lib/api";
 import type { BotSummary, ConnectableService, ConnectionStatus, StatusResponse } from "../lib/types";
 import { StatusDot } from "../components/StatusDot";
 import { Button } from "../components/Button";
+import { useTheme, type Theme } from "../lib/theme";
 
 const CONNECTION_LABEL: Record<string, string> = {
   demo: "Demo data",
@@ -11,6 +12,48 @@ const CONNECTION_LABEL: Record<string, string> = {
   browser: "Browser Bridge",
   api_key_vault: "API key",
 };
+
+const THEMES: { value: Theme; label: string; icon: string }[] = [
+  { value: "system", label: "System", icon: "🖥" },
+  { value: "light", label: "Light", icon: "☀" },
+  { value: "dark", label: "Dark", icon: "☾" },
+];
+
+/** The header's one-tap toggle can only ever pick light or dark. This is
+ * where "just follow my OS" lives — the default, and the only one of the
+ * three that keeps changing after you set it. */
+function AppearanceSection() {
+  const { theme, resolved, setTheme } = useTheme();
+  return (
+    <section className="mt-5 rounded-lg border border-edge-strong bg-panel p-4">
+      <h2 className="font-display text-sm font-semibold text-ink">Appearance</h2>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="inline-flex overflow-hidden rounded-lg border border-edge-strong">
+          {THEMES.map((t) => (
+            <button
+              key={t.value}
+              onClick={() => setTheme(t.value)}
+              aria-pressed={theme === t.value}
+              className={`px-3 py-1.5 text-xs transition-colors ${
+                theme === t.value
+                  ? "bg-tron/20 font-medium text-ink"
+                  : "text-muted hover:bg-panel-2 hover:text-ink"
+              }`}
+            >
+              <span className="mr-1.5">{t.icon}</span>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        {theme === "system" && (
+          <span className="text-[12px] text-muted">
+            currently {resolved}, following your OS
+          </span>
+        )}
+      </div>
+    </section>
+  );
+}
 
 export function SettingsPage({ status }: { status: StatusResponse | null }) {
   const [bots, setBots] = useState<BotSummary[]>([]);
@@ -48,7 +91,9 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
     <div className="h-full overflow-auto p-5 sm:p-6">
       <h1 className="font-display text-xl font-medium text-ink">Settings</h1>
 
-      <section className="mt-5 rounded-lg border border-edge-strong bg-panel p-4">
+      <AppearanceSection />
+
+      <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-4">
         <h2 className="font-display text-sm font-semibold text-ink">1Claw</h2>
         <div className="mt-3 flex items-center gap-2 text-sm">
           <StatusDot tone={status?.oneclaw_configured ? "ok" : "warn"} />

@@ -193,7 +193,13 @@ export function BuilderCanvas({
           const to = positions[portKey(toEp.instanceId, "in", toEp.port)];
           if (!from || !to) return null;
           const check = checkFor(s.from, s.to);
-          const stroke = check ? (check.OK ? "#3ddc9b" : "#ff5d6c") : "#00d4ff";
+          // Themed via CSS vars rather than hex so the canvas follows
+          // light/dark like everything else — see src/index.css.
+          const stroke = check
+            ? check.OK
+              ? "rgb(var(--c-ok))"
+              : "rgb(var(--c-danger))"
+            : "rgb(var(--c-tron))";
           const midX = (from.x + to.x) / 2;
           return (
             <g key={s.from + "->" + s.to} className="pointer-events-auto">
@@ -208,7 +214,7 @@ export function BuilderCanvas({
                 cx={(from.x + to.x) / 2}
                 cy={(from.y + to.y) / 2}
                 r={7}
-                fill="#0b111f"
+                fill="rgb(var(--c-panel))"
                 stroke={stroke}
                 strokeWidth={1.5}
                 className="cursor-pointer"
@@ -225,7 +231,7 @@ export function BuilderCanvas({
             y1={positions[portKey(connecting.instanceId, "out", connecting.port)].y}
             x2={cursor.x}
             y2={cursor.y}
-            stroke="#00d4ff"
+            stroke="rgb(var(--c-tron))"
             strokeWidth={2}
             strokeDasharray="4 3"
           />

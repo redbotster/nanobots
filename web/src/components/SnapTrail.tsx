@@ -23,18 +23,16 @@ export function SnapTrail({
         <path
           d="M0 52 C 60 52, 60 60, 100 60 S 140 68, 200 68"
           fill="none"
-          stroke="#00d4ff"
           strokeWidth={2}
-          className="drop-shadow-[0_0_6px_rgba(0,212,255,0.8)]"
+          className="stroke-tron drop-shadow-[0_0_6px_var(--c-glow-shadow)]"
         />
         {live && (
           <path
             d="M0 52 C 60 52, 60 60, 100 60 S 140 68, 200 68"
             fill="none"
-            stroke="#bff3ff"
             strokeWidth={3}
             strokeDasharray="18 140"
-            className="snap-pulse"
+            className="snap-pulse stroke-glow"
           />
         )}
       </svg>

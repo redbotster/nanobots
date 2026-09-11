@@ -67,6 +67,11 @@ type Run struct {
 	// *do* need synchronized access). Exists so the Runs page can show a
 	// run nobody clicked "why did this happen" instead of a mystery entry.
 	TriggeredBy string `json:"triggered_by"`
+	// SwarmPath is the file this run was planned from — the one fact needed
+	// to run the same thing again. Set once by ExecuteSwarm and never
+	// mutated (same safety argument as TriggeredBy). Empty for a foundry
+	// job, which embeds a Run but was never planned from a swarm file.
+	SwarmPath string `json:"swarm_path,omitempty"`
 
 	mu          sync.Mutex
 	log         []LogEntry

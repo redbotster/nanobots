@@ -105,6 +105,10 @@ export interface Run {
    * fired it) — see docs/scheduler.md. Lets the Runs page explain a run
    * nobody remembers starting. */
   triggered_by: "manual" | "schedule";
+  /** The swarm file this was planned from — present on any real swarm run,
+   * absent on a foundry job (which embeds a Run but has no swarm file).
+   * It's what makes "Run it again" possible from the run itself. */
+  swarm_path?: string;
 }
 
 /** A file-typed output's shape on the wire — see internal/runner's

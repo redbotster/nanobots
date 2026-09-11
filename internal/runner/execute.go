@@ -53,6 +53,7 @@ func (o *Orchestrator) ExecuteSwarm(swarmPath string) (*Run, error) {
 	}
 
 	run := NewRun(result.Resolved.Swarm.Metadata.Name)
+	run.SwarmPath = swarmPath
 	run.SetStatus(StatusRunning)
 
 	go func() {
