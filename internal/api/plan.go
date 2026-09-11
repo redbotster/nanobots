@@ -75,6 +75,8 @@ func (s *Server) handlePlan(w http.ResponseWriter, r *http.Request) {
 		}
 		resp.Snaps = append(resp.Snaps, sc)
 	}
+	resp.Bots = nonNil(resp.Bots)
+	resp.Snaps = nonNil(resp.Snaps)
 	writeJSON(w, http.StatusOK, resp)
 }
 

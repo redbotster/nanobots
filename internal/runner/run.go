@@ -149,6 +149,19 @@ func (r *Run) BotOutputs(botID string) (map[string]any, bool) {
 	return v, ok
 }
 
+// AllOutputs returns every bot's outputs recorded so far, keyed by bot
+// instance id — what the WebUI shows once a run finishes, so "it succeeded"
+// comes with an actual answer to "so what did it produce."
+func (r *Run) AllOutputs() map[string]map[string]any {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make(map[string]map[string]any, len(r.outputs))
+	for k, v := range r.outputs {
+		out[k] = v
+	}
+	return out
+}
+
 // RequestApproval registers a pending approval and blocks until Decide is
 // called for it (from the WebUI) or timeout elapses.
 func (r *Run) RequestApproval(bot, step, summary, riskTier string, timeout time.Duration) (approved bool, decidedBy string, err error) {

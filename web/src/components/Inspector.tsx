@@ -69,7 +69,7 @@ export function Inspector({ bot }: { bot: BotSummary }) {
           SERVICES
         </h4>
         <div className="mt-2 flex flex-col gap-2">
-          {bot.services.map((s) => (
+          {(bot.services ?? []).map((s) => (
             <div key={s.id} className="flex items-center justify-between text-sm">
               <span className="text-ink">
                 {s.id} <span className="text-muted">· {s.provider}</span>

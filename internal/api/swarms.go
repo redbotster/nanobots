@@ -45,5 +45,5 @@ func (s *Server) handleListSwarms(w http.ResponseWriter, r *http.Request) {
 			Path: relPath, Name: sw.Metadata.Name, Description: sw.Metadata.Description,
 		})
 	}
-	writeJSON(w, http.StatusOK, swarms)
+	writeJSON(w, http.StatusOK, nonNil(swarms))
 }

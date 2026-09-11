@@ -42,11 +42,11 @@ func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
 		}
 		bots = append(bots, BotSummary{
 			ID: e.Name(), Name: nb.Metadata.Name, Version: nb.Metadata.Version,
-			Description: nb.Metadata.Description, Tags: nb.Metadata.Tags,
-			Harness: nb.Spec.Harness.Type, Services: nb.Spec.Services,
-			Inputs: nb.Spec.Ports.Inputs, Outputs: nb.Spec.Ports.Outputs,
+			Description: nb.Metadata.Description, Tags: nonNil(nb.Metadata.Tags),
+			Harness: nb.Spec.Harness.Type, Services: nonNil(nb.Spec.Services),
+			Inputs: nonNil(nb.Spec.Ports.Inputs), Outputs: nonNil(nb.Spec.Ports.Outputs),
 			Guardrails: nb.Spec.Guardrails,
 		})
 	}
-	writeJSON(w, http.StatusOK, bots)
+	writeJSON(w, http.StatusOK, nonNil(bots))
 }

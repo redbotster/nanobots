@@ -5,6 +5,7 @@ import { SwarmsPage } from "./pages/SwarmsPage";
 import { BotLibrary } from "./pages/BotLibrary";
 import { RunsPage } from "./pages/RunsPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { LandingPage } from "./pages/LandingPage";
 import { StatusDot } from "./components/StatusDot";
 
 type Page = "swarm" | "bots" | "runs" | "settings";
@@ -25,6 +26,14 @@ const NAV: { id: Page; label: string; icon: string }[] = [
 ];
 
 export default function App() {
+  const [loggedIn, setLoggedIn] = useState(false);
+  if (!loggedIn) {
+    return <LandingPage onLogin={() => setLoggedIn(true)} />;
+  }
+  return <Dashboard onLogout={() => setLoggedIn(false)} />;
+}
+
+function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [page, setPage] = useState<Page>("swarm");
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [apiUnreachable, setApiUnreachable] = useState(false);
@@ -43,10 +52,14 @@ export default function App() {
   return (
     <div className="grid h-screen grid-rows-[56px_1fr] pb-16 sm:pb-0 sm:grid-cols-[200px_1fr]">
       <header className="col-span-full flex items-center gap-5 border-b border-edge bg-void/80 px-5 backdrop-blur">
-        <div className="flex items-center gap-2.5 font-display text-lg font-bold tracking-[0.14em]">
+        <button
+          onClick={onLogout}
+          className="flex items-center gap-2.5 font-display text-lg font-bold tracking-[0.14em] text-ink"
+          title="Back to landing page"
+        >
           <span className="inline-block h-5 w-2.5 bg-tron shadow-glow-sm" />
-          NANOBOTS
-        </div>
+          nanobots
+        </button>
         <div className="ml-auto flex items-center gap-2 text-xs text-muted">
           {apiUnreachable ? (
             <>

@@ -4,14 +4,27 @@ import type { ReactNode } from "react";
 export function Tabs({
   tabs,
   defaultValue,
+  value,
+  onValueChange,
   right,
 }: {
   tabs: { value: string; label: string; content: ReactNode }[];
   defaultValue: string;
+  /** Pass both value and onValueChange to drive the active tab externally
+   * (e.g. auto-switching to "results" when a run finishes) while still
+   * letting the person click other tabs freely afterward — it's a normal
+   * controlled component, not a one-time jump. */
+  value?: string;
+  onValueChange?: (value: string) => void;
   right?: ReactNode;
 }) {
   return (
-    <RadixTabs.Root defaultValue={defaultValue} className="flex h-full flex-col">
+    <RadixTabs.Root
+      defaultValue={defaultValue}
+      value={value}
+      onValueChange={onValueChange}
+      className="flex h-full flex-col"
+    >
       <div className="flex items-center border-b border-edge">
         <RadixTabs.List className="flex">
           {tabs.map((t) => (

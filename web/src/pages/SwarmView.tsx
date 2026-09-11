@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { useRun } from "../lib/useRun";
 import type { BotSummary, PlanResult, SwarmSummary } from "../lib/types";
@@ -8,6 +8,7 @@ import { Sheet } from "../components/Sheet";
 import { Inspector } from "../components/Inspector";
 import { Tabs } from "../components/Tabs";
 import { RunLog } from "../components/RunLog";
+import { RunResults } from "../components/RunResults";
 import { YamlView } from "../components/YamlView";
 import { Button } from "../components/Button";
 import { StatusDot } from "../components/StatusDot";
@@ -26,8 +27,21 @@ export function SwarmView({
   const [runId, setRunId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("log");
 
   const { run } = useRun(runId);
+
+  // Jump to Results the moment a run succeeds — someone watching the log
+  // shouldn't have to go hunting for what they actually got. Only fires on
+  // the transition into "succeeded" (via the ref below), so manually
+  // clicking back to the log afterward sticks instead of being fought.
+  const wasSucceeded = useRef(false);
+  useEffect(() => {
+    if (run?.status === "succeeded" && !wasSucceeded.current) {
+      setActiveTab("results");
+    }
+    wasSucceeded.current = run?.status === "succeeded";
+  }, [run?.status]);
 
   useEffect(() => {
     setPlan(null);
@@ -60,6 +74,7 @@ export function SwarmView({
   const runOnce = async () => {
     setStarting(true);
     setStartError(null);
+    setActiveTab("log");
     try {
       const r = await api.startRun(SWARM_PATH);
       setRunId(r.id);
@@ -155,9 +170,12 @@ export function SwarmView({
       <section className="border-t border-edge bg-panel/40">
         <Tabs
           defaultValue="log"
+          value={activeTab}
+          onValueChange={setActiveTab}
           right={run ? `run ${run.id.slice(0, 8)}` : undefined}
           tabs={[
             { value: "log", label: "Run log", content: <RunLog run={run} /> },
+            { value: "results", label: "Results", content: <RunResults run={run} /> },
             {
               value: "yaml",
               label: "nanoswarm.yaml",

@@ -39,7 +39,7 @@ export function BotBrick({
         {bot.description}
       </p>
       <div className="mt-2.5 flex flex-wrap gap-1">
-        {bot.services.map((s) => (
+        {(bot.services ?? []).map((s) => (
           <span
             key={s.id}
             className="rounded border border-edge px-1.5 py-0.5 text-[10px] text-ink"
@@ -53,12 +53,12 @@ export function BotBrick({
       </div>
 
       <div className="pointer-events-none absolute -left-1.5 top-1/2 flex -translate-y-1/2 flex-col gap-2.5">
-        {bot.inputs.map((p) => (
+        {(bot.inputs ?? []).map((p) => (
           <PortBadge key={p.name} name={p.name} type={p.type} dim />
         ))}
       </div>
       <div className="pointer-events-none absolute -right-1.5 top-1/2 flex -translate-y-1/2 flex-col gap-2.5">
-        {bot.outputs.map((p) => (
+        {(bot.outputs ?? []).map((p) => (
           <PortBadge key={p.name} name={p.name} type={p.type} />
         ))}
       </div>

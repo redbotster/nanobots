@@ -42,7 +42,7 @@ export function BotLibrary() {
             </p>
 
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {bot.services.map((s) => (
+              {(bot.services ?? []).map((s) => (
                 <span
                   key={s.id}
                   className="rounded border border-edge px-2 py-0.5 text-[11px] text-ink"
@@ -60,14 +60,14 @@ export function BotLibrary() {
 
             <div className="mt-3 flex items-center justify-between text-[11px] text-muted">
               <div className="flex items-center gap-1.5">
-                {bot.inputs.map((p) => (
+                {(bot.inputs ?? []).map((p) => (
                   <PortBadge key={p.name} name={p.name} type={p.type} dim />
                 ))}
                 <span>in</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span>out</span>
-                {bot.outputs.map((p) => (
+                {(bot.outputs ?? []).map((p) => (
                   <PortBadge key={p.name} name={p.name} type={p.type} />
                 ))}
               </div>

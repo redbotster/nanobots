@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -61,6 +62,39 @@ func TestHandleListBots(t *testing.T) {
 		if !strings.Contains(rec.Body.String(), want) {
 			t.Errorf("expected bot list to mention %q, got: %s", want, rec.Body.String())
 		}
+	}
+}
+
+// TestHandleListBotsNeverReturnsNullArrays catches a real crash: a bot with
+// no services: block (e.g. bots/notify) has a nil Services slice in Go,
+// which encoding/json renders as `null` — and a frontend that assumes an
+// array (bot.services.map(...)) crashes outright. Every bot's
+// services/inputs/outputs/tags must serialize as [], never null.
+func TestHandleListBotsNeverReturnsNullArrays(t *testing.T) {
+	srv := testServer(t)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/api/bots", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var bots []map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &bots); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	found := false
+	for _, b := range bots {
+		if b["id"] != "notify" {
+			continue
+		}
+		found = true
+		for _, field := range []string{"services", "inputs", "outputs", "tags"} {
+			if b[field] == nil {
+				t.Errorf("bot %q field %q is null, want an empty array", b["id"], field)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected to find the notify bot (it has no services: block) in the list")
 	}
 }
 

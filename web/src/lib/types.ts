@@ -100,6 +100,24 @@ export interface Run {
   error?: string;
   log: LogEntry[];
   pending_approvals: PendingApproval[] | null;
+  outputs: Record<string, Record<string, unknown>>;
+}
+
+/** A file-typed output's shape on the wire — see internal/runner's
+ * collectOutputs, which stores it as a plain {uri, mime} map rather than a
+ * step.FileValue struct specifically so it serializes cleanly here. */
+export interface FileOutput {
+  uri: string;
+  mime: string;
+}
+
+export function isFileOutput(v: unknown): v is FileOutput {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    typeof (v as FileOutput).uri === "string" &&
+    (v as FileOutput).uri.startsWith("nbf://")
+  );
 }
 
 export interface StatusResponse {
