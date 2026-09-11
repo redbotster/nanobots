@@ -1,0 +1,64 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: github-issues-digest
+  version: 0.1.0
+  description: Summarise a repo's newest open issues into a short plain-text digest.
+  tags: [github, digest, reporting]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: openclaw
+    entrypoint: ./bot.md
+
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    max_tokens: 2000
+    temperature: 0.3
+
+  services:
+    - id: github
+      provider: github
+      scopes: [repo]
+      required: true
+      connection: demo
+
+  ports:
+    inputs:
+      - name: repo
+        type: string
+        required: true
+      - name: max_issues
+        type: string
+        default: "10"
+    outputs:
+      - name: digest
+        type: string
+
+  steps:
+    - name: fetch
+      type: service.call
+      service: github
+      op: issues.list
+      params: { repo: "{{inputs.repo}}", max: "{{inputs.max_issues}}" }
+    - name: summarise
+      type: ai.generate
+      prompt_file: ./prompts/digest.md
+      inputs: { issues: "{{steps.fetch.output}}" }
+      outputs:
+        digest: "{{steps.summarise.output.digest}}"
+
+  guardrails:
+    pii: allow
+    injection_threshold: 0.7
+    max_runtime_secs: 120
+    network_egress: [api.github.com]
+
+  resources:
+    preset: small
+    memory: 256Mi
+    cpu: 250m
+    image: ghcr.io/nanobots/harness-openclaw:1.4-slim

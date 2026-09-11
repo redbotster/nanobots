@@ -1,0 +1,42 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanoswarm
+metadata:
+  name: github-digest-to-slack
+  description: Every weekday morning, summarise a repo's newest open issues and post the digest to Slack.
+  owner: me@example.com
+
+spec:
+  defaults:
+    model: { provider: anthropic, name: claude-sonnet-4-6 }
+    guardrails:
+      pii: allow
+      injection_threshold: 0.7
+      daily_budget_usd: 5
+    resources: { preset: small }
+
+  vars:
+    repo: "redbotster/nanobots"
+    notify_channel: "slack:#eng"
+
+  trigger:
+    type: cron
+    expr: "0 8 * * 1-5"
+    timezone: America/Chicago
+
+  bots:
+    - id: digest
+      use: github-issues-digest@0.1.0
+      inputs:
+        repo: "{{vars.repo}}"
+        max_issues: "10"
+    - id: notifier
+      use: notify@0.1.0
+      inputs:
+        channel: "{{vars.notify_channel}}"
+
+  snaps:
+    - from: digest.digest
+      to: notifier.message
+
+  deploy:
+    target: local

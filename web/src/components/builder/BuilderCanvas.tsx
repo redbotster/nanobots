@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { BotSummary, SnapCheck } from "../../lib/types";
 
 export interface PlacedBot {
@@ -35,8 +35,10 @@ function endpointPort(ref: string): { instanceId: string; port: string } {
 /** The visual swarm builder's canvas: draggable bot nodes with typed ports,
  * and click-drag-release connections between an output port and an input
  * port. Node positions are canvas-local only — the swarm's saved YAML has no
- * concept of layout, so this state never leaves the browser (see
- * BuilderPage's localStorage-backed layout persistence). */
+ * concept of layout, so this state lives only in BuilderPage's component
+ * state and resets on reload (a disclosed limitation, see its doc comment).
+ * Delete/Backspace removes the selected node when focus isn't in a text
+ * field; Escape cancels an in-progress connection drag. */
 export function BuilderCanvas({
   bots,
   botDefs,
@@ -90,6 +92,28 @@ export function BuilderCanvas({
     setPositions(next);
   }, [bots, snaps]);
 
+  // Delete/Backspace removes the selected node — skipped while focus is in
+  // a text field (the swarm name/description inputs, a palette search box)
+  // so it still behaves like a normal delete key there. Escape backs out of
+  // an in-progress connection drag without requiring a precise mouseup.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const inTextField = target && ["INPUT", "TEXTAREA"].includes(target.tagName);
+      if ((e.key === "Delete" || e.key === "Backspace") && !inTextField && selectedInstanceId) {
+        e.preventDefault();
+        onRemoveBot(selectedInstanceId);
+      }
+      if (e.key === "Escape" && connecting) {
+        cancelConnectionRef.current?.();
+        setConnecting(null);
+        setCursor(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedInstanceId, connecting, onRemoveBot]);
+
   const startDragNode = (instanceId: string, e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest("[data-port]")) return;
     e.preventDefault();
@@ -120,15 +144,24 @@ export function BuilderCanvas({
     };
   };
 
+  // Holds the active connection drag's teardown so Escape can actually
+  // remove its window listeners, not just hide the preview line — otherwise
+  // a stray mouseup anywhere later would still silently try to complete it.
+  const cancelConnectionRef = useRef<(() => void) | null>(null);
+
   const startConnection = (instanceId: string, port: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setConnecting({ instanceId, port });
     setCursor(canvasPoint(e));
     const onMove = (ev: MouseEvent) => setCursor(canvasPoint(ev));
-    const onUp = (ev: MouseEvent) => {
+    const cleanup = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      cancelConnectionRef.current = null;
+    };
+    const onUp = (ev: MouseEvent) => {
+      cleanup();
       const target = document.elementFromPoint(ev.clientX, ev.clientY);
       const portEl = target?.closest("[data-port]") as HTMLElement | null;
       const targetKey = portEl?.dataset.port;
@@ -142,6 +175,7 @@ export function BuilderCanvas({
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+    cancelConnectionRef.current = cleanup;
   };
 
   const checkFor = (from: string, to: string) => snapChecks.find((c) => c.From === from && c.To === to);

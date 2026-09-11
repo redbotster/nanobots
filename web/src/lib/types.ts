@@ -175,3 +175,10 @@ export interface SwarmFull {
   bots: DraftBot[];
   snaps: DraftSnap[];
 }
+
+export type ConnectableService = "google" | "slack" | "github";
+
+export interface ConnectionStatus {
+  service: ConnectableService;
+  connected: boolean;
+}

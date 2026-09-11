@@ -77,6 +77,13 @@ func (c *Client) UpdateAgent(agentID string, req UpdateAgentRequest) (*Agent, er
 	return &agent, nil
 }
 
+// DeleteAgent permanently removes an agent — irreversible, and the caller's
+// job to confirm with a human first; this client never decides on its own
+// which agents are safe to remove.
+func (c *Client) DeleteAgent(agentID string) error {
+	return c.do("DELETE", "/v1/agents/"+agentID, nil, nil)
+}
+
 // CreateAgent registers a new agent. The returned api_key (ocv_...) is shown
 // exactly once by the live API — callers must persist it (see EnsureAgent /
 // SaveAgentCredential) or lose the ability to mint that agent's JWT.

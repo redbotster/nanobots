@@ -284,14 +284,22 @@ func runRun(args []string) error {
 	}
 
 	var googleCfg step.GoogleConfig
-	if clientID, err := google.LoadClientID(""); err != nil {
-		return err
-	} else if clientID != "" && oc.Configured() {
+	var githubCfg step.GitHubConfig
+	var slackCfg step.SlackConfig
+	if oc.Configured() {
 		vault, err := oc.EnsureVault("nanobots-main")
 		if err != nil {
-			return fmt.Errorf("ensure 1Claw vault for Google credentials: %w", err)
+			return fmt.Errorf("ensure 1Claw vault for connected-service credentials: %w", err)
 		}
-		googleCfg = step.GoogleConfig{ClientID: clientID, VaultID: vault.ID}
+		githubCfg = step.GitHubConfig{VaultID: vault.ID}
+		slackCfg = step.SlackConfig{VaultID: vault.ID}
+		clientID, err := google.LoadClientID("")
+		if err != nil {
+			return err
+		}
+		if clientID != "" {
+			googleCfg = step.GoogleConfig{ClientID: clientID, VaultID: vault.ID}
+		}
 	}
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -307,7 +315,7 @@ func runRun(args []string) error {
 		CallbackAddr: "http://host.docker.internal:" + port,
 		Callbacks:    callbacks, OneClaw: oc, AgentStateDir: stateDir,
 		RunWorkDir: runWorkDir, BlobDir: filepath.Join(home, ".nanobots", "blobs"),
-		Google: googleCfg,
+		Google: googleCfg, GitHub: githubCfg, Slack: slackCfg,
 	}
 	srv := &api.Server{
 		Orchestrator: orch, Runs: runner.NewRunStore(), Callbacks: callbacks,

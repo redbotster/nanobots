@@ -35,3 +35,23 @@ func TestUpdateAgentPatchesMemoryEnabled(t *testing.T) {
 		t.Error("expected the returned agent to report memory_enabled=true")
 	}
 }
+
+func TestDeleteAgentSendsDELETE(t *testing.T) {
+	var gotMethod string
+	srv := newTestServer(t, map[string]http.HandlerFunc{
+		"/v1/auth/api-key-token": tokenHandler(t),
+		"/v1/agents/a1": func(w http.ResponseWriter, r *http.Request) {
+			gotMethod = r.Method
+			w.WriteHeader(http.StatusNoContent)
+		},
+	})
+	c := NewClient("1ck_test")
+	c.BaseURL = srv.URL
+
+	if err := c.DeleteAgent("a1"); err != nil {
+		t.Fatalf("DeleteAgent: %v", err)
+	}
+	if gotMethod != http.MethodDelete {
+		t.Errorf("method = %s, want DELETE", gotMethod)
+	}
+}

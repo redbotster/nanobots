@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
-import type { BotSummary, StatusResponse } from "../lib/types";
+import type { BotSummary, ConnectableService, ConnectionStatus, StatusResponse } from "../lib/types";
 import { StatusDot } from "../components/StatusDot";
+import { Button } from "../components/Button";
 
 const CONNECTION_LABEL: Record<string, string> = {
   demo: "Demo data",
@@ -13,10 +14,22 @@ const CONNECTION_LABEL: Record<string, string> = {
 
 export function SettingsPage({ status }: { status: StatusResponse | null }) {
   const [bots, setBots] = useState<BotSummary[]>([]);
+  const [connections, setConnections] = useState<ConnectionStatus[] | null>(null);
+  const [connectionsError, setConnectionsError] = useState<string | null>(null);
+
+  const reloadConnections = () =>
+    api
+      .listConnections()
+      .then(setConnections)
+      .catch((e) => setConnectionsError(String(e)));
 
   useEffect(() => {
     api.listBots().then(setBots).catch(() => {});
+    reloadConnections();
   }, []);
+
+  const isConnected = (service: ConnectableService) =>
+    connections?.find((c) => c.service === service)?.connected ?? false;
 
   const services = new Map<string, { provider: string; connection: string; usedBy: string[] }>();
   for (const bot of bots) {
@@ -55,8 +68,41 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
         )}
       </section>
 
+      {status?.oneclaw_configured && (
+        <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-5">
+          <h2 className="font-display text-sm font-semibold text-ink">Connect a service</h2>
+          <p className="mt-1 text-[13px] text-muted">
+            Every credential goes straight into your 1Claw vault — never onto
+            this machine's disk, never into a bot container.
+          </p>
+          {connectionsError && (
+            <p className="mt-3 text-[13px] text-danger">{connectionsError}</p>
+          )}
+          <div className="mt-4 flex flex-col divide-y divide-edge">
+            <GoogleConnectRow
+              connected={isConnected("google")}
+              onConnected={reloadConnections}
+            />
+            <TokenConnectRow
+              service="slack"
+              label="Slack"
+              hint="A bot token (xoxb-...) from api.slack.com/apps, scoped to chat:write."
+              connected={isConnected("slack")}
+              onConnected={reloadConnections}
+            />
+            <TokenConnectRow
+              service="github"
+              label="GitHub"
+              hint="A personal access token, scoped to repo (or public_repo for public repos only)."
+              connected={isConnected("github")}
+              onConnected={reloadConnections}
+            />
+          </div>
+        </section>
+      )}
+
       <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-5">
-        <h2 className="font-display text-sm font-semibold text-ink">Services</h2>
+        <h2 className="font-display text-sm font-semibold text-ink">Services in use</h2>
         <p className="mt-1 text-[13px] text-muted">
           How each bot's declared services get connected — every service
           resolves to one of a few standard strategies, never a raw API key
@@ -81,12 +127,121 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
           ))}
         </div>
         <p className="mt-4 text-[12px] text-muted">
-          Gmail and Drive are on demo data right now — Google blocks
-          automated-browser sign-in outright, so real access needs either
-          1Claw's own Google OAuth provider to add Gmail scopes, or a
-          dedicated Google sign-in client. See the README for the full story.
+          Every bot ships on demo data by default, even after you connect a
+          service above — switch a specific bot's <code>connection:</code> in
+          its <code>nanobot.yaml</code> (or the visual builder, soon) to use
+          it for real. See the README for the full story on why Gmail/Drive
+          specifically needed a dedicated Google sign-in rather than 1Claw's
+          own OAuth registry.
         </p>
       </section>
+    </div>
+  );
+}
+
+function GoogleConnectRow({
+  connected,
+  onConnected,
+}: {
+  connected: boolean;
+  onConnected: () => void;
+}) {
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const connect = async () => {
+    setConnecting(true);
+    setError(null);
+    try {
+      await api.connectGoogleStart();
+      onConnected();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  return (
+    <div className="py-3">
+      <div className="flex items-center gap-3">
+        <StatusDot tone={connected ? "ok" : "muted"} />
+        <div className="min-w-0 flex-1">
+          <div className="text-sm text-ink">Google</div>
+          <div className="text-[11px] text-muted">Gmail, Drive, Sheets — opens your browser to sign in</div>
+        </div>
+        <Button variant="ghost" onClick={connect} disabled={connecting}>
+          {connecting ? "Waiting for you to approve…" : connected ? "Reconnect" : "Connect"}
+        </Button>
+      </div>
+      {error && <p className="mt-2 text-[12px] text-danger">{error}</p>}
+    </div>
+  );
+}
+
+function TokenConnectRow({
+  service,
+  label,
+  hint,
+  connected,
+  onConnected,
+}: {
+  service: ConnectableService;
+  label: string;
+  hint: string;
+  connected: boolean;
+  onConnected: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [token, setToken] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    if (!token.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api.connectToken(service, token.trim());
+      setToken("");
+      setOpen(false);
+      onConnected();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="py-3">
+      <div className="flex items-center gap-3">
+        <StatusDot tone={connected ? "ok" : "muted"} />
+        <div className="min-w-0 flex-1">
+          <div className="text-sm text-ink">{label}</div>
+          <div className="text-[11px] text-muted">{hint}</div>
+        </div>
+        <Button variant="ghost" onClick={() => setOpen((o) => !o)}>
+          {connected ? "Reconnect" : "Connect"}
+        </Button>
+      </div>
+      {open && (
+        <div className="mt-3 flex items-center gap-2">
+          <input
+            type="password"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+            placeholder="Paste token…"
+            autoFocus
+            className="flex-1 rounded border border-edge-strong bg-void px-2.5 py-1.5 text-xs text-ink placeholder:text-muted focus:border-tron focus:outline-none"
+          />
+          <Button variant="primary" onClick={submit} disabled={saving || !token.trim()}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
+        </div>
+      )}
+      {error && <p className="mt-2 text-[12px] text-danger">{error}</p>}
     </div>
   );
 }

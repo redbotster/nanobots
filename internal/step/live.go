@@ -37,6 +37,14 @@ type LiveDeps struct {
 	// error rather than silently falling back to anything.
 	Google   GoogleConfig
 	googleTS *googleTokenSource
+
+	// GitHub/Slack configure direct access the same way — see
+	// github_live.go/slack_live.go. Both are zero-value "not configured" by
+	// default too.
+	GitHub           GitHubConfig
+	githubTokenCache *vaultToken
+	Slack            SlackConfig
+	slackTokenCache  *vaultToken
 }
 
 func NewLiveDeps(oc *oneclaw.Client, shroud *oneclaw.ShroudClient, agentID, fixturesDir string, blobs BlobStore) *LiveDeps {
@@ -69,6 +77,13 @@ func (l *LiveDeps) ServiceCall(svc schema.Service, op string, params map[string]
 			return nil, err
 		}
 		return dispatchGoogle(client, op, params, l.Blobstore)
+	}
+	if svc.Provider == "github" {
+		client, err := l.githubClient()
+		if err != nil {
+			return nil, err
+		}
+		return dispatchGitHub(client, op, params)
 	}
 	call := func() (*oneclaw.ExecuteResult, error) {
 		return l.OneClaw.Execute(l.AgentID, svc.ID, "http", map[string]any{"op": op, "params": params})
@@ -128,10 +143,20 @@ func (l *LiveDeps) Approve(summary, riskTier string) (bool, string, error) {
 	return approved, "1claw:" + status, nil
 }
 
+// Notify delivers for real when channel targets a backend this build knows
+// how to reach — today, just Slack ("slack:#channel" or "slack:C0123...").
+// Anything else (email:, sms:, or no recognized prefix at all) has no live
+// backend wired up yet and falls back to DemoDeps's no-op, a disclosed gap
+// rather than a silently faked delivery.
 func (l *LiveDeps) Notify(message, channel string) error {
-	// TODO(nanobots#notify): real notify (slack/email/webhook) isn't wired
-	// to a live backend yet; falls back to a no-op like DemoDeps rather than
-	// pretending to deliver something.
+	if target, ok := slackChannelFrom(channel); ok {
+		client, err := l.slackClient()
+		if err != nil {
+			return err
+		}
+		_, err = client.PostMessage(target, message)
+		return err
+	}
 	return l.Demo.Notify(message, channel)
 }
 

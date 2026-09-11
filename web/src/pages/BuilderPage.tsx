@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
-import type { BotSummary, PlanResult, SwarmSummary } from "../lib/types";
+import type { BotSummary, ConnectionStatus, PlanResult, SwarmFull, SwarmSummary } from "../lib/types";
 import { BuilderCanvas, type CanvasSnap, type PlacedBot } from "../components/builder/BuilderCanvas";
 import { BuilderPalette } from "../components/builder/BuilderPalette";
 import { BuilderInspector } from "../components/builder/BuilderInspector";
@@ -43,6 +43,7 @@ export function BuilderPage({
   onDone: (savedPath?: string) => void;
 }) {
   const [botDefs, setBotDefs] = useState<Record<string, BotSummary>>({});
+  const [connections, setConnections] = useState<ConnectionStatus[]>([]);
   const [name, setName] = useState(existing?.name ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [bots, setBots] = useState<PlacedBot[]>([]);
@@ -54,39 +55,55 @@ export function BuilderPage({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<SwarmSummary[]>([]);
 
   useEffect(() => {
     api.listBots().then((list) => {
       setBotDefs(Object.fromEntries(list.map((b) => [b.id, b])));
     });
+    api.listConnections().then(setConnections).catch(() => {});
+    if (!existing) api.listSwarms().then(setTemplates).catch(() => {});
   }, []);
+
+  // Places a loaded swarm's bots in a simple grid and pre-fills manual input
+  // values — shared by hydrating an existing swarm to edit and cloning one
+  // as a starting template for a new one.
+  const hydrateFrom = (full: SwarmFull) => {
+    const placed = full.bots.map((b, i) => {
+      const [botId] = b.use.split("@");
+      const pos = defaultPosition(i);
+      return { instanceId: b.id, botId, x: pos.x, y: pos.y };
+    });
+    setBots(placed);
+    setSnaps(full.snaps.map((s) => ({ from: s.from, to: s.to })));
+    setInputValues(
+      Object.fromEntries(
+        full.bots.map((b) => [
+          b.id,
+          Object.fromEntries(Object.entries(b.inputs ?? {}).map(([k, v]) => [k, String(v)])),
+        ]),
+      ),
+    );
+  };
 
   // Hydrate from an existing swarm's structured data (edit mode) once its
   // definition is loaded, so we know each placed bot's directory id (the
   // "use:" field only carries "<dir-id>@<version>", already what we need).
   useEffect(() => {
     if (!existing) return;
-    api
-      .swarmFull(existing.path)
-      .then((full) => {
-        const placed = full.bots.map((b, i) => {
-          const [botId] = b.use.split("@");
-          const pos = defaultPosition(i);
-          return { instanceId: b.id, botId, x: pos.x, y: pos.y };
-        });
-        setBots(placed);
-        setSnaps(full.snaps.map((s) => ({ from: s.from, to: s.to })));
-        setInputValues(
-          Object.fromEntries(
-            full.bots.map((b) => [
-              b.id,
-              Object.fromEntries(Object.entries(b.inputs ?? {}).map(([k, v]) => [k, String(v)])),
-            ]),
-          ),
-        );
-      })
-      .catch((e) => setLoadError(String(e)));
+    api.swarmFull(existing.path).then(hydrateFrom).catch((e) => setLoadError(String(e)));
   }, [existing]);
+
+  const startFromTemplate = async (template: SwarmSummary) => {
+    try {
+      const full = await api.swarmFull(template.path);
+      hydrateFrom(full);
+      setName(`${template.name} copy`);
+      setDescription(template.description);
+    } catch (e) {
+      setLoadError(String(e));
+    }
+  };
 
   // Live, debounced type-checking against the real planner — the same rules
   // `nanobots plan` and a saved swarm's run both use — so a bad connection
@@ -220,9 +237,25 @@ export function BuilderPage({
       )}
 
       <div className="grid min-h-0 grid-rows-[minmax(0,1fr)] grid-cols-[220px_1fr] sm:grid-cols-[240px_1fr]">
-        <BuilderPalette bots={Object.values(botDefs)} onAdd={addBot} />
+        <BuilderPalette bots={Object.values(botDefs)} connections={connections} onAdd={addBot} />
         <div className="flex min-h-0 min-w-0">
-          <div className="min-w-0 flex-1">
+          <div className="relative min-w-0 flex-1">
+            {bots.length === 0 && !existing && templates.length > 0 && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-6 z-10 flex justify-center">
+                <div className="pointer-events-auto flex max-w-lg flex-wrap items-center gap-2 rounded-lg border border-edge-strong bg-panel/95 px-4 py-3 shadow-glow-sm backdrop-blur">
+                  <span className="text-xs text-muted">Or start from a template:</span>
+                  {templates.map((t) => (
+                    <button
+                      key={t.path}
+                      onClick={() => startFromTemplate(t)}
+                      className="rounded-full border border-edge-strong px-3 py-1 text-xs text-ink transition-colors hover:border-tron hover:bg-tron/10"
+                    >
+                      {t.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <BuilderCanvas
               bots={bots}
               botDefs={botDefs}

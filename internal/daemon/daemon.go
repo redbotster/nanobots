@@ -45,25 +45,32 @@ func Run(opts Options) error {
 		log.Println("1Claw: no key configured — running fully in demo mode")
 	}
 
-	// Google (Gmail/Drive/Sheets) is configured only once both a client id
-	// exists and 1Claw has a vault to hold the connected account's refresh
-	// token — resolved once here, not per-run, since EnsureVault is a real
-	// network call. See internal/step/google_live.go and
-	// docs/connections.md for what a bot needs to actually use this
-	// (a `connection: oauth_native` service and a completed
-	// `nanobots connect google`).
+	// Google/GitHub/Slack all keep their credentials in the same 1Claw vault
+	// ("nanobots-main") — resolved once here, not per-run, since EnsureVault
+	// is a real network call. GitHub/Slack just need that vault id (a token
+	// pasted in via Settings or `nanobots connect`); Google additionally
+	// needs an OAuth client id, since it's a refresh-token flow, not a
+	// static token — see internal/step/{google,github,slack}_live.go and
+	// docs/connections.md.
 	var googleCfg step.GoogleConfig
-	clientID, err := google.LoadClientID(opts.EnvFilePath)
-	if err != nil {
-		return fmt.Errorf("load Google OAuth client id: %w", err)
-	}
-	if clientID != "" && oc.Configured() {
+	var githubCfg step.GitHubConfig
+	var slackCfg step.SlackConfig
+	if oc.Configured() {
 		vault, err := oc.EnsureVault("nanobots-main")
 		if err != nil {
-			return fmt.Errorf("ensure 1Claw vault for Google credentials: %w", err)
+			return fmt.Errorf("ensure 1Claw vault for connected-service credentials: %w", err)
 		}
-		googleCfg = step.GoogleConfig{ClientID: clientID, VaultID: vault.ID}
-		log.Println("google: OAuth client configured — run `nanobots connect google` once to link an account")
+		githubCfg = step.GitHubConfig{VaultID: vault.ID}
+		slackCfg = step.SlackConfig{VaultID: vault.ID}
+
+		clientID, err := google.LoadClientID(opts.EnvFilePath)
+		if err != nil {
+			return fmt.Errorf("load Google OAuth client id: %w", err)
+		}
+		if clientID != "" {
+			googleCfg = step.GoogleConfig{ClientID: clientID, VaultID: vault.ID}
+			log.Println("google: OAuth client configured — run `nanobots connect google` once to link an account")
+		}
 	}
 
 	stateDir, err := oneclaw.DefaultStateDir()
@@ -95,6 +102,8 @@ func Run(opts Options) error {
 		RunWorkDir:    runWorkDir,
 		BlobDir:       blobDir,
 		Google:        googleCfg,
+		GitHub:        githubCfg,
+		Slack:         slackCfg,
 	}
 
 	srv := &api.Server{

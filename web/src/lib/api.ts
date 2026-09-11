@@ -1,5 +1,7 @@
 import type {
   BotSummary,
+  ConnectableService,
+  ConnectionStatus,
   PlanResult,
   Run,
   SaveSwarmRequest,
@@ -49,6 +51,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify(draft),
     }),
+  listConnections: () => req<ConnectionStatus[]>("/api/connections"),
+  connectToken: (service: ConnectableService, token: string) =>
+    req<ConnectionStatus>(`/api/connections/${service}`, {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    }),
+  connectGoogleStart: () =>
+    req<ConnectionStatus>("/api/connections/google/start", { method: "POST" }),
   startRun: (swarmPath: string) =>
     req<Run>("/api/runs", {
       method: "POST",

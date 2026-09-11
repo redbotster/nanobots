@@ -1,0 +1,23 @@
+[
+  {
+    "number": 42,
+    "title": "planner should reject cycles with a clearer error message",
+    "user": "dana-kim-dev",
+    "html_url": "https://github.com/redbotster/nanobots/issues/42",
+    "created_at": "2026-09-08T11:15:00Z"
+  },
+  {
+    "number": 41,
+    "title": "WebUI: swarm builder should support editing an existing swarm's trigger",
+    "user": "priyashah",
+    "html_url": "https://github.com/redbotster/nanobots/issues/41",
+    "created_at": "2026-09-07T16:40:00Z"
+  },
+  {
+    "number": 39,
+    "title": "docs: clarify how connection: oauth_native differs from oauth_1claw",
+    "user": "marcuswebb",
+    "html_url": "https://github.com/redbotster/nanobots/issues/39",
+    "created_at": "2026-09-05T09:02:00Z"
+  }
+]
