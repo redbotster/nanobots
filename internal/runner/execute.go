@@ -61,8 +61,13 @@ func (o *Orchestrator) ExecuteSwarm(swarmPath string) (*Run, error) {
 			rb := result.Resolved.Bots[botID]
 			if err := o.runBot(run, result.Resolved, botID, rb); err != nil {
 				run.Log(botID, "", "FAILED: %v", err)
-				run.SetStatus(StatusFailed)
+				// SetError before SetStatus, not after: the terminal status
+				// is what makes a run final, and RunStore snapshots it to
+				// history right then. Setting the error afterwards persisted
+				// failed runs with a blank "why", which is the one thing you
+				// come back to a failed run for.
 				run.SetError(err)
+				run.SetStatus(StatusFailed)
 				return
 			}
 		}

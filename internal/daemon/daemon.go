@@ -164,9 +164,23 @@ func Run(opts Options) error {
 		Agent:         &foundry.ClaudeCLIAgent{RepoRoot: opts.RepoRoot, APIKey: anthropicKey},
 	}}
 
+	// Run history survives a restart (see internal/runner/persist.go). A
+	// history directory that can't be read is worth a warning, not a
+	// refusal to start — NewPersistentRunStore returns a usable store
+	// either way.
+	runs := runner.NewRunStore()
+	if historyDir, err := runner.DefaultHistoryDir(); err != nil {
+		fmt.Fprintf(os.Stderr, "nanobotd: run history disabled: %v\n", err)
+	} else if store, err := runner.NewPersistentRunStore(historyDir); err != nil {
+		fmt.Fprintf(os.Stderr, "nanobotd: some run history could not be read from %s: %v\n", historyDir, err)
+		runs = store
+	} else {
+		runs = store
+	}
+
 	srv := &api.Server{
 		Orchestrator: orch,
-		Runs:         runner.NewRunStore(),
+		Runs:         runs,
 		Callbacks:    callbacks,
 		OneClaw:      oc,
 		BotsDir:      opts.BotsDir,

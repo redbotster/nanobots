@@ -43,9 +43,9 @@ export function RunsPage() {
     <div className="h-full overflow-auto p-5 sm:p-6">
       <h1 className="font-display text-xl font-medium text-ink">Runs</h1>
       <p className="mt-1 hidden text-sm text-muted sm:block">
-        Every time a swarm ran this session, local to this nanobotd — history
-        doesn't persist across a restart yet. Click one to watch it live or
-        see what it produced, even if it started somewhere else.
+        Every swarm run on this machine, kept across restarts. Click one to
+        watch it live or see what it produced, even if it started somewhere
+        else — or to read why it failed and run it again.
       </p>
 
       {needsApproval.length > 0 && (

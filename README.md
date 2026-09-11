@@ -4,7 +4,7 @@
 
 Nanobots is a local-first system for composing single-job AI/deterministic containers ("nanobots") into typed, DAG-shaped workflows ("nanoswarms"), with secrets, OAuth, LLM routing, and guardrails delegated to [1Claw](https://docs.1claw.co).
 
-The full product spec lives in [`context/NANOBOTS-BLUEPRINT.md`](context/NANOBOTS-BLUEPRINT.md) and [`context/NANOBOTS-CATALOG.md`](context/NANOBOTS-CATALOG.md). Treat those as the source of truth for the YAML schemas and the launch catalog; this README covers what's actually built, and is kept in sync with it — if something here contradicts the code, the code wins. `docs/` has one page per concept — contract, connections, harnesses, approvals, the 1Claw bridge, Browser Bridge, the foundry, the scheduler — each ending in how to run it for real.
+The full product spec lives in [`context/NANOBOTS-BLUEPRINT.md`](context/NANOBOTS-BLUEPRINT.md) and [`context/NANOBOTS-CATALOG.md`](context/NANOBOTS-CATALOG.md). Treat those as the source of truth for the YAML schemas and the launch catalog; this README covers what's actually built, and is kept in sync with it — if something here contradicts the code, the code wins. `docs/` has one page per concept — contract, connections, harnesses, approvals, the 1Claw bridge, Browser Bridge, the foundry, the scheduler, run history — each ending in how to run it for real.
 
 ## Why nanobots, not one big agent
 
@@ -36,6 +36,7 @@ This repo implements the full 28-brick, 12-swarm launch catalog from `context/NA
 - **An AI composer** ("the head nanobot" — see below) that turns a plain-English request into a validated draft swarm.
 - **A dead-simple WebUI** (Vite + React + TypeScript + Tailwind + Radix) with a basic/advanced mode toggle, a bot library (searchable, grouped by service, with a per-service demo/live switch that connects an account inline), a swarm gallery showing at a glance how much of each swarm is live vs. demo, a live run viewer with SSE log streaming and inline approvals, browser notifications when something needs your approval, a Settings page where connecting a service — including 1Claw itself — is a button or a pasted token, and a visual swarm builder (including picking a nested field of a `json` output, not just whole-port connections) for anyone who wants to build or tweak by hand.
 - **A real scheduler**: every catalog swarm's `trigger: {type: cron, ...}` now actually fires — see `docs/scheduler.md`. Previously nothing in this build ever executed one; every run was a human clicking Run.
+- **Run history that survives a restart**: every finished run is kept as a JSON file under `~/.nanobots/history/`, capped at 200 — see `docs/run-history.md`. A failed run shows *why* it failed and offers to run the same swarm again. A run killed mid-flight by a restart is restored as failed rather than sitting in the list as "running" forever.
 
 Not built yet: the `kubernetes`/`apple` compile targets, a real dynamic agent loop (see `docs/harnesses.md` — today's harnesses run a fixed, pre-written step list, not an LLM deciding what to do), enforced network-egress guardrails (reported in a bot's declared guardrails, not actually firewalled), per-item fan-out (every "for each X" swarm processes the first item per run — documented per-swarm, see below), a real OAuth integration for Google Business Profile (`review-responder` stays on `connection: demo`, gap called out in `docs/connections.md`), and the hosted multi-tenant control plane.
 
@@ -243,10 +244,11 @@ Per the project's own working style, expensive verification is a single consolid
 go build ./... && go vet ./... && go test ./...
 ```
 
-211 table-driven Go tests across every package, including:
+280 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
 - `internal/contract`'s `TestRunConformanceOnLaunchBots` — auto-discovers and conformance-tests all 30 bots under `bots/` against their own fixtures, no Docker or network.
 - `internal/planner`'s `TestPlanAllExampleSwarms` — auto-discovers and type-checks all 14 swarms under `examples/swarms/`.
 - httptest-mocked 1Claw/Google/Slack/GitHub/Stripe/HubSpot/X/LinkedIn API clients, built against each provider's real, documented endpoint shapes (verified against `@1claw/openapi-spec` and each provider's own docs, not guessed).
+- `internal/runner`'s run-history tests — a run really written to a temp dir, a second store really reading it back, plus the awkward cases: a corrupt file, an over-cap directory, and a run left mid-flight by a restart (`docs/run-history.md`).
 
 ```
 cd web && npx tsc -b && npm run test

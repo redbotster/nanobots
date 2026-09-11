@@ -73,11 +73,12 @@ type Run struct {
 	// job, which embeds a Run but was never planned from a swarm file.
 	SwarmPath string `json:"swarm_path,omitempty"`
 
-	mu          sync.Mutex
-	log         []LogEntry
-	outputs     map[string]map[string]any // botID -> port -> value (JSON-safe)
-	approvals   map[string]*PendingApproval
-	subscribers map[chan LogEntry]bool
+	mu            sync.Mutex
+	log           []LogEntry
+	outputs       map[string]map[string]any // botID -> port -> value (JSON-safe)
+	approvals     map[string]*PendingApproval
+	subscribers   map[chan LogEntry]bool
+	onTerminalFns []func(*Run)
 }
 
 func NewRun(swarmName string) *Run {
@@ -138,16 +139,56 @@ func (r *Run) LogEntries() []LogEntry {
 func (r *Run) SetStatus(s RunStatus) {
 	r.mu.Lock()
 	r.Status = s
-	if s == StatusSucceeded || s == StatusFailed {
+	terminal := s == StatusSucceeded || s == StatusFailed
+	if terminal {
 		r.FinishedAt = time.Now()
 	}
+	fns := r.onTerminalFns
 	r.mu.Unlock()
+
+	// Outside the lock: a callback that reads the run (RunStore's does, to
+	// snapshot it) would deadlock on r.mu otherwise.
+	if terminal {
+		for _, fn := range fns {
+			fn(r)
+		}
+	}
+}
+
+// onTerminal registers fn to run once this run succeeds or fails. Used by
+// RunStore to write history at the only moment a run is worth writing: when
+// it's complete and will never change again.
+func (r *Run) onTerminal(fn func(*Run)) {
+	r.mu.Lock()
+	already := r.Status == StatusSucceeded || r.Status == StatusFailed
+	if !already {
+		r.onTerminalFns = append(r.onTerminalFns, fn)
+	}
+	r.mu.Unlock()
+	// A run can finish before anyone registers (a swarm that fails during
+	// planning is already failed by the time the store sees it) — fire
+	// immediately rather than silently never firing.
+	if already {
+		fn(r)
+	}
 }
 
 func (r *Run) SetError(err error) {
 	r.mu.Lock()
 	r.Error = err.Error()
+	// Callers should set the error before the terminal status (execute.go
+	// says why), but one that doesn't shouldn't silently persist a failed
+	// run with a blank "why" — re-fire so history catches up. Writing the
+	// same snapshot twice is harmless; losing the reason isn't.
+	var fns []func(*Run)
+	if r.Status == StatusSucceeded || r.Status == StatusFailed {
+		fns = r.onTerminalFns
+	}
 	r.mu.Unlock()
+
+	for _, fn := range fns {
+		fn(r)
+	}
 }
 
 // GetStatus/GetError/GetFinishedAt are synchronized reads of the fields
