@@ -16,7 +16,7 @@ A design principle carried through the whole build: wherever a human would norma
 
 Every bot's Google service (Gmail, Drive, Sheets) currently ships as `connection: demo`, even though real Gmail/Drive/Sheets access is now implemented (`internal/google` — PKCE OAuth, no client secret, direct against Google, no browser automation). The obvious first approach — Browser Bridge driving a real logged-in browser to Gmail — was tried and hit a wall: **Google refuses sign-in outright on any CDP/automation-controlled Chrome instance**, confirmed with screenshots (`"This browser or app may not be secure"`), not a guess. That's a deliberate Google policy, not a bug in the bridge or in this code, and not something to work around — spoofing the automation flag to get past Google's own bot detection is out of bounds.
 
-Browser Bridge itself works exactly as documented (see `docs/browser-bridge.md`) and remains the intended `connection` for services that don't do this — Stripe, HubSpot, X/LinkedIn dashboards, and the rest of the catalog's later tranches.
+Browser Bridge itself works exactly as documented (see `docs/browser-bridge.md`) and remains the intended `connection` for services with no viable OAuth or static-token path — currently that's just X/LinkedIn posting (`post-publisher`) and Google Business Profile replies (`review-responder`), both of which stay on `connection: demo` until a dedicated OAuth app exists for each. Stripe and HubSpot turned out not to need it — both have long-lived static tokens, so they're wired the same simple way as Slack and GitHub (below).
 
 ### Turning on real Gmail/Drive/Sheets (`oauth_native`)
 
@@ -25,16 +25,22 @@ Browser Bridge itself works exactly as documented (see `docs/browser-bridge.md`)
 3. Restart `nanobotd`, then click **Connect** next to Google on the WebUI's **Settings** page (or run `nanobots connect google` from the CLI) — it opens your browser to Google's real consent screen, then stores the resulting refresh token in a 1Claw vault secret (`nanobots-main` vault, `google/refresh_token`), never on local disk.
 4. Change a bot's `services[].connection` from `demo` to `oauth_native` in its `nanobot.yaml`.
 
-From then on, every Google-provider service across every bot shares that one connected account (`internal/step/google_live.go`'s `GoogleConfig` is process-wide, not per-bot) — see that file for exactly which `op:` values (`messages.list`, `files.create`, `rows.append`, ...) are implemented and any known shape gaps (e.g. `files.create` has no `filename` input yet, so one gets synthesized; `rows.append` has no column-order mapping yet, so values go in alphabetical-by-key order).
+From then on, every Google-provider service across every bot shares that one connected account (`internal/step/google_live.go`'s `GoogleConfig` is process-wide, not per-bot) — see that file for exactly which `op:` values (`messages.list`, `files.create`, `rows.append`, `events.list`, ...) are implemented and any known shape gaps (e.g. `files.create` has no `filename` input yet, so one gets synthesized; `rows.append` has no column-order mapping yet, so values go in alphabetical-by-key order). `ScopeCalendarReadonly` is included in `DefaultScopes`, so `meeting-prep`/`calendar-scheduler`'s calendar reads work the same way once connected — no separate connect step.
 
-## Slack and GitHub (`api_key_vault`)
+## Slack, GitHub, Stripe, and HubSpot (`api_key_vault`)
 
-Slack and GitHub both use plain, non-expiring tokens rather than an OAuth flow, so connecting either is just: **Settings → paste the token → Save** (or `nanobots connect slack` / `nanobots connect github` from the CLI). Same storage as Google — a 1Claw vault secret, never local disk, never inside a bot container.
+All four use plain, non-expiring tokens rather than an OAuth flow, so connecting any of them is just: **Settings → paste the token → Save** (`POST /api/connections/{service}/token`, `internal/api/connections.go`). Same storage as Google — a 1Claw vault secret, never local disk, never inside a bot container. Unlike Google, there's no CLI equivalent yet (`nanobots connect` only implements `google`, below) — the WebUI is the only way to connect these four today.
 
 - **Slack**: create a bot token at [api.slack.com/apps](https://api.slack.com/apps), scoped to `chat:write`, and invite the bot to whatever channel it should post in. `bots/notify`'s `channel` input recognizes a `"slack:#channel-name"` or `"slack:C0123..."` value and posts there for real once connected (`internal/step/slack_live.go`) — any other channel prefix (`"email:..."`, `"sms:..."`) still has no live backend and stays a documented no-op.
 - **GitHub**: create a personal access token scoped to `repo` (or `public_repo` for public repos only). `bots/github-issues-digest` uses it via a normal `service.call` with `provider: github`, same pattern as Google.
+- **Stripe**: create a secret key (test or live) at [dashboard.stripe.com/apikeys](https://dashboard.stripe.com/apikeys). `bots/invoice-chaser` uses it via `provider: stripe`, `internal/step/stripe_live.go` (`InvoicesList`).
+- **HubSpot**: create a private app token under **Settings → Integrations → Private Apps**, scoped to `crm.objects.contacts.read`/`.write`. `bots/lead-enricher` and `bots/lead-router` use it via `provider: hubspot`, `internal/step/hubspot_live.go` (`ContactSearch`/`ContactUpsert`). The catalog describes this bot pair as "HubSpot or Salesforce" — only HubSpot is wired, on the theory that one real integration beats two half-built ones.
 
 Unlike Google, there's no `connection: demo` to flip on `notify` itself (it isn't tied to a `services:` entry) — a `"slack:..."` channel always tries the real backend once one is configured, and errors clearly if it isn't, rather than silently no-op'ing a message the caller thinks was sent.
+
+## `web.fetch` — no connection at all
+
+`content-ideas` and `competitor-watch` use a `web.fetch` step (a plain outbound GET plus a tag-stripping regex to pull out text, capped at 1MB — "good enough for a summary prompt, not a real readability extractor"). It has no `connection:` concept, no vault, no OAuth, and nothing to set up: `DemoDeps` serves a fixture, `LiveDeps` hits the real URL, `RemoteDeps` proxies the container's request through nanobotd like every other live step (`internal/step/webfetch.go`).
 
 ### A real operational note: 1Claw vault passkey verification
 
