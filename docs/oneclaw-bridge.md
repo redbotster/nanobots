@@ -33,3 +33,49 @@ nanobots run -f examples/swarms/daily-email-recap.yaml
 ```
 
 The first is a read-only smoke test against your real account (lists vaults/agents, changes nothing). The second is the real thing: both bots run as real 1Claw agents, `ai.generate` goes through real Shroud, and `approve` opens a real run-level approval.
+
+
+## Which bots get a 1Claw agent
+
+Not all of them. A bot gets its own agent only when it actually needs one:
+
+- it has an `ai.generate` step (proxied through that agent's Shroud credentials), or
+- it has a `memory.*` step (memory is namespaced per agent), or
+- it has a **live** (non-demo) service whose provider has no native client in this build, so the call goes through 1Claw's generic binding — which is addressed by agent id.
+
+Approvals are deliberately not on that list: `BuildDeps` always installs the local `RunQueueApprover`, so an `approve` step never touches 1Claw's own queue.
+
+This used to be "every bot, always", and it was a real problem rather than just waste. Ten of the thirty catalog bots — `approve`, `drive-save`, `drive-watch`, `email-drive-file`, `email-send-approved`, `form-to-sheet`, `lead-router`, `notify`, `post-publisher`, `render-pdf` — are purely deterministic and never call an LLM, yet each burned one of the account's agent slots to never use it. On a pro tier that cap is 10, so a workspace with a handful of personal agents couldn't run a five-bot swarm. It also cost every one of those bots an agent-creation round-trip on its first run.
+
+`internal/runner.needsOneClawAgent` is the predicate, and `TestRealCatalogNeedsFarFewerAgentsThanItHasBots` asserts it against the real catalog, so the number moving is something a test notices rather than something you discover at the cap.
+
+**The cap is still real, though.** Twenty bots that do need agents still exceeds ten. Running the whole catalog live on a pro tier means either deleting agents between runs or upgrading the plan.
+
+## Stale agent credentials heal themselves
+
+An agent's `api_key` is shown exactly once, so `EnsureAgent` caches it under `~/.nanobots/state/agents/<name>.json`. That cache used to be trusted blindly, which meant an agent deleted on 1Claw left a dead key behind and every run of its bot failed with:
+
+```
+shroud: chat failed (401): agent key exchange failed: vault returned 401: Invalid credentials
+```
+
+Nothing in that message suggests the fix is "delete a local file". `EnsureAgent` now checks the saved credential against the agent listing (cached 30s, so a five-bot swarm makes one API call) and creates a replacement when the agent is gone.
+
+It never deletes the stale credential first. A key that can't be recovered is worth more than the inconvenience being fixed, so the file is only ever overwritten by a *successful* replacement — if creation fails (the cap, a network blip, a listing that was momentarily wrong), the old credential is still exactly where it was.
+
+## When the vault is locked
+
+1Claw's vault re-locks periodically and requires passkey verification. Reading any secret then returns:
+
+```
+403 {"type":"about:blank","title":"Forbidden","status":403,
+     "detail":"Passkey verification required to access vault secrets. Unlock with your passkey."}
+```
+
+This is a completely different problem from "this account was never connected", with completely different advice — but every caller used to report it as the latter (*"no connected account yet — connect it from Settings"*), sending you off to redo a connection that was already fine. `oneclaw.AsVaultLocked` classifies it, and the Slack/GitHub/Google/X/LinkedIn token paths all surface 1Claw's own sentence instead:
+
+```
+1Claw vault is locked: Passkey verification required to access vault secrets. Unlock with your passkey and retry.
+```
+
+It matches on a 403 whose body mentions a passkey, because 1Claw returns `"type":"about:blank"` here and there's no machine-readable code to key off. If that ever gains a real type, switch to it and drop the string match.

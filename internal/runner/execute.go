@@ -128,8 +128,10 @@ func (o *Orchestrator) runBot(run *Run, rs *planner.ResolvedSwarm, botID string,
 		}
 	}
 
+	// Only bots that actually use Shroud, memory, or a generic 1Claw service
+	// binding get an agent — see agentneed.go for why "always" was wrong.
 	var agentID, agentAPIKey string
-	if o.OneClaw != nil && o.OneClaw.Configured() {
+	if o.OneClaw != nil && o.OneClaw.Configured() && needsOneClawAgent(nb) {
 		agentID, agentAPIKey, err = o.OneClaw.EnsureAgent(o.AgentStateDir, "nanobots-"+nb.Metadata.Name, agentRequestFor(nb))
 		if err != nil {
 			return fmt.Errorf("ensure 1Claw agent: %w", err)

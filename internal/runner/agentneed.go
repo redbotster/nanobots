@@ -1,0 +1,55 @@
+package runner
+
+import (
+	"strings"
+
+	"github.com/redbotster/nanobots/internal/schema"
+)
+
+// nativeProviders are the services LiveDeps calls through a dedicated client
+// of this build's own (internal/google, internal/slack, …). Everything else
+// goes through 1Claw's generic binding, which is addressed by agent id — so
+// only a live service outside this set forces an agent to exist.
+//
+// Keep in sync with LiveDeps.ServiceCall's dispatch in internal/step/live.go.
+var nativeProviders = map[string]bool{
+	"google":   true,
+	"github":   true,
+	"slack":    true,
+	"stripe":   true,
+	"hubspot":  true,
+	"x":        true,
+	"linkedin": true,
+}
+
+// needsOneClawAgent reports whether this bot actually requires a 1Claw agent
+// of its own.
+//
+// It used to be "always", which meant a purely deterministic bot — render-pdf,
+// drive-save, notify, post-publisher and six others, a third of the catalog —
+// burned one of the account's ten agent slots to never use it. That is what
+// made a fourteen-bot workspace impossible on a pro tier, and it also cost
+// every such bot an agent-creation round-trip on its first run.
+//
+// A bot needs an agent for exactly three reasons:
+//   - ai.generate, which is proxied through that agent's Shroud credentials;
+//   - memory.*, which is namespaced per agent;
+//   - a live (non-demo) service with no native client here, which reaches the
+//     provider through 1Claw's generic binding, addressed by agent id.
+//
+// Approvals are not on that list: BuildDeps always installs the local
+// RunQueueApprover, so an `approve` step never touches 1Claw's own queue.
+func needsOneClawAgent(nb *schema.Nanobot) bool {
+	for _, s := range nb.Spec.Steps {
+		if s.Type == "ai.generate" || strings.HasPrefix(s.Type, "memory.") {
+			return true
+		}
+	}
+	for _, svc := range nb.Spec.Services {
+		live := svc.Connection != schema.ConnectionDemo && svc.Connection != ""
+		if live && !nativeProviders[svc.Provider] {
+			return true
+		}
+	}
+	return false
+}

@@ -14,6 +14,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -299,4 +300,59 @@ func truncate(b []byte) string {
 		return s[:max] + "…"
 	}
 	return s
+}
+
+// VaultLockedError means the vault exists and the credential is very likely
+// in it — 1Claw just won't hand it over until the human re-verifies their
+// passkey. It recurs in normal use (the lock is time-based), and it is a
+// completely different problem from "this account was never connected", with
+// a completely different fix, so callers must be able to tell them apart.
+// Before this they couldn't, and a locked vault was reported to users as "no
+// connected account yet — connect it from Settings", which is both wrong and
+// useless advice.
+type VaultLockedError struct{ Detail string }
+
+func (e *VaultLockedError) Error() string {
+	if e.Detail != "" {
+		return "1Claw vault is locked: " + e.Detail
+	}
+	return "1Claw vault is locked — unlock it with your passkey in the 1Claw app"
+}
+
+// AsVaultLocked reports whether err is 1Claw refusing vault access pending
+// passkey verification, returning a typed error with 1Claw's own wording.
+//
+// The signal is a 403 whose body mentions passkey verification. Matching on
+// the body is not ideal, but 1Claw returns `"type":"about:blank"` for this,
+// so there is no machine-readable code to key off — and silently treating it
+// as a generic 403 is worse. If 1Claw ever gives it a real type, switch to
+// that and delete the string match.
+func AsVaultLocked(err error) (*VaultLockedError, bool) {
+	var locked *VaultLockedError
+	if errors.As(err, &locked) {
+		return locked, true
+	}
+	var apiErr *apiError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusForbidden {
+		return nil, false
+	}
+	body := string(apiErr.Body)
+	if !strings.Contains(strings.ToLower(body), "passkey") {
+		return nil, false
+	}
+	return &VaultLockedError{Detail: detailFromProblemJSON(apiErr.Body)}, true
+}
+
+// detailFromProblemJSON pulls the human-readable "detail" out of 1Claw's
+// RFC 7807-shaped error body, falling back to the raw body if it isn't that
+// shape — the point is to show the user 1Claw's own sentence, not our
+// paraphrase of it.
+func detailFromProblemJSON(body []byte) string {
+	var problem struct {
+		Detail string `json:"detail"`
+	}
+	if err := json.Unmarshal(body, &problem); err == nil && problem.Detail != "" {
+		return problem.Detail
+	}
+	return strings.TrimSpace(truncate(body))
 }

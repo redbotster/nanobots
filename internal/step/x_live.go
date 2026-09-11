@@ -54,6 +54,9 @@ func (x2 *xTokenSource) Token() (string, error) {
 	if x2.refreshToken == "" {
 		rt, err := x2.oc.GetSecret(x2.cfg.VaultID, x2.cfg.refreshTokenKey())
 		if err != nil {
+			if locked, ok := oneclaw.AsVaultLocked(err); ok {
+				return "", locked
+			}
 			return "", fmt.Errorf("x: no connected account yet (%w) — connect it from Settings", err)
 		}
 		x2.refreshToken = rt

@@ -74,6 +74,9 @@ func (ts *linkedinTokenSource) Token() (string, error) {
 		if err != nil {
 			at, aerr := ts.oc.GetSecret(ts.cfg.VaultID, ts.cfg.accessTokenKey())
 			if aerr != nil {
+				if locked, ok := oneclaw.AsVaultLocked(err); ok {
+					return "", locked
+				}
 				return "", fmt.Errorf("linkedin: no connected account yet (%w) — connect it from Settings", err)
 			}
 			ts.staticOnly = true

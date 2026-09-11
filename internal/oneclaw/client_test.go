@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -301,5 +302,69 @@ func TestEnsureAgentDoesNotListOncePerBot(t *testing.T) {
 	}
 	if listCalls != 1 {
 		t.Errorf("listCalls = %d, want 1 — the listing should be cached across a swarm's bots", listCalls)
+	}
+}
+
+// A locked vault and an unconnected account both surface as an error from
+// GetSecret, but they need opposite advice — "unlock your passkey" vs.
+// "connect the account". Callers used to report every one of these as the
+// latter, which is actively misleading when the credential is sitting right
+// there in a vault you just need to unlock.
+func TestAsVaultLocked(t *testing.T) {
+	lockedBody := `{"type":"about:blank","title":"Forbidden","status":403,` +
+		`"detail":"Passkey verification required to access vault secrets. Unlock with your passkey."}`
+
+	for _, tc := range []struct {
+		name       string
+		err        error
+		want       bool
+		wantDetail string
+	}{
+		{
+			name:       "the real 403 1Claw returns for a locked vault",
+			err:        &apiError{Status: 403, Body: []byte(lockedBody)},
+			want:       true,
+			wantDetail: "Passkey verification required to access vault secrets. Unlock with your passkey.",
+		},
+		{
+			name: "a 403 that isn't about passkeys stays a plain 403",
+			err:  &apiError{Status: 403, Body: []byte(`{"detail":"Agent limit reached (10/10 on pro tier)."}`)},
+			want: false,
+		},
+		{
+			name: "a 404 is a missing vault, not a locked one",
+			err:  &apiError{Status: 404, Body: []byte(`{"detail":"vault not found"}`)},
+			want: false,
+		},
+		{
+			name: "an unrelated error is left alone",
+			err:  errors.New("dial tcp: connection refused"),
+			want: false,
+		},
+		{
+			name: "it survives wrapping, since callers wrap before anyone checks",
+			err:  fmt.Errorf("get slack token: %w", &apiError{Status: 403, Body: []byte(lockedBody)}),
+			want: true,
+			// The wrapper's own text must not swallow 1Claw's sentence.
+			wantDetail: "Passkey verification required to access vault secrets. Unlock with your passkey.",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			locked, ok := AsVaultLocked(tc.err)
+			if ok != tc.want {
+				t.Fatalf("AsVaultLocked = %v, want %v", ok, tc.want)
+			}
+			if !ok {
+				return
+			}
+			if locked.Detail != tc.wantDetail {
+				t.Errorf("Detail = %q, want %q", locked.Detail, tc.wantDetail)
+			}
+			// Whatever else it says, a person reading it must learn the
+			// vault is the problem.
+			if !strings.Contains(strings.ToLower(locked.Error()), "vault is locked") {
+				t.Errorf("Error() = %q, want it to name the locked vault", locked.Error())
+			}
+		})
 	}
 }

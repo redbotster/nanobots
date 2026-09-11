@@ -59,6 +59,9 @@ func (g *googleTokenSource) Token() (string, error) {
 	if g.refreshToken == "" {
 		rt, err := g.oc.GetSecret(g.cfg.VaultID, g.cfg.refreshTokenKey())
 		if err != nil {
+			if locked, ok := oneclaw.AsVaultLocked(err); ok {
+				return "", locked
+			}
 			return "", fmt.Errorf("google: no connected account yet (%w) — run `nanobots connect google` first", err)
 		}
 		g.refreshToken = rt

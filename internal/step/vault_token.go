@@ -39,6 +39,14 @@ func (v *vaultToken) Get() (string, error) {
 	}
 	val, err := v.oc.GetSecret(v.cfg.VaultID, v.cfg.Key)
 	if err != nil {
+		// A locked vault is not a missing connection: the credential is
+		// almost certainly right there, 1Claw just wants the human to
+		// re-verify first. Telling someone to "connect it from Settings"
+		// when they already have sends them to do the one thing that
+		// won't help.
+		if locked, ok := oneclaw.AsVaultLocked(err); ok {
+			return "", locked
+		}
 		return "", fmt.Errorf("no connected account yet (%w) — connect it from Settings", err)
 	}
 	v.value = val
