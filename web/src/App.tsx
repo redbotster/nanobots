@@ -38,6 +38,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [apiUnreachable, setApiUnreachable] = useState(false);
   const [counts, setCounts] = useState<{ bots: number; swarms: number } | null>(null);
+  const [pendingApprovals, setPendingApprovals] = useState(0);
 
   useEffect(() => {
     api
@@ -47,6 +48,23 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     Promise.all([api.listBots(), api.listSwarms()])
       .then(([bots, swarms]) => setCounts({ bots: bots.length, swarms: swarms.length }))
       .catch(() => {});
+  }, []);
+
+  // Polled independently of whichever page is open, so "you have an
+  // approval waiting" shows up in the nav even if you're looking at the bot
+  // library — the exact gap RunDetail exists to close for the Runs page
+  // itself.
+  useEffect(() => {
+    const check = () =>
+      api
+        .listRuns()
+        .then((runs) =>
+          setPendingApprovals(runs.filter((r) => r.status === "awaiting_approval").length),
+        )
+        .catch(() => {});
+    check();
+    const id = setInterval(check, 2000);
+    return () => clearInterval(id);
   }, []);
 
   return (
@@ -105,6 +123,11 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
                 <path d={item.icon} />
               </svg>
               {item.label}
+              {item.id === "runs" && pendingApprovals > 0 && (
+                <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-warn px-1 text-[10px] font-bold text-void">
+                  {pendingApprovals}
+                </span>
+              )}
             </button>
           ))}
         </nav>
@@ -126,7 +149,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           <button
             key={item.id}
             onClick={() => setPage(item.id)}
-            className={`flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-display ${
+            className={`relative flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-display ${
               page === item.id ? "text-tron" : "text-muted"
             }`}
           >
@@ -140,6 +163,11 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
               <path d={item.icon} />
             </svg>
             {item.label}
+            {item.id === "runs" && pendingApprovals > 0 && (
+              <span className="absolute right-[22%] top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-warn px-1 text-[10px] font-bold text-void">
+                {pendingApprovals}
+              </span>
+            )}
           </button>
         ))}
       </nav>
