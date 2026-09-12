@@ -10,7 +10,7 @@ metadata:
 
 spec:
   harness:
-    type: openclaw
+    type: llm
     entrypoint: ./bot.md
 
   model:

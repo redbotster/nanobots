@@ -22,7 +22,13 @@ var harnessBuild = map[string]struct {
 	Dockerfile string
 	User       string
 }{
-	"bare":     {Tag: "nanobots/harness-bare:local", Dockerfile: "harness/bare/Dockerfile", User: "65532:65532"},
+	"bare": {Tag: "nanobots/harness-bare:local", Dockerfile: "harness/bare/Dockerfile", User: "65532:65532"},
+	// llm runs in the *same* image as bare, deliberately. ai.generate is an
+	// HTTP callback to nanobotd — the container never talks to a model — so
+	// a bot that generates text needs nothing beyond the interpreter and a
+	// CA bundle. The value exists to describe the bot honestly, not to add
+	// anything to its runtime.
+	"llm":      {Tag: "nanobots/harness-bare:local", Dockerfile: "harness/bare/Dockerfile", User: "65532:65532"},
 	"openclaw": {Tag: "nanobots/harness-openclaw:local", Dockerfile: "harness/openclaw/Dockerfile", User: "10001:10001"},
 }
 
@@ -36,7 +42,7 @@ var harnessBuild = map[string]struct {
 func EnsureHarnessImage(harnessType, repoRoot string) (tag, user string, err error) {
 	h, ok := harnessBuild[harnessType]
 	if !ok {
-		return "", "", fmt.Errorf("harness %q is not implemented in this build (only bare, openclaw)", harnessType)
+		return "", "", fmt.Errorf("harness %q is not implemented in this build (only bare, llm, openclaw)", harnessType)
 	}
 	forceRebuild := os.Getenv("NANOBOTS_REBUILD_HARNESS") != ""
 	check := exec.Command("docker", "image", "inspect", h.Tag)

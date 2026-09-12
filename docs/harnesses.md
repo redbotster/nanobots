@@ -54,3 +54,37 @@ The declared harness type is deliberately left alone. It's the honest statement 
 **A latent bug this surfaced**: the promotion check only looked for `to: pdf`, missing `png`. `sheet-reporter` renders a chart that way and happened to work because it already declared `openclaw`; a `bare` bot rendering a png would have been handed an image with no browser in it.
 
 **Still on the table**: the openclaw image itself is unoptimised — Chromium ships ~50 locale packs and a software-GL fallback that headless PDF rendering may not need. Trimming those is a smaller and riskier win than not pulling the image at all, so it hasn't been done.
+
+
+## The `llm` harness
+
+There are three implemented values, and they describe two independent things that the blueprint's vocabulary conflates: *does this bot use a model*, and *what does its container need*.
+
+| value | means | image |
+|---|---|---|
+| `bare` | fixed steps, no LLM, no browser | 25 MB |
+| `llm` | fixed steps that call an LLM | 25 MB — **the same image** |
+| `openclaw` | needs a real browser | 1.1 GB |
+
+`llm` and `bare` share an image on purpose. `ai.generate` is an HTTP callback to nanobotd: the container never talks to a model, so a bot that generates text needs nothing beyond the interpreter and a CA bundle. The value exists to describe the bot honestly, not to add anything to its runtime.
+
+It was added because neither existing value fit the fifteen bots that were declaring `openclaw`. They don't render, so `openclaw` was wrong — but `bare` is documented as "no LLM loop — deterministic steps only", which for a bot whose whole job is `ai.generate` would have been a worse description, not a better one. There was no honest thing to call them.
+
+The catalog now reads: **11 `bare`, 15 `llm`, 4 `openclaw`**.
+
+The visible effect is that a run log stopped correcting itself. Before:
+
+```
+ideas | starting (openclaw harness)
+ideas | using the bare image: no step here needs a browser
+```
+
+After:
+
+```
+ideas | starting (llm harness)
+```
+
+The correction line still exists and still fires when a declaration and its steps genuinely disagree — `bots/render-pdf` declares `bare` and renders, so it's promoted on every run. Need always wins over declaration; the declaration is what the bot *is*, the steps are what it *needs*.
+
+`claude-code`, `opencode`, `openclaude` and `hermes` remain unimplemented and are still rejected by name. They describe *dynamic agent loops*, which is a different axis again — none of the three implemented harnesses runs one. The only place a real coding agent runs in this build is the foundry (`docs/foundry.md`), which authors new bots rather than running them.

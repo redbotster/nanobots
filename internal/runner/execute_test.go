@@ -183,3 +183,42 @@ func TestBatchSummaryLeavesASingleItemAlone(t *testing.T) {
 		t.Errorf("batchSummary(_, 1) = %q, want it unchanged", got)
 	}
 }
+
+// The `llm` harness value: fixed steps that call an LLM, no browser. It
+// exists because neither existing value described the fifteen bots that
+// were declaring `openclaw` for an HTTP callback — `bare` is documented as
+// "no LLM loop", which is a worse description, not a better one.
+func TestLLMHarnessRunsOnTheSmallImage(t *testing.T) {
+	llmBot := &schema.Nanobot{Spec: schema.NanobotSpec{
+		Harness: schema.Harness{Type: "llm"},
+		Steps:   []schema.Step{{Type: "ai.generate"}},
+	}}
+	if got := imageFor(llmBot, NewRun("s"), "bot"); got != "llm" {
+		t.Errorf("imageFor(llm bot) = %q, want it left alone", got)
+	}
+	// And "llm" resolves to the same 25MB image bare does, because
+	// ai.generate never runs in the container.
+	llmTag, llmUser, err := EnsureHarnessImage("llm", ".")
+	if err != nil {
+		t.Fatalf("llm harness not implemented: %v", err)
+	}
+	bareTag, bareUser, err := EnsureHarnessImage("bare", ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if llmTag != bareTag || llmUser != bareUser {
+		t.Errorf("llm resolves to %s/%s, want the same as bare (%s/%s)", llmTag, llmUser, bareTag, bareUser)
+	}
+}
+
+// An llm bot that does render is still promoted — the declaration says what
+// the bot is, the steps say what it needs, and need wins.
+func TestLLMBotThatRendersIsPromoted(t *testing.T) {
+	nb := &schema.Nanobot{Spec: schema.NanobotSpec{
+		Harness: schema.Harness{Type: "llm"},
+		Steps:   []schema.Step{{Type: "ai.generate"}, {Type: "transform.render", To: "pdf"}},
+	}}
+	if got := imageFor(nb, NewRun("s"), "bot"); got != "openclaw" {
+		t.Errorf("imageFor = %q, want openclaw for a bot that renders", got)
+	}
+}

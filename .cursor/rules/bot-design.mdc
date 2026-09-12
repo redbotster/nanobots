@@ -21,3 +21,14 @@ Every nanobot in this repo is a brick, not a monolith. When authoring, reviewing
 - Before adding a new `services[]` entry, check whether an existing direct client (`internal/google`, `internal/slack`, `internal/github`, `internal/stripe`, `internal/hubspot`, `internal/x`, `internal/linkedin`, or the shared `internal/oauth2pkce`/`vault_token.go` cores they're built on) already covers the provider, or whether the new one should be built the same proven way rather than inventing a new pattern.
 - Before shipping a bot's port shape, check it against every swarm that might use it (`nanobots plan` on the whole `examples/swarms/` directory catches a real mismatch immediately — see `TestPlanAllExampleSwarms`).
 - Prefer `connection: demo` with an honest, documented gap over a half-built live integration — but treat "no real path exists yet" as a todo to reconsider, not a permanent state, exactly as this repo's own `docs/connections.md` tracks it.
+
+
+## Picking a harness
+
+Three values, describing what the bot is and what its container needs:
+
+- `bare` — fixed steps, no LLM, no browser.
+- `llm` — fixed steps that call `ai.generate`. Same 25 MB image as `bare`, because the LLM call is a callback to nanobotd, not something in the container.
+- `openclaw` — only when a step does `transform.render` to `pdf` or `png`. This image is 1.1 GB, almost all Chromium; don't reach for it otherwise.
+
+The runner resolves a mismatch in favour of what the steps need and logs it, so declaring the wrong one is not fatal — but declare the right one. `claude-code`, `opencode`, `openclaude` and `hermes` name dynamic agent loops that this build does not implement, and are rejected by name.

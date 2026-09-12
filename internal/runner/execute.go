@@ -313,29 +313,35 @@ func needsBrowser(nb *schema.Nanobot) bool {
 }
 
 // imageFor picks the harness image from what a bot's steps actually need,
-// not from the name in its nanobot.yaml.
+// and reports when that differs from what the bot declares.
 //
-// The two images are wildly different sizes — bare is 25MB (distroless
-// static), openclaw is 1.1GB, almost all of it Chromium and its shared
-// libraries. Fifteen of the nineteen bots declaring the openclaw harness
-// never render anything: they call ai.generate, which in this build is an
-// HTTP callback to nanobotd, so the container needs nothing but the
-// interpreter and a CA bundle. They were each pulling 1.1GB to make an
+// The vocabulary, and what each value costs at run time:
+//
+//	bare     fixed steps, no LLM, no browser        25MB
+//	llm      fixed steps that call an LLM           25MB — the same image
+//	openclaw needs a real browser                  1.1GB — Chromium
+//
+// llm and bare share an image on purpose: ai.generate is an HTTP callback
+// to nanobotd, so the container never talks to a model and needs nothing
+// beyond the interpreter and a CA bundle. Only transform.render to pdf/png
+// needs a browser, and it needs one *in* the container
+// (step.RemoteDeps.Render calls RenderHTMLToPDF directly rather than
+// calling back).
+//
+// A mismatch between what a bot declares and what its steps need is
+// resolved in favour of need, and logged. Both directions happen: a bare or
+// llm bot that renders is promoted, and an openclaw bot that renders
+// nothing drops to the small image rather than pulling 1.1GB to make an
 // HTTP request.
-//
-// The declared harness type stays as written — it's the bot's honest
-// statement of intent, and once a real dynamic agent loop exists (see
-// docs/harnesses.md) "openclaw" will mean more than it does today. This
-// only decides which image to hand it right now.
 func imageFor(nb *schema.Nanobot, run *Run, botID string) string {
 	declared := nb.Spec.Harness.Type
 	browser := needsBrowser(nb)
 
-	if declared == "bare" && browser {
+	if browser && declared != "openclaw" {
 		run.Log(botID, "", "using the openclaw image: this bot renders a real PDF/PNG and needs Chrome")
 		return "openclaw"
 	}
-	if declared == "openclaw" && !browser {
+	if !browser && declared == "openclaw" {
 		run.Log(botID, "", "using the bare image: no step here needs a browser")
 		return "bare"
 	}

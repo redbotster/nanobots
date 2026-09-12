@@ -44,7 +44,16 @@ type Ports struct {
 
 // Harness selects the agent loop that drives a bot.
 type Harness struct {
-	Type       string `json:"type" yaml:"type"` // claude-code | opencode | openclaude | hermes | openclaw | bare
+	// Type is what drives the bot. Three values are implemented here:
+	//   bare     — fixed steps, no LLM, no browser
+	//   llm      — fixed steps that call an LLM; same image as bare, because
+	//              ai.generate is a callback to nanobotd, not an in-container
+	//              model
+	//   openclaw — needs a real browser (transform.render to pdf/png)
+	// The blueprint's wider vocabulary (claude-code | opencode | openclaude |
+	// hermes) names dynamic agent loops that don't exist in this build;
+	// EnsureHarnessImage rejects them by name rather than substituting.
+	Type       string `json:"type" yaml:"type"`
 	Version    string `json:"version,omitempty" yaml:"version,omitempty"`
 	Entrypoint string `json:"entrypoint,omitempty" yaml:"entrypoint,omitempty"`
 }
