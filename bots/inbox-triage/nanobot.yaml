@@ -34,6 +34,11 @@ spec:
       - name: rules
         type: string
         default: "Reply today: anything from a client, a contract, or with a deadline this week. Read later: newsletters and FYI threads worth skimming. Ignore: automated notifications with nothing actionable."
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "Anything from a customer or about billing is urgent. Newsletters never are."
     outputs:
       - name: urgent
         type: list<json>
@@ -52,7 +57,7 @@ spec:
     - name: triage
       type: ai.generate
       prompt_file: ./prompts/triage.md
-      inputs: { messages: "{{steps.fetch.output}}", rules: "{{inputs.rules}}" }
+      inputs: { messages: "{{steps.fetch.output}}", rules: "{{inputs.rules}}", instructions: "{{inputs.instructions}}" }
       outputs:
         urgent: "{{steps.triage.output.urgent}}"
         later: "{{steps.triage.output.later}}"

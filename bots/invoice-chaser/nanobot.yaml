@@ -36,6 +36,11 @@ spec:
       - name: overdue_days
         type: string
         default: "7"
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "Firm but friendly. Always state the amount and the due date. Never threaten."
     outputs:
       - name: overdue
         type: list<json>
@@ -52,7 +57,7 @@ spec:
     - name: draft
       type: ai.generate
       prompt_file: ./prompts/reminder.md
-      inputs: { invoices: "{{steps.fetch.output}}", overdue_days: "{{inputs.overdue_days}}" }
+      inputs: { invoices: "{{steps.fetch.output}}", overdue_days: "{{inputs.overdue_days}}", instructions: "{{inputs.instructions}}" }
       outputs:
         overdue: "{{steps.draft.output.overdue}}"
     - name: create

@@ -20,3 +20,4 @@ Rules:
 - One draft per overdue invoice, in the same order, tone matching its bucket.
 - Never invent an invoice not in `{{invoices}}`.
 - Output raw JSON only.
+{{instructions}}

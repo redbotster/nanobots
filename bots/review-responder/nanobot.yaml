@@ -34,6 +34,11 @@ spec:
       - name: tone
         type: string
         default: "warm and professional"
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "Warm and specific. Acknowledge the actual complaint. Never argue."
     outputs:
       - name: reply_drafts
         type: list<json>
@@ -48,7 +53,7 @@ spec:
     - name: draft
       type: ai.generate
       prompt_file: ./prompts/reply.md
-      inputs: { reviews: "{{steps.fetch.output}}", tone: "{{inputs.tone}}" }
+      inputs: { reviews: "{{steps.fetch.output}}", tone: "{{inputs.tone}}", instructions: "{{inputs.instructions}}" }
       outputs:
         reply_drafts: "{{steps.draft.output.reply_drafts}}"
 

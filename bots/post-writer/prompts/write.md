@@ -15,3 +15,4 @@ Only include the keys for platforms actually requested. Rules:
 - Same core idea across all three, adapted in tone and length, not just copy-pasted.
 - No hashtag spam — zero or one relevant hashtag at most.
 - Output raw JSON only.
+{{instructions}}

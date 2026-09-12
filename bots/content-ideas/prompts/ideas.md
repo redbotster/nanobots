@@ -15,3 +15,4 @@ Rules:
 - Concrete and specific to `{{niche}}` — no generic "share your story" filler.
 - Varied formats and angles across the ten.
 - Output raw JSON only.
+{{instructions}}

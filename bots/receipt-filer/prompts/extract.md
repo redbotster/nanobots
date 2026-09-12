@@ -18,3 +18,4 @@ Rules:
 - `count` is the length of `receipts`; `total` is the sum of their amounts.
 - Never invent a receipt for a message that isn't actually one.
 - Output raw JSON only.
+{{instructions}}

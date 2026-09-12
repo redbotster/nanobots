@@ -17,3 +17,4 @@ Rules:
 - `chart.labels`/`chart.values` are parallel arrays, same length, 2-8 entries — pick whatever breakdown best answers the question (e.g. by category, by month). `values` are rendered directly as pixel bar widths, so scale them into a 20-300 range (e.g. proportionally to the largest value) rather than using raw numbers like dollar amounts — mention the real numbers in `report_md`/`summary` instead, where they matter.
 - If `{{rows}}` doesn't actually contain what's needed to answer `{{question}}`, say so plainly in `report_md` instead of guessing.
 - Output raw JSON only.
+{{instructions}}

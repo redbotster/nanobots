@@ -36,6 +36,11 @@ spec:
       - name: date
         type: datetime
         default: "{{run.started_at}}"
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "One screen or less. Lead with what I have to decide."
     outputs:
       - name: briefs
         type: list<json>
@@ -62,7 +67,7 @@ spec:
     - name: brief
       type: ai.generate
       prompt_file: ./prompts/brief.md
-      inputs: { events: "{{steps.fetch_events.output}}", mail: "{{steps.fetch_mail.output}}" }
+      inputs: { events: "{{steps.fetch_events.output}}", mail: "{{steps.fetch_mail.output}}", instructions: "{{inputs.instructions}}" }
       outputs:
         briefs: "{{steps.brief.output.briefs}}"
     - name: render

@@ -18,3 +18,4 @@ Rules:
 - If something in the request isn't on the price sheet, leave it out of `line_items` and mention it in `notes` instead.
 - `total` per line is `quantity * unit_price`; `subtotal` is the sum of all line totals.
 - Output raw JSON only.
+{{instructions}}

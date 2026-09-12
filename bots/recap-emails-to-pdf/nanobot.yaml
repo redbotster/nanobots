@@ -42,6 +42,11 @@ spec:
       - name: label
         type: string
         default: INBOX
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "Group by sender. Put anything needing a reply at the top."
     outputs:
       - name: recap_pdf
         type: file
@@ -61,7 +66,7 @@ spec:
     - name: summarise
       type: ai.generate
       prompt_file: ./prompts/recap.md
-      inputs: { messages: "{{steps.fetch.output}}" }
+      inputs: { messages: "{{steps.fetch.output}}", instructions: "{{inputs.instructions}}" }
       output: recap_json
     - name: render
       type: transform.render         # runs in-container; see blueprint §4 #5

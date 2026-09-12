@@ -34,6 +34,11 @@ spec:
       - name: kb
         type: file
         required: false
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "Anything mentioning data loss or billing is top priority."
     outputs:
       - name: tickets
         type: list<json>
@@ -53,7 +58,7 @@ spec:
     - name: triage
       type: ai.generate
       prompt_file: ./prompts/triage.md
-      inputs: { messages: "{{steps.fetch.output}}" }
+      inputs: { messages: "{{steps.fetch.output}}", instructions: "{{inputs.instructions}}" }
       outputs:
         tickets: "{{steps.triage.output.tickets}}"
         escalations: "{{steps.triage.output.escalations}}"

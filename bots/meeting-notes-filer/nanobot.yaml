@@ -34,6 +34,11 @@ spec:
       - name: folder
         type: string
         default: "Meeting Notes"
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "Action items must name an owner. Drop small talk."
     outputs:
       - name: notes_md
         type: file
@@ -47,7 +52,7 @@ spec:
     - name: summarise
       type: ai.generate
       prompt_file: ./prompts/notes.md
-      inputs: { transcript: "{{inputs.transcript}}" }
+      inputs: { transcript: "{{inputs.transcript}}", instructions: "{{inputs.instructions}}" }
       outputs:
         action_items: "{{steps.summarise.output.action_items}}"
         decisions: "{{steps.summarise.output.decisions}}"

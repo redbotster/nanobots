@@ -39,6 +39,11 @@ spec:
       - name: sheet
         type: string
         default: "Receipts-2026"
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "Category matters more than vendor. Flag anything over $500."
     outputs:
       - name: receipts
         type: list<json>
@@ -54,7 +59,7 @@ spec:
     - name: extract
       type: ai.generate
       prompt_file: ./prompts/extract.md
-      inputs: { messages: "{{steps.fetch.output}}" }
+      inputs: { messages: "{{steps.fetch.output}}", instructions: "{{inputs.instructions}}" }
       outputs:
         receipts: "{{steps.extract.output.receipts}}"
     - name: log_row

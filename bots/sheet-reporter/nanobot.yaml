@@ -37,6 +37,11 @@ spec:
       - name: period
         type: string
         required: false
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "Lead with the number that changed most. Explain why, not just what."
     outputs:
       - name: report_md
         type: string
@@ -56,7 +61,7 @@ spec:
     - name: analyze
       type: ai.generate
       prompt_file: ./prompts/analyze.md
-      inputs: { rows: "{{steps.fetch.output}}", question: "{{inputs.question}}", period: "{{inputs.period}}" }
+      inputs: { rows: "{{steps.fetch.output}}", question: "{{inputs.question}}", period: "{{inputs.period}}", instructions: "{{inputs.instructions}}" }
       outputs:
         report_md: "{{steps.analyze.output.report_md}}"
         report_json: "{{steps.analyze.output.report_json}}"

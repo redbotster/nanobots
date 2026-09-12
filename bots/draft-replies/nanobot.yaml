@@ -33,6 +33,11 @@ spec:
         required: true
       - name: voice_sample
         type: file
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "Direct and warm. Short paragraphs. Never promise a date I haven't confirmed."
     outputs:
       - name: draft_ids
         type: list<string>
@@ -44,7 +49,7 @@ spec:
     - name: write
       type: ai.generate
       prompt_file: ./prompts/draft.md
-      inputs: { threads: "{{inputs.threads}}" }
+      inputs: { threads: "{{inputs.threads}}", instructions: "{{inputs.instructions}}" }
       outputs:
         drafts: "{{steps.write.output.drafts}}"
     - name: create

@@ -34,6 +34,11 @@ spec:
       - name: icp
         type: string
         required: true
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "Only record facts you can point at. Leave a field blank rather than guessing."
     outputs:
       - name: enriched
         type: json
@@ -49,7 +54,7 @@ spec:
     - name: enrich
       type: ai.generate
       prompt_file: ./prompts/enrich.md
-      inputs: { lead: "{{inputs.lead}}", icp: "{{inputs.icp}}", existing_contact: "{{steps.lookup.output}}" }
+      inputs: { lead: "{{inputs.lead}}", icp: "{{inputs.icp}}", existing_contact: "{{steps.lookup.output}}", instructions: "{{inputs.instructions}}" }
       outputs:
         enriched: "{{steps.enrich.output.enriched}}"
         fit_score: "{{steps.enrich.output.fit_score}}"

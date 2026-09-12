@@ -40,6 +40,11 @@ spec:
       - name: to
         type: string
         default: me@example.com
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "Plain language. One idea per section. No preamble."
     outputs:
       - name: draft_html
         type: file
@@ -51,7 +56,7 @@ spec:
     - name: compose
       type: ai.generate
       prompt_file: ./prompts/compose.md
-      inputs: { sources: "{{inputs.sources}}", blurbs: "{{inputs.blurbs}}" }
+      inputs: { sources: "{{inputs.sources}}", blurbs: "{{inputs.blurbs}}", instructions: "{{inputs.instructions}}" }
     - name: render
       type: transform.render
       template: ./templates/newsletter.html

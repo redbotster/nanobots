@@ -16,3 +16,4 @@ Rules:
 - One section per source/blurb pair, in the same order.
 - Don't invent facts beyond what's in the blurbs.
 - Output raw JSON only.
+{{instructions}}

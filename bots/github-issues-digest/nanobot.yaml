@@ -34,6 +34,11 @@ spec:
       - name: max_issues
         type: string
         default: "10"
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "Lead with anything blocking a release. Group by area, not by date."
     outputs:
       - name: digest
         type: string
@@ -47,7 +52,7 @@ spec:
     - name: summarise
       type: ai.generate
       prompt_file: ./prompts/digest.md
-      inputs: { issues: "{{steps.fetch.output}}" }
+      inputs: { issues: "{{steps.fetch.output}}", instructions: "{{inputs.instructions}}" }
       outputs:
         digest: "{{steps.summarise.output.digest}}"
 

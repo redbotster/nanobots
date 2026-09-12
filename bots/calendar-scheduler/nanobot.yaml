@@ -39,6 +39,11 @@ spec:
       - name: working_hours
         type: string
         default: "9am-5pm Mon-Fri, America/Chicago"
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "Prefer mornings. Never propose a slot inside an existing meeting or in the next 2 hours."
     outputs:
       - name: slots
         type: list<datetime>
@@ -54,7 +59,7 @@ spec:
     - name: propose
       type: ai.generate
       prompt_file: ./prompts/propose.md
-      inputs: { thread: "{{inputs.thread}}", working_hours: "{{inputs.working_hours}}", busy: "{{steps.fetch_events.output}}" }
+      inputs: { thread: "{{inputs.thread}}", working_hours: "{{inputs.working_hours}}", busy: "{{steps.fetch_events.output}}", instructions: "{{inputs.instructions}}" }
       outputs:
         slots: "{{steps.propose.output.slots}}"
     - name: draft

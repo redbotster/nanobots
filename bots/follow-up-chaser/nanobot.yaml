@@ -34,6 +34,11 @@ spec:
       - name: exclude_labels
         type: list<string>
         required: false
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "Polite and low-pressure. One short paragraph. Never imply urgency that isn't real."
     outputs:
       - name: stale_threads
         type: list<json>
@@ -50,7 +55,7 @@ spec:
     - name: find_and_draft
       type: ai.generate
       prompt_file: ./prompts/nudge.md
-      inputs: { sent: "{{steps.fetch.output}}", exclude_labels: "{{inputs.exclude_labels}}" }
+      inputs: { sent: "{{steps.fetch.output}}", exclude_labels: "{{inputs.exclude_labels}}", instructions: "{{inputs.instructions}}" }
       outputs:
         stale_threads: "{{steps.find_and_draft.output.stale_threads}}"
     - name: create

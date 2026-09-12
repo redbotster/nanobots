@@ -24,6 +24,11 @@ spec:
       - name: source
         type: file
         required: true
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "Keep the original's argument intact. Adapt length and tone, not substance."
     outputs:
       - name: thread
         type: json
@@ -36,7 +41,7 @@ spec:
     - name: repurpose
       type: ai.generate
       prompt_file: ./prompts/repurpose.md
-      inputs: { source: "{{inputs.source}}" }
+      inputs: { source: "{{inputs.source}}", instructions: "{{inputs.instructions}}" }
       outputs:
         thread: "{{steps.repurpose.output.thread}}"
         linkedin_post: "{{steps.repurpose.output.linkedin_post}}"
