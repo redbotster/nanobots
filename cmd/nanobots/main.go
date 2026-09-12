@@ -332,6 +332,11 @@ func runRun(args []string) error {
 	logCh := run.Subscribe()
 	defer run.Unsubscribe(logCh)
 	stdin := bufio.NewReader(os.Stdin)
+	// Once stdin is exhausted nothing can ever say yes, so stop asking and
+	// start declining — but say that's what happened. Detected from a read
+	// rather than from isatty, so a piped `echo y | nanobots run` still
+	// works.
+	nobodyToAsk := false
 	for {
 		select {
 		case entry, ok := <-logCh:
@@ -340,20 +345,55 @@ func runRun(args []string) error {
 			}
 			fmt.Printf("[%s/%s] %s\n", entry.Bot, entry.Step, entry.Msg)
 			for _, pa := range run.PendingApprovals() {
-				fmt.Printf("\napproval needed (%s): %s\napprove? [y/N] ", pa.RiskTier, pa.Summary)
-				line, _ := stdin.ReadString('\n')
-				approved := strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "y")
-				run.Decide(pa.ID, approved, "cli")
+				decideApproval(run, pa, stdin, &nobodyToAsk)
 			}
 		case <-time.After(200 * time.Millisecond):
-			if run.Status == runner.StatusSucceeded || run.Status == runner.StatusFailed {
-				fmt.Printf("\nrun %s: %s\n", run.ID, run.Status)
-				if run.Error != "" {
-					fmt.Println("error:", run.Error)
+			// Through the getters: SetStatus writes these under a mutex
+			// from the run's own goroutine, and reading the fields directly here
+			// was a real data race the race detector never saw because no
+			// test drives this loop.
+			if status := run.GetStatus(); status == runner.StatusSucceeded || status == runner.StatusFailed {
+				fmt.Printf("\nrun %s: %s\n", run.ID, status)
+				if msg := run.GetError(); msg != "" {
+					fmt.Println("error:", msg)
 					os.Exit(1)
 				}
 				return nil
 			}
 		}
 	}
+}
+
+// noTerminalDecider is what shows up as `decided_by` when the run declined
+// an approval because there was no one to ask. It reads as an explanation
+// in the failure message a declined gate produces.
+const noTerminalDecider = "nobody — no terminal attached to ask"
+
+// decideApproval asks the terminal, or declines when there isn't one.
+//
+// Failing closed is the point of an approval: an unattended run must never
+// send, pay or delete because nobody was listening. But the old code got
+// there by accident — ReadString returned EOF, the empty line didn't start
+// with "y", and the run recorded `decided_by=cli` as though a person had
+// sat there and typed no. The decision is the same; who made it is not.
+func decideApproval(run *runner.Run, pa *runner.PendingApproval, stdin *bufio.Reader, nobodyToAsk *bool) {
+	tier := pa.RiskTier
+	if tier == "" {
+		tier = "unspecified risk"
+	}
+	if *nobodyToAsk {
+		fmt.Printf("\napproval needed (%s): %s\ndeclined — %s\n", tier, pa.Summary, noTerminalDecider)
+		run.Decide(pa.ID, false, noTerminalDecider)
+		return
+	}
+	fmt.Printf("\napproval needed (%s): %s\napprove? [y/N] ", tier, pa.Summary)
+	line, err := stdin.ReadString('\n')
+	if err != nil && strings.TrimSpace(line) == "" {
+		*nobodyToAsk = true
+		fmt.Printf("\ndeclined — %s\n", noTerminalDecider)
+		run.Decide(pa.ID, false, noTerminalDecider)
+		return
+	}
+	approved := strings.HasPrefix(strings.ToLower(strings.TrimSpace(line)), "y")
+	run.Decide(pa.ID, approved, "cli")
 }

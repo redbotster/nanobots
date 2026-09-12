@@ -189,3 +189,118 @@ func TestHostSideFailureCrossesAsAnError(t *testing.T) {
 		t.Errorf("err = %v — the host's own explanation didn't survive", err)
 	}
 }
+
+// recordingDeps notes what the host side was actually asked, so a test can
+// check that the arguments a bot sent are the arguments the daemon
+// received. It only records — every semantic decision in these tests is
+// still made by the real DemoDeps.
+type recordingDeps struct {
+	step.Deps
+	summary, riskTier   string
+	service             schema.Service
+	op                  string
+	params              map[string]any
+	prompt              string
+	model               schema.Model
+	message, channel    string
+	namespace, question string
+}
+
+func (d *recordingDeps) Approve(summary, riskTier string) (bool, string, error) {
+	d.summary, d.riskTier = summary, riskTier
+	return true, "recorder", nil
+}
+func (d *recordingDeps) ServiceCall(svc schema.Service, op string, params map[string]any) (any, error) {
+	d.service, d.op, d.params = svc, op, params
+	return "ok", nil
+}
+func (d *recordingDeps) AIGenerate(prompt string, model schema.Model) (string, error) {
+	d.prompt, d.model = prompt, model
+	return "ok", nil
+}
+func (d *recordingDeps) Notify(message, channel string) error {
+	d.message, d.channel = message, channel
+	return nil
+}
+func (d *recordingDeps) MemoryRecall(namespace, question string) (string, error) {
+	d.namespace, d.question = namespace, question
+	return "", nil
+}
+
+// Every argument a bot sends has to arrive. That sounds too obvious to
+// test, and it is exactly what broke: the approve handler decoded into an
+// untagged RiskTier while the wire carries risk_tier, and encoding/json
+// matches field names case-insensitively but not across an underscore. So
+// every approval that crossed a container boundary — which is every real
+// one — lost its risk tier, and the human deciding whether to send twenty
+// emails was shown no risk level at all. Nothing failed; the gate still
+// gated. It only surfaced because the CLI started printing "unspecified
+// risk" where it used to print an empty pair of brackets.
+//
+// The check is per-argument rather than per-handler for that reason: a
+// dropped field is invisible unless something looks at the field.
+func TestEveryCallbackArgumentArrives(t *testing.T) {
+	host := &recordingDeps{Deps: demoDepsWithRecall(t, "")}
+	remote := remoteThrough(t, host)
+
+	t.Run("approve", func(t *testing.T) {
+		if _, _, err := remote.Approve("Send 20 reminders", "high"); err != nil {
+			t.Fatal(err)
+		}
+		if host.summary != "Send 20 reminders" {
+			t.Errorf("summary = %q", host.summary)
+		}
+		if host.riskTier != "high" {
+			t.Errorf("risk_tier = %q, want high — the human is shown this to decide", host.riskTier)
+		}
+	})
+
+	t.Run("service.call", func(t *testing.T) {
+		svc := schema.Service{ID: "gmail", Provider: "google", Connection: "demo"}
+		if _, err := remote.ServiceCall(svc, "messages.list", map[string]any{"max": float64(200)}); err != nil {
+			t.Fatal(err)
+		}
+		if host.service.ID != "gmail" || host.service.Provider != "google" || host.service.Connection != "demo" {
+			t.Errorf("service = %#v — a dropped Connection would run a demo bot live", host.service)
+		}
+		if host.op != "messages.list" {
+			t.Errorf("op = %q", host.op)
+		}
+		if host.params["max"] != float64(200) {
+			t.Errorf("params = %#v", host.params)
+		}
+	})
+
+	t.Run("ai.generate", func(t *testing.T) {
+		model := schema.Model{Provider: "anthropic", Name: "claude-sonnet-4-6", MaxTokens: 4000, Temperature: 0.2}
+		if _, err := remote.AIGenerate("hello", model); err != nil {
+			t.Fatal(err)
+		}
+		if host.prompt != "hello" {
+			t.Errorf("prompt = %q", host.prompt)
+		}
+		// max_tokens and temperature are the two that would silently become
+		// zero, turning every generation deterministic and truncated.
+		if host.model != model {
+			t.Errorf("model = %#v, want %#v", host.model, model)
+		}
+	})
+
+	t.Run("notify", func(t *testing.T) {
+		if err := remote.Notify("done", "#ops"); err != nil {
+			t.Fatal(err)
+		}
+		if host.message != "done" || host.channel != "#ops" {
+			t.Errorf("message=%q channel=%q", host.message, host.channel)
+		}
+	})
+
+	t.Run("memory.recall", func(t *testing.T) {
+		if _, err := remote.MemoryRecall("inbox-triage", "what is urgent?"); err != nil {
+			t.Fatal(err)
+		}
+		if host.namespace != "inbox-triage" || host.question != "what is urgent?" {
+			t.Errorf("namespace=%q question=%q", host.namespace, host.question)
+		}
+	})
+}

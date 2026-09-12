@@ -123,7 +123,15 @@ func (s *Server) handleStepApprove(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-	var req struct{ Summary, RiskTier string }
+	// Tagged, because the wire name is risk_tier: encoding/json matches
+	// field names case-insensitively but not across an underscore, so an
+	// untagged RiskTier silently dropped every containerised approval's
+	// risk tier — the one piece of context an `approve` step exists to put
+	// in front of a person.
+	var req struct {
+		Summary  string `json:"summary"`
+		RiskTier string `json:"risk_tier"`
+	}
 	if err := decodeJSON(r, &req); err != nil {
 		writeCallbackError(w, err)
 		return
