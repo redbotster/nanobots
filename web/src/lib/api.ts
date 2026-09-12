@@ -90,6 +90,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ live }),
     }),
+  setBotInstructions: (botId: string, instructions: string) =>
+    req<BotSummary>(`/api/bots/${botId}/instructions`, {
+      method: "POST",
+      body: JSON.stringify({ instructions }),
+    }),
   startRun: (swarmPath: string) =>
     req<Run>("/api/runs", {
       method: "POST",

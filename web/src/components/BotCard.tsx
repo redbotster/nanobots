@@ -135,6 +135,98 @@ function ServiceToggle({
  * demo/live switch per connectable service; non-interactive mode (the
  * foundry's "review this new bot" screen, for a bot that isn't even in the
  * catalog yet) falls back to the original static badges. */
+/** The bot's own default behaviour, editable in place.
+ *
+ * Every LLM bot ships a suggested `instructions` value written for its job
+ * — "Anything mentioning data loss or billing is top priority". It was only
+ * reachable by opening the bot's nanobot.yaml, or by overriding it inside
+ * one swarm in the builder's inspector. This is the catalog-wide edit: what
+ * the bot does by default, everywhere it's used.
+ *
+ * Read-only until the card is given onChanged, so the foundry's review
+ * preview stays a preview. */
+function InstructionsEditor({
+  botId,
+  current,
+  onChanged,
+}: {
+  botId: string;
+  current: string;
+  onChanged: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState(current);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      await api.setBotInstructions(botId, text);
+      setOpen(false);
+      onChanged();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => {
+          setText(current);
+          setOpen(true);
+        }}
+        className="mt-3 w-full rounded border border-edge px-2.5 py-1.5 text-left text-[11px] text-muted transition-colors hover:border-tron hover:text-ink"
+        title="How this bot works by default, everywhere it's used"
+      >
+        <span className="text-muted/70">how it works · </span>
+        {current || <span className="italic">no default set — click to add one</span>}
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-3 rounded border border-edge-strong p-2">
+      <label className="block text-[10px] uppercase tracking-wider text-muted">
+        How this bot should work
+      </label>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value.replace(/\n/g, " "))}
+        rows={3}
+        maxLength={2000}
+        autoFocus
+        placeholder="Tone, priorities, wording…"
+        className="mt-1 w-full resize-none rounded border border-edge bg-void px-2 py-1.5 text-[12px] text-ink placeholder:text-muted focus:border-tron focus:outline-none"
+      />
+      <p className="mt-1 text-[10px] leading-snug text-muted">
+        Shapes how it does its job. It can't change what the bot produces, or
+        any rule about sending, publishing or paying.
+      </p>
+      {error && <p className="mt-1 text-[11px] text-danger">{error}</p>}
+      <div className="mt-1.5 flex gap-1.5">
+        <button
+          onClick={() => void save()}
+          disabled={saving}
+          className="rounded border border-edge-strong px-2 py-0.5 text-[11px] text-ink hover:border-tron disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+        <button
+          onClick={() => setOpen(false)}
+          className="rounded border border-edge px-2 py-0.5 text-[11px] text-muted hover:text-ink"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function BotCard({
   bot,
   connections,
@@ -145,6 +237,9 @@ export function BotCard({
   onChanged?: () => void;
 }) {
   const interactive = connections !== undefined && onChanged !== undefined;
+  // `instructions` is shown as its own control rather than as one more port
+  // badge — it's the one input a person is expected to set by hand.
+  const instructionsPort = (bot.inputs ?? []).find((p) => p.name === "instructions");
 
   return (
     <div className="fade-in rounded-lg border border-edge-strong bg-panel p-4 transition-shadow hover:shadow-glow-sm">
@@ -184,6 +279,14 @@ export function BotCard({
           {bot.harness}
         </span>
       </div>
+
+      {interactive && instructionsPort && (
+        <InstructionsEditor
+          botId={bot.id}
+          current={instructionsPort.default ?? ""}
+          onChanged={onChanged!}
+        />
+      )}
 
       <div className="mt-3 flex items-center justify-between text-[11px] text-muted">
         <div className="flex items-center gap-1.5">

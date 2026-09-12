@@ -71,6 +71,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/setup/oneclaw-key", s.handleSetupOneClawKey)
 	mux.HandleFunc("GET /api/bots", s.handleListBots)
 	mux.HandleFunc("POST /api/bots/{id}/services/{serviceId}/connection", s.handleSetBotServiceConnection)
+	mux.HandleFunc("POST /api/bots/{id}/instructions", s.handleSetBotInstructions)
 	mux.HandleFunc("GET /api/swarms", s.handleListSwarms)
 	mux.HandleFunc("GET /api/swarms/plan", s.handlePlan)
 	mux.HandleFunc("GET /api/swarms/yaml", s.handleSwarmYAML)

@@ -49,6 +49,13 @@ Every bot with an `ai.generate` step declares one extra input port:
 
 It's an ordinary typed port, so it needs no new machinery: the planner type-checks it, the builder's inspector edits it, a swarm can override it per instance, and its `default` is the suggestion the bot ships with.
 
+There are two places to set it, and they mean different things:
+
+- **The bot card** (`POST /api/bots/{id}/instructions`) edits the `default:` — what this bot does *everywhere it's used*.
+- **The builder's inspector** sets the port on one bot instance — an override for *that swarm only*.
+
+The card edit is a surgical single-line rewrite of the `default:` inside the `- name: instructions` block, so every comment in the file survives; a test runs it against all 19 real bot files and asserts exactly one line changes in each. Multi-line input is refused rather than mangled into a broken scalar, and there's a 2000-character cap — the precedence block is only as strong as its position, and a wall of user text works against that.
+
 The prompt opts in by ending with `{{instructions}}`. The **wrapping is built in Go**, not written into each prompt — `internal/step.wrapUserInstructions`. That is deliberate. The block carries the precedence rule, and that boundary must not exist as nineteen copy-pasted paragraphs that can drift apart or be weakened one file at a time. When no instruction is set it renders as nothing, so the prompt doesn't grow a dangling header.
 
 What the block says, in one place:

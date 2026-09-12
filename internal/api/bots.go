@@ -42,15 +42,21 @@ func (s *Server) listBotSummaries() ([]BotSummary, error) {
 		if err != nil {
 			continue // not every dir under bots/ need be a bot
 		}
-		bots = append(bots, BotSummary{
-			ID: e.Name(), Name: nb.Metadata.Name, Version: nb.Metadata.Version,
-			Description: nb.Metadata.Description, Tags: nonNil(nb.Metadata.Tags),
-			Harness: nb.Spec.Harness.Type, Services: nonNil(nb.Spec.Services),
-			Inputs: nonNil(nb.Spec.Ports.Inputs), Outputs: nonNil(nb.Spec.Ports.Outputs),
-			Guardrails: nb.Spec.Guardrails,
-		})
+		bots = append(bots, botSummaryOf(nb, e.Name()))
 	}
 	return nonNil(bots), nil
+}
+
+// botSummaryOf is the one place a BotSummary is built, so a handler that
+// returns a single freshly-edited bot can't drift from the list endpoint.
+func botSummaryOf(nb *schema.Nanobot, id string) BotSummary {
+	return BotSummary{
+		ID: id, Name: nb.Metadata.Name, Version: nb.Metadata.Version,
+		Description: nb.Metadata.Description, Tags: nonNil(nb.Metadata.Tags),
+		Harness: nb.Spec.Harness.Type, Services: nonNil(nb.Spec.Services),
+		Inputs: nonNil(nb.Spec.Ports.Inputs), Outputs: nonNil(nb.Spec.Ports.Outputs),
+		Guardrails: nb.Spec.Guardrails,
+	}
 }
 
 func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
