@@ -1,5 +1,6 @@
 import * as Switch from "@radix-ui/react-switch";
 import type { BotSummary } from "../lib/types";
+import { useStatus } from "../lib/useStatus";
 
 function ReadOnlyToggle({ checked, label, hint }: { checked: boolean; label: string; hint?: string }) {
   return (
@@ -20,7 +21,14 @@ function ReadOnlyToggle({ checked, label, hint }: { checked: boolean; label: str
 }
 
 export function Inspector({ bot }: { bot: BotSummary }) {
+  const { status } = useStatus();
   const g = bot.guardrails;
+  // PII redaction and injection screening are Shroud's, not this bot's. A
+  // deployment using a direct provider key has neither — the prompt goes
+  // straight to the model — and this panel used to promise both regardless,
+  // under a heading that said "enforced by 1Claw". A guardrail claimed and
+  // not applied is worse than one never claimed.
+  const guarded = status?.llm_guardrails ?? true;
   return (
     <div>
       <div className="text-[11px] text-muted">
@@ -37,23 +45,35 @@ export function Inspector({ bot }: { bot: BotSummary }) {
 
       <div className="mt-4 border-t border-edge pt-4">
         <h4 className="font-display text-[11px] font-semibold tracking-wide text-muted">
-          GUARDRAILS · enforced by 1Claw
+          GUARDRAILS · {guarded ? "enforced by 1Claw" : "declared by this bot"}
         </h4>
+        {!guarded && status && (
+          <p className="mt-1.5 text-[11px] leading-snug text-warn">
+            This deployment sends prompts straight to {status.llm_backend}, so the two below are
+            what the bot asks for, not what happens. 1Claw is what applies them — see docs/llm.md.
+          </p>
+        )}
         <ReadOnlyToggle
-          checked={g.pii === "redact" || g.pii === "block"}
+          checked={guarded && (g.pii === "redact" || g.pii === "block")}
           label="Redact personal data"
-          hint="Before anything reaches the model"
+          hint={guarded ? "Before anything reaches the model" : "Asked for, but nothing is applying it"}
         />
         <ReadOnlyToggle
-          checked={(g.injection_threshold ?? 0) > 0}
+          checked={guarded && (g.injection_threshold ?? 0) > 0}
           label="Block prompt injection"
-          hint={g.injection_threshold ? `Threshold ${g.injection_threshold}` : undefined}
+          hint={
+            !guarded
+              ? "Asked for, but nothing is applying it"
+              : g.injection_threshold
+                ? `Threshold ${g.injection_threshold}`
+                : undefined
+          }
         />
         {g.approval_required_for && g.approval_required_for.length > 0 && (
           <ReadOnlyToggle
             checked
             label="Requires approval"
-            hint={g.approval_required_for.join(", ")}
+            hint={g.approval_required_for.join(", ") + " · enforced by the runner"}
           />
         )}
         {g.max_runtime_secs && (

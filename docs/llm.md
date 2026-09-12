@@ -65,6 +65,23 @@ A `Retry-After` longer than a minute means a quota window rather than a blip, an
 
 A direct key alone is now enough to run bots live. It wasn't: `ai.generate` called Shroud directly, so a machine with an `ANTHROPIC_API_KEY` and no 1Claw account ran the entire catalog against demo fixtures — every generation returning canned text, with nothing in the log saying the key was being ignored. `BuildDeps` now treats "has an LLM" and "has 1Claw" as separate facts. 1Claw is still what adds real service calls, vault credentials and Shroud's guardrails on top.
 
+## What you give up with a direct key
+
+Worth being concrete, because it is invisible in a run: 1Claw Shroud bills
+tokens against a per-agent daily budget, redacts PII and secrets before the
+prompt leaves the machine, and screens for prompt injection. A direct
+provider key does none of that — the prompt goes straight to the model.
+
+Every bot declares `pii: redact` and an `injection_threshold` in its
+guardrails, and those are Shroud's to apply. The bot Inspector used to show
+them ticked under a heading reading "enforced by 1Claw" no matter which
+backend was configured, which was true for exactly one of four. It now says
+"declared by this bot" and names where the prompts are actually going.
+
+Approvals and `max_runtime_secs` are different: this runner enforces those
+itself, so they hold whatever model backend you use, and the panel still
+claims them.
+
 ## Anything else that talks to a model
 
 Two things in this repo generate text without being a bot, and both go through the same layer:
