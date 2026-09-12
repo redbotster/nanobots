@@ -81,17 +81,7 @@ func (o *Orchestrator) runBot(run *Run, rs *planner.ResolvedSwarm, botID string,
 	nb := rb.Nanobot
 	run.Log(botID, "", "starting (%s harness)", nb.Spec.Harness.Type)
 
-	harnessType := nb.Spec.Harness.Type
-	if harnessType == "bare" && needsRealPDFRender(nb) {
-		// A "bare" bot (catalog: render-pdf and anything built on it) whose
-		// own job is producing a real PDF still needs Chrome to do that for
-		// real — bare's distroless image doesn't have one. The harness type
-		// stays "bare" in nanobot.yaml (that's the honest declaration: no
-		// LLM loop, no dynamic reasoning), but execution borrows openclaw's
-		// image so transform.render isn't silently degraded to HTML.
-		harnessType = "openclaw"
-		run.Log(botID, "", "using openclaw image for real Chrome rendering (bare harness has none)")
-	}
+	harnessType := imageFor(nb, run, botID)
 	image, user, err := EnsureHarnessImage(harnessType, o.RepoRoot)
 	if err != nil {
 		return err
@@ -196,13 +186,54 @@ func agentRequestFor(nb *schema.Nanobot) oneclaw.CreateAgentRequest {
 	}
 }
 
-func needsRealPDFRender(nb *schema.Nanobot) bool {
+// needsBrowser reports whether any step actually drives Chrome.
+//
+// transform.render runs *in the container* (see step.RemoteDeps.Render — it
+// calls RenderHTMLToPDF directly rather than calling back to nanobotd), so a
+// bot that renders needs a real browser in its own image. Rendering to html
+// does not.
+//
+// This used to check only `to: pdf`, which missed png — sheet-reporter
+// renders a chart that way. It happened to work because that bot declares
+// the openclaw harness anyway, but a bare bot rendering a png would have
+// been handed an image with no Chrome in it.
+func needsBrowser(nb *schema.Nanobot) bool {
 	for _, s := range nb.Spec.Steps {
-		if s.Type == "transform.render" && s.To == "pdf" {
+		if s.Type == "transform.render" && (s.To == "pdf" || s.To == "png") {
 			return true
 		}
 	}
 	return false
+}
+
+// imageFor picks the harness image from what a bot's steps actually need,
+// not from the name in its nanobot.yaml.
+//
+// The two images are wildly different sizes — bare is 25MB (distroless
+// static), openclaw is 1.1GB, almost all of it Chromium and its shared
+// libraries. Fifteen of the nineteen bots declaring the openclaw harness
+// never render anything: they call ai.generate, which in this build is an
+// HTTP callback to nanobotd, so the container needs nothing but the
+// interpreter and a CA bundle. They were each pulling 1.1GB to make an
+// HTTP request.
+//
+// The declared harness type stays as written — it's the bot's honest
+// statement of intent, and once a real dynamic agent loop exists (see
+// docs/harnesses.md) "openclaw" will mean more than it does today. This
+// only decides which image to hand it right now.
+func imageFor(nb *schema.Nanobot, run *Run, botID string) string {
+	declared := nb.Spec.Harness.Type
+	browser := needsBrowser(nb)
+
+	if declared == "bare" && browser {
+		run.Log(botID, "", "using the openclaw image: this bot renders a real PDF/PNG and needs Chrome")
+		return "openclaw"
+	}
+	if declared == "openclaw" && !browser {
+		run.Log(botID, "", "using the bare image: no step here needs a browser")
+		return "bare"
+	}
+	return declared
 }
 
 func orDefault(s, def string) string {

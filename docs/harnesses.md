@@ -25,3 +25,32 @@ nanobots conform bots/email-drive-file      # bare harness, deterministic steps
 ```
 
 Both pass identically today because both are honest about running the same interpreter.
+
+
+## Which image a bot actually gets
+
+The harness type in a `nanobot.yaml` is the bot's declaration of intent. The image it runs in is chosen from what its steps actually do.
+
+The two images are not close in size:
+
+| image | size | contents |
+|---|---|---|
+| `nanobots/harness-bare:local` | **25 MB** | distroless static + the interpreter |
+| `nanobots/harness-openclaw:local` | **1.1 GB** | Debian slim + Chromium (338 MB) and its shared libraries (299 MB) |
+
+Only `transform.render` to `pdf` or `png` needs a browser, and it needs one *in the container* — `step.RemoteDeps.Render` calls `RenderHTMLToPDF` directly rather than calling back to nanobotd. Everything else, `ai.generate` included, is an HTTP callback to the daemon: the container makes a request and nanobotd does the work. A bot that only generates text needs nothing but the interpreter and a CA bundle.
+
+Nineteen bots declare the `openclaw` harness. Four of them render. The other fifteen were each pulling 1.1 GB to make an HTTP request. `runner.imageFor` now resolves this both ways — a `bare` bot that renders is promoted, an `openclaw` bot that doesn't is dropped to `bare` — and logs which it chose and why:
+
+```
+ideas | starting (openclaw harness)
+ideas | using the bare image: no step here needs a browser
+```
+
+Across the catalog that's **25 of 30 bots on the 25 MB image**; only `render-pdf`, `meeting-prep`, `quote-builder`, `recap-emails-to-pdf` and `sheet-reporter` need the big one. `TestMostCatalogBotsDoNotNeedABrowser` asserts the ratio against the real `bots/` tree, so a render step creeping into a lean bot is something a test notices.
+
+The declared harness type is deliberately left alone. It's the honest statement of what a bot is, and once a real dynamic agent loop exists `openclaw` will mean more than "has Chromium" — this only decides which image to hand it today.
+
+**A latent bug this surfaced**: the promotion check only looked for `to: pdf`, missing `png`. `sheet-reporter` renders a chart that way and happened to work because it already declared `openclaw`; a `bare` bot rendering a png would have been handed an image with no browser in it.
+
+**Still on the table**: the openclaw image itself is unoptimised — Chromium ships ~50 locale packs and a software-GL fallback that headless PDF rendering may not need. Trimming those is a smaller and riskier win than not pulling the image at all, so it hasn't been done.
