@@ -14,7 +14,7 @@ Only include the keys for platforms actually requested. Rules:
 - Match each platform's real conventions (X: punchy and short; LinkedIn: a bit more context and a takeaway; Threads: conversational, first-person).
 - Same core idea across all three, adapted in tone and length, not just copy-pasted.
 - No hashtag spam — zero or one relevant hashtag at most.
+- If a `<voice_sample>` block appears below, match the voice in it.
 - Output raw JSON only.
-A sample of how I write, to match:
 {{voice_sample}}
 {{instructions}}

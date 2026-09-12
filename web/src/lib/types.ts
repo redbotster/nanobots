@@ -166,6 +166,10 @@ export interface StatusResponse {
    * that could learn from history degrade quietly without it, so the
    * difference is worth showing. */
   memory_recall: boolean;
+  /** The bots that actually ask memory a question, from the catalog — so
+   * Settings can say what a key/value backend costs *this* install without
+   * a bot name being hardcoded here and going stale. */
+  memory_recall_bots: string[];
 }
 
 export interface SwarmSummary {

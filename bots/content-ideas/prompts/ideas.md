@@ -14,7 +14,7 @@ Rules:
 - Exactly ten ideas.
 - Concrete and specific to `{{niche}}` — no generic "share your story" filler.
 - Varied formats and angles across the ten.
+- If a `<past_posts>` block appears below, match the voice in it and don't repeat an angle it already covers.
 - Output raw JSON only.
-Past posts, for voice and to avoid repeating an angle:
 {{past_posts}}
 {{instructions}}

@@ -83,10 +83,21 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
         </div>
         {status && !status.memory_recall && (
           <p className="mt-1.5 text-[12px] leading-snug text-muted">
-            Bots that could learn from what happened before are running
-            without that. inbox-triage, for one, falls back to its static
-            rules instead of what you've actually treated as urgent. Set{" "}
-            <code className="text-ink">NANOBOTS_MEMORY=honcho</code> with a{" "}
+            {status.memory_recall_bots.length > 0 ? (
+              <>
+                <span className="text-ink">
+                  {status.memory_recall_bots.join(", ")}
+                </span>{" "}
+                {status.memory_recall_bots.length === 1 ? "asks" : "ask"} memory
+                what happened before, and{" "}
+                {status.memory_recall_bots.length === 1 ? "is" : "are"} running
+                without an answer — falling back to static rules instead of what
+                you've actually done. Runs still succeed; they're just worse.{" "}
+              </>
+            ) : (
+              <>No bot currently asks memory a question. </>
+            )}
+            Set <code className="text-ink">NANOBOTS_MEMORY=honcho</code> with a{" "}
             <code className="text-ink">HONCHO_URL</code> to change it — see
             docs/memory.md.
           </p>

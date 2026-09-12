@@ -46,10 +46,18 @@ spec:
         schema: ./schemas/draft.json
 
   steps:
+    # Staying consistent with what was already promised matters more than
+    # any style rule. Optional: the default memory backend is key/value and
+    # can't answer questions, so drafting still runs without it — just
+    # without the benefit. See docs/memory.md.
+    - name: recall_history
+      type: memory.recall
+      optional: true
+      query: "What has this person already told these correspondents — commitments made, things declined — and how formally do they write to them?"
     - name: write
       type: ai.generate
       prompt_file: ./prompts/draft.md
-      inputs: { threads: "{{inputs.threads}}", instructions: "{{inputs.instructions}}", voice_sample: "{{inputs.voice_sample}}" }
+      inputs: { threads: "{{inputs.threads}}", instructions: "{{inputs.instructions}}", voice_sample: "{{inputs.voice_sample}}", learned: "{{steps.recall_history.output}}" }
       outputs:
         drafts: "{{steps.write.output.drafts}}"
     - name: create
@@ -59,6 +67,11 @@ spec:
       params: { drafts: "{{steps.write.output.drafts}}" }
       outputs:
         draft_ids: "{{steps.create.output.draft_ids}}"
+    # Feed today's drafts back in, so a recall-capable backend can tell
+    # next week what was already promised. A no-op on key/value backends.
+    - name: note_drafts
+      type: memory.remember
+      value: "Drafted in reply: {{steps.write.output.drafts}}"
 
   guardrails:
     pii: redact

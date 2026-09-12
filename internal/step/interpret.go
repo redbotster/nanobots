@@ -306,18 +306,15 @@ func runAIGenerate(nb *schema.Nanobot, s schema.Step, ctx map[string]any, deps D
 		}
 		vars[k] = text
 	}
-	if raw, ok := vars[UserInstructionsVar]; ok {
-		vars[UserInstructionsVar] = wrapUserInstructions(raw)
-	}
-	// Optional file inputs become a delimited block, or vanish entirely.
-	// See optionalTextBlock.
-	for _, port := range nb.Spec.Ports.Inputs {
-		if port.Type != "file" || port.Required {
+	// Some variables label themselves — see selfDescribingVars. Those with
+	// a wrapper get it here; the rest were already wrapped where they were
+	// produced.
+	for _, v := range selfDescribingVars(nb, s) {
+		raw, ok := vars[v.Name]
+		if !ok || v.wrap == nil {
 			continue
 		}
-		if raw, ok := vars[port.Name]; ok {
-			vars[port.Name] = optionalTextBlock(port.Name, raw)
-		}
+		vars[v.Name] = v.wrap(raw)
 	}
 	prompt := renderPromptVars(tmpl, vars)
 
@@ -399,6 +396,72 @@ const UserInstructionsVar = "instructions"
 // absent, which is worse than not asking. Delimiting also matters: file
 // contents are data the user supplied, and the model should be able to tell
 // them from the bot's own words.
+// selfDescribingVar is an ai.generate prompt variable that arrives already
+// labelled and delimited — or, when there is nothing to say, as the empty
+// string.
+//
+// wrap is how the value gets that labelling, and is nil for a variable that
+// was already wrapped where it was produced (memory.recall does it in the
+// step, because the step is also where "the backend can't do this" is
+// known).
+type selfDescribingVar struct {
+	Name string
+	wrap func(any) string
+}
+
+// selfDescribingVars lists them for one ai.generate step.
+//
+// It exists in one place, used by two callers, because the two must agree:
+// runAIGenerate applies the wrapping, and a catalog-wide test asserts no
+// prompt file introduces one of these with a header of its own. A prompt
+// that says "A sample of how I write, to match:" above such a variable
+// reads fine until the value is absent, at which point the header is left
+// pointing at whatever comes next — which in this catalog is the user's own
+// instructions block, i.e. the model is told the user's words are a writing
+// sample. Four prompts had exactly that bug.
+func selfDescribingVars(nb *schema.Nanobot, s schema.Step) []selfDescribingVar {
+	var out []selfDescribingVar
+	if _, ok := s.Inputs[UserInstructionsVar]; ok {
+		out = append(out, selfDescribingVar{UserInstructionsVar, wrapUserInstructions})
+	}
+	// An optional file input is a delimited block, or vanishes entirely.
+	for _, port := range nb.Spec.Ports.Inputs {
+		if port.Type != "file" || port.Required {
+			continue
+		}
+		if _, ok := s.Inputs[port.Name]; ok {
+			name := port.Name
+			out = append(out, selfDescribingVar{name, func(v any) string {
+				return optionalTextBlock(name, v)
+			}})
+		}
+	}
+	// A recall answer, wrapped by the memory.recall step itself.
+	for _, prior := range nb.Spec.Steps {
+		if prior.Type != "memory.recall" {
+			continue
+		}
+		ref := "{{steps." + prior.Name + ".output}}"
+		for name, binding := range s.Inputs {
+			if str, ok := binding.(string); ok && strings.TrimSpace(str) == ref {
+				out = append(out, selfDescribingVar{Name: name})
+			}
+		}
+	}
+	return out
+}
+
+// SelfDescribingPromptVars names the variables in an ai.generate step's
+// prompt that come pre-labelled, so a prompt must not label them again.
+func SelfDescribingPromptVars(nb *schema.Nanobot, s schema.Step) []string {
+	vars := selfDescribingVars(nb, s)
+	names := make([]string, 0, len(vars))
+	for _, v := range vars {
+		names = append(names, v.Name)
+	}
+	return names
+}
+
 func optionalTextBlock(name string, v any) string {
 	text, _ := v.(string)
 	text = strings.TrimSpace(text)

@@ -7,7 +7,9 @@ package api
 
 import (
 	"net/http"
+	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/runner"
+	"github.com/redbotster/nanobots/internal/schema"
 	"github.com/redbotster/nanobots/internal/step"
 )
 
@@ -196,11 +199,14 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"vault_locked": vaultLocked,
 		"vault_reason": vaultReason,
 		// Which memory backend is behind memory.* steps, and whether it can
-		// answer questions. A bot like inbox-triage triages measurably
-		// worse without recall and degrades quietly by design, so the
-		// difference has to be visible somewhere other than a run log.
-		"memory_backend": memKind,
-		"memory_recall":  memRecall,
+		// answer questions. A bot with a recall step works measurably worse
+		// without one and degrades quietly by design, so the difference has
+		// to be visible somewhere other than a run log — including *which*
+		// bots it costs, read from the catalog so the answer can't go stale
+		// as bots gain or lose recall steps.
+		"memory_backend":     memKind,
+		"memory_recall":      memRecall,
+		"memory_recall_bots": s.botsUsingRecall(),
 		// Reported separately from oneclaw because they fail independently
 		// and the fixes are unrelated: one is a key, the other is an app
 		// you have to go start.
@@ -229,6 +235,35 @@ func (s *Server) memoryStatus() (kind string, recall bool) {
 		return "local", false
 	}
 	return "custom", recall
+}
+
+// botsUsingRecall names the bots that ask memory a question, sorted, so
+// Settings can say what a key/value backend is actually costing this
+// install. Derived from the catalog rather than written into the UI: the
+// list was three bots the day it was written and will not stay three.
+func (s *Server) botsUsingRecall() []string {
+	entries, err := os.ReadDir(s.BotsDir)
+	if err != nil {
+		return []string{}
+	}
+	var ids []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		nb, err := schema.LoadNanobot(filepath.Join(s.BotsDir, e.Name(), "nanobot.yaml"))
+		if err != nil {
+			continue
+		}
+		for _, st := range nb.Spec.Steps {
+			if st.Type == "memory.recall" {
+				ids = append(ids, e.Name())
+				break
+			}
+		}
+	}
+	sort.Strings(ids)
+	return nonNil(ids)
 }
 
 func recallerName(r memory.Recaller) string {

@@ -55,10 +55,18 @@ spec:
       service: gmail
       op: messages.list
       params: { q: "after:{{inputs.since}} label:support", max: 100 }
+    # What this team has actually escalated beats any static rule about
+    # what "sounds" serious. Optional: the default memory backend is
+    # key/value and can't answer questions, so triage still runs without
+    # it — just without the benefit. See docs/memory.md.
+    - name: recall_escalations
+      type: memory.recall
+      optional: true
+      query: "Which kinds of support message has this team escalated to a human before, and which kinds have been answered safely from the knowledge base?"
     - name: triage
       type: ai.generate
       prompt_file: ./prompts/triage.md
-      inputs: { messages: "{{steps.fetch.output}}", instructions: "{{inputs.instructions}}", kb: "{{inputs.kb}}" }
+      inputs: { messages: "{{steps.fetch.output}}", instructions: "{{inputs.instructions}}", kb: "{{inputs.kb}}", learned: "{{steps.recall_escalations.output}}" }
       outputs:
         tickets: "{{steps.triage.output.tickets}}"
         escalations: "{{steps.triage.output.escalations}}"
@@ -69,6 +77,11 @@ spec:
       params: { drafts: "{{steps.triage.output.drafts}}" }
       outputs:
         draft_ids: "{{steps.create_drafts.output.draft_ids}}"
+    # Feed today's escalations back in, so a recall-capable backend has
+    # something to derive from. A no-op on key/value backends.
+    - name: note_escalations
+      type: memory.remember
+      value: "Escalated to a human: {{steps.triage.output.escalations}}"
 
   guardrails:
     pii: redact
