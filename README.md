@@ -4,7 +4,7 @@
 
 Nanobots is a local-first system for composing single-job AI/deterministic containers ("nanobots") into typed, DAG-shaped workflows ("nanoswarms"), with secrets, OAuth, LLM routing, and guardrails delegated to [1Claw](https://docs.1claw.co).
 
-The full product spec lives in [`context/NANOBOTS-BLUEPRINT.md`](context/NANOBOTS-BLUEPRINT.md) and [`context/NANOBOTS-CATALOG.md`](context/NANOBOTS-CATALOG.md). Treat those as the source of truth for the YAML schemas and the launch catalog; this README covers what's actually built, and is kept in sync with it — if something here contradicts the code, the code wins. `docs/` has one page per concept — contract, connections, harnesses, approvals, the 1Claw bridge, Browser Bridge, the foundry, the scheduler, run history — each ending in how to run it for real.
+The full product spec lives in [`context/NANOBOTS-BLUEPRINT.md`](context/NANOBOTS-BLUEPRINT.md) and [`context/NANOBOTS-CATALOG.md`](context/NANOBOTS-CATALOG.md). Treat those as the source of truth for the YAML schemas and the launch catalog; this README covers what's actually built, and is kept in sync with it — if something here contradicts the code, the code wins. `docs/` has one page per concept — contract, connections, harnesses, approvals, the 1Claw bridge, Browser Bridge, the foundry, the scheduler, run history, fan-out — each ending in how to run it for real.
 
 ## Why nanobots, not one big agent
 
@@ -35,6 +35,7 @@ This repo implements the full 28-brick, 12-swarm launch catalog from `context/NA
 - **Seven real, standalone direct-service clients** for what 1Claw doesn't natively cover: Google (`internal/google` — Gmail, Drive, Sheets, Calendar), Slack (`internal/slack`), GitHub (`internal/github`), Stripe (`internal/stripe`), HubSpot (`internal/hubspot`), X (`internal/x`), LinkedIn (`internal/linkedin`) — each dispatched from `internal/step.LiveDeps` once a bot's service is switched off `connection: demo` **and** a human has connected the account — plus a credential-free `web.fetch` step for reading public pages. X and LinkedIn share a small, provider-agnostic OAuth2+PKCE core (`internal/oauth2pkce`) rather than each hand-rolling Google's original loopback-redirect flow. None of these is the default connection for any bot out of the box (see [What's real vs. simulated](#whats-real-vs-simulated)).
 - **An AI composer** ("the head nanobot" — see below) that turns a plain-English request into a validated draft swarm.
 - **A dead-simple WebUI** (Vite + React + TypeScript + Tailwind + Radix) with a basic/advanced mode toggle, a bot library (searchable, grouped by service, with a per-service demo/live switch that connects an account inline), a swarm gallery showing at a glance how much of each swarm is live vs. demo, a live run viewer with SSE log streaming and inline approvals, browser notifications when something needs your approval, a Settings page where connecting a service — including 1Claw itself — is a button or a pasted token, and a visual swarm builder (including picking a nested field of a `json` output, not just whole-port connections) for anyone who wants to build or tweak by hand.
+- **Per-bot customisation**: every LLM bot takes an optional `instructions` port with a suggestion written for its job — "Anything mentioning data loss or billing is top priority" — editable from its card in the UI, or overridable per swarm. It shapes how a bot works, never what it's allowed to do; the precedence rule lives in one place in Go rather than in nineteen prompt files (`docs/bot-contract.md`).
 - **A real scheduler**: every catalog swarm's `trigger: {type: cron, ...}` now actually fires — see `docs/scheduler.md`. Previously nothing in this build ever executed one; every run was a human clicking Run.
 - **Run history that survives a restart**: every finished run is kept as a JSON file under `~/.nanobots/history/`, capped at 200 — see `docs/run-history.md`. A failed run shows *why* it failed and offers to run the same swarm again. A run killed mid-flight by a restart is restored as failed rather than sitting in the list as "running" forever.
 
@@ -246,7 +247,7 @@ Per the project's own working style, expensive verification is a single consolid
 go build ./... && go vet ./... && go test ./...
 ```
 
-312 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
+323 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
 - `internal/contract`'s `TestRunConformanceOnLaunchBots` — auto-discovers and conformance-tests all 30 bots under `bots/` against their own fixtures, no Docker or network.
 - `internal/planner`'s `TestPlanAllExampleSwarms` — auto-discovers and type-checks all 14 swarms under `examples/swarms/`.
 - httptest-mocked 1Claw/Google/Slack/GitHub/Stripe/HubSpot/X/LinkedIn API clients, built against each provider's real, documented endpoint shapes (verified against `@1claw/openapi-spec` and each provider's own docs, not guessed).
