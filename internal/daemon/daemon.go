@@ -9,18 +9,15 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 
 	"github.com/redbotster/nanobots/internal/api"
 	"github.com/redbotster/nanobots/internal/foundry"
-	"github.com/redbotster/nanobots/internal/google"
-	"github.com/redbotster/nanobots/internal/linkedin"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/runner"
 	"github.com/redbotster/nanobots/internal/scheduler"
 	"github.com/redbotster/nanobots/internal/step"
-	"github.com/redbotster/nanobots/internal/x"
+	"github.com/redbotster/nanobots/internal/wiring"
 )
 
 type Options struct {
@@ -50,60 +47,9 @@ func Run(opts Options) error {
 		log.Println("1Claw: no key configured — running fully in demo mode")
 	}
 
-	// Google/GitHub/Slack all keep their credentials in the same 1Claw vault
-	// ("nanobots-main") — resolved once here, not per-run, since EnsureVault
-	// is a real network call. GitHub/Slack just need that vault id (a token
-	// pasted in via Settings or `nanobots connect`); Google additionally
-	// needs an OAuth client id, since it's a refresh-token flow, not a
-	// static token — see internal/step/{google,github,slack}_live.go and
-	// docs/connections.md.
-	var googleCfg step.GoogleConfig
-	var githubCfg step.GitHubConfig
-	var slackCfg step.SlackConfig
-	var stripeCfg step.StripeConfig
-	var hubspotCfg step.HubSpotConfig
-	var xCfg step.XConfig
-	var linkedinCfg step.LinkedInConfig
-	if oc.Configured() {
-		vault, err := oc.EnsureVault("nanobots-main")
-		if err != nil {
-			return fmt.Errorf("ensure 1Claw vault for connected-service credentials: %w", err)
-		}
-		githubCfg = step.GitHubConfig{VaultID: vault.ID}
-		slackCfg = step.SlackConfig{VaultID: vault.ID}
-		stripeCfg = step.StripeConfig{VaultID: vault.ID}
-		hubspotCfg = step.HubSpotConfig{VaultID: vault.ID}
-
-		clientID, err := google.LoadClientID(opts.EnvFilePath)
-		if err != nil {
-			return fmt.Errorf("load Google OAuth client id: %w", err)
-		}
-		if clientID != "" {
-			googleCfg = step.GoogleConfig{ClientID: clientID, VaultID: vault.ID}
-			log.Println("google: OAuth client configured — run `nanobots connect google` once to link an account")
-		}
-
-		xClientID, err := x.LoadClientID(opts.EnvFilePath)
-		if err != nil {
-			return fmt.Errorf("load X OAuth client id: %w", err)
-		}
-		if xClientID != "" {
-			xCfg = step.XConfig{ClientID: xClientID, VaultID: vault.ID}
-			log.Println("x: OAuth client configured — connect an account from Settings")
-		}
-
-		liClientID, err := linkedin.LoadClientID(opts.EnvFilePath)
-		if err != nil {
-			return fmt.Errorf("load LinkedIn OAuth client id: %w", err)
-		}
-		liClientSecret, err := linkedin.LoadClientSecret(opts.EnvFilePath)
-		if err != nil {
-			return fmt.Errorf("load LinkedIn OAuth client secret: %w", err)
-		}
-		if liClientID != "" {
-			linkedinCfg = step.LinkedInConfig{ClientID: liClientID, ClientSecret: liClientSecret, VaultID: vault.ID}
-			log.Println("linkedin: OAuth client configured — connect an account from Settings")
-		}
+	svc, err := wiring.BuildServiceConfigs(oc, opts.EnvFilePath, func(f string, a ...any) { log.Printf(f, a...) })
+	if err != nil {
+		return err
 	}
 
 	// Independent of 1Claw entirely — the foundry's sandboxed coding agent
@@ -117,66 +63,32 @@ func Run(opts Options) error {
 		log.Println("foundry: ANTHROPIC_API_KEY configured — the composer can escalate a real gap to a coding agent")
 	}
 
-	stateDir, err := oneclaw.DefaultStateDir()
+	paths, err := wiring.ResolvePaths()
 	if err != nil {
 		return err
 	}
-	home, err := os.UserHomeDir()
+	blobs, err := step.NewFSBlobStore(paths.BlobDir)
 	if err != nil {
 		return err
 	}
-	blobDir := filepath.Join(home, ".nanobots", "blobs")
-	blobs, err := step.NewFSBlobStore(blobDir)
-	if err != nil {
-		return err
-	}
-	runWorkDir := filepath.Join(home, ".nanobots", "runs")
-	if err := os.MkdirAll(runWorkDir, 0o755); err != nil {
-		return err
-	}
-	foundryWorkDir := filepath.Join(home, ".nanobots", "foundry")
 
 	callbacks := runner.NewCallbackRegistry()
-	orch := &runner.Orchestrator{
-		RepoRoot:      opts.RepoRoot,
-		BotsDir:       opts.BotsDir,
-		CallbackAddr:  "http://host.docker.internal:" + portOf(opts.Addr),
-		Callbacks:     callbacks,
-		OneClaw:       oc,
-		AgentStateDir: stateDir,
-		RunWorkDir:    runWorkDir,
-		BlobDir:       blobDir,
-		Google:        googleCfg,
-		GitHub:        githubCfg,
-		Slack:         slackCfg,
-		Stripe:        stripeCfg,
-		HubSpot:       hubspotCfg,
-		X:             xCfg,
-		LinkedIn:      linkedinCfg,
-	}
+	orch := wiring.BuildOrchestrator(wiring.OrchestratorOpts{
+		RepoRoot:     opts.RepoRoot,
+		BotsDir:      opts.BotsDir,
+		CallbackPort: portOf(opts.Addr),
+	}, paths, oc, svc, callbacks)
 
 	foundryOrch := &foundry.Orchestrator{Config: foundry.Config{
 		RepoRoot:      opts.RepoRoot,
 		BotsDir:       opts.BotsDir,
-		WorkDir:       foundryWorkDir,
-		AgentStateDir: stateDir,
+		WorkDir:       paths.FoundryWorkDir,
+		AgentStateDir: paths.StateDir,
 		OneClaw:       oc,
 		Agent:         &foundry.ClaudeCLIAgent{RepoRoot: opts.RepoRoot, APIKey: anthropicKey},
 	}}
 
-	// Run history survives a restart (see internal/runner/persist.go). A
-	// history directory that can't be read is worth a warning, not a
-	// refusal to start — NewPersistentRunStore returns a usable store
-	// either way.
-	runs := runner.NewRunStore()
-	if historyDir, err := runner.DefaultHistoryDir(); err != nil {
-		fmt.Fprintf(os.Stderr, "nanobotd: run history disabled: %v\n", err)
-	} else if store, err := runner.NewPersistentRunStore(historyDir); err != nil {
-		fmt.Fprintf(os.Stderr, "nanobotd: some run history could not be read from %s: %v\n", historyDir, err)
-		runs = store
-	} else {
-		runs = store
-	}
+	runs := wiring.BuildRunStore(paths, func(f string, a ...any) { log.Printf(f, a...) })
 
 	srv := &api.Server{
 		Orchestrator: orch,

@@ -20,13 +20,12 @@ import (
 	"github.com/redbotster/nanobots/internal/contract"
 	"github.com/redbotster/nanobots/internal/daemon"
 	"github.com/redbotster/nanobots/internal/google"
-	"github.com/redbotster/nanobots/internal/linkedin"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/planner"
 	"github.com/redbotster/nanobots/internal/runner"
 	"github.com/redbotster/nanobots/internal/schema"
 	"github.com/redbotster/nanobots/internal/step"
-	"github.com/redbotster/nanobots/internal/x"
+	"github.com/redbotster/nanobots/internal/wiring"
 )
 
 func main() {
@@ -268,64 +267,22 @@ func runRun(args []string) error {
 		fmt.Println("1Claw: no key configured — running fully in demo mode")
 	}
 
-	stateDir, err := oneclaw.DefaultStateDir()
+	paths, err := wiring.ResolvePaths()
 	if err != nil {
 		return err
 	}
-	home, err := os.UserHomeDir()
+	blobs, err := step.NewFSBlobStore(paths.BlobDir)
 	if err != nil {
 		return err
 	}
-	blobs, err := step.NewFSBlobStore(filepath.Join(home, ".nanobots", "blobs"))
+	// "" resolves to $NANOBOTS_ENV_FILE then ~/.secrets/nanobots.env, the
+	// same default LoadAPIKey used just above — this command has no
+	// --env-file flag of its own, unlike nanobotd.
+	svc, err := wiring.BuildServiceConfigs(oc, "", func(f string, a ...any) {
+		fmt.Printf(f+"\n", a...)
+	})
 	if err != nil {
 		return err
-	}
-	runWorkDir := filepath.Join(home, ".nanobots", "runs")
-	if err := os.MkdirAll(runWorkDir, 0o755); err != nil {
-		return err
-	}
-
-	var googleCfg step.GoogleConfig
-	var githubCfg step.GitHubConfig
-	var slackCfg step.SlackConfig
-	var stripeCfg step.StripeConfig
-	var hubspotCfg step.HubSpotConfig
-	var xCfg step.XConfig
-	var linkedinCfg step.LinkedInConfig
-	if oc.Configured() {
-		vault, err := oc.EnsureVault("nanobots-main")
-		if err != nil {
-			return fmt.Errorf("ensure 1Claw vault for connected-service credentials: %w", err)
-		}
-		githubCfg = step.GitHubConfig{VaultID: vault.ID}
-		slackCfg = step.SlackConfig{VaultID: vault.ID}
-		stripeCfg = step.StripeConfig{VaultID: vault.ID}
-		hubspotCfg = step.HubSpotConfig{VaultID: vault.ID}
-		clientID, err := google.LoadClientID("")
-		if err != nil {
-			return err
-		}
-		if clientID != "" {
-			googleCfg = step.GoogleConfig{ClientID: clientID, VaultID: vault.ID}
-		}
-		xClientID, err := x.LoadClientID("")
-		if err != nil {
-			return err
-		}
-		if xClientID != "" {
-			xCfg = step.XConfig{ClientID: xClientID, VaultID: vault.ID}
-		}
-		liClientID, err := linkedin.LoadClientID("")
-		if err != nil {
-			return err
-		}
-		liClientSecret, err := linkedin.LoadClientSecret("")
-		if err != nil {
-			return err
-		}
-		if liClientID != "" {
-			linkedinCfg = step.LinkedInConfig{ClientID: liClientID, ClientSecret: liClientSecret, VaultID: vault.ID}
-		}
 	}
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -336,18 +293,21 @@ func runRun(args []string) error {
 	_, port, _ := net.SplitHostPort(listener.Addr().String())
 
 	callbacks := runner.NewCallbackRegistry()
-	orch := &runner.Orchestrator{
-		RepoRoot: root, BotsDir: filepath.Join(root, botsDir),
-		CallbackAddr: "http://host.docker.internal:" + port,
-		Callbacks:    callbacks, OneClaw: oc, AgentStateDir: stateDir,
-		RunWorkDir: runWorkDir, BlobDir: filepath.Join(home, ".nanobots", "blobs"),
-		Google: googleCfg, GitHub: githubCfg, Slack: slackCfg,
-		Stripe: stripeCfg, HubSpot: hubspotCfg,
-		X: xCfg, LinkedIn: linkedinCfg,
-	}
+	orch := wiring.BuildOrchestrator(wiring.OrchestratorOpts{
+		RepoRoot:     root,
+		BotsDir:      filepath.Join(root, botsDir),
+		CallbackPort: port,
+	}, paths, oc, svc, callbacks)
+	// The same persistent store the daemon uses, so a run started here shows
+	// up in the WebUI's Runs page and survives this command exiting.
+	runs := wiring.BuildRunStore(paths, func(f string, a ...any) { fmt.Printf(f+"\n", a...) })
 	srv := &api.Server{
-		Orchestrator: orch, Runs: runner.NewRunStore(), Callbacks: callbacks,
-		OneClaw: oc, BotsDir: filepath.Join(root, botsDir), Blobs: blobs,
+		Orchestrator: orch,
+		Runs:         runs,
+		Callbacks:    callbacks,
+		OneClaw:      oc,
+		BotsDir:      filepath.Join(root, botsDir),
+		Blobs:        blobs,
 	}
 	go http.Serve(listener, srv.Handler())
 
@@ -355,6 +315,12 @@ func runRun(args []string) error {
 	if err != nil {
 		return err
 	}
+	// Add, not just construct the store: this command drives the
+	// orchestrator directly rather than going through POST /api/runs, which
+	// is the call that registers a run everywhere else. Without this the
+	// store was built, handed to the server, and never told about the one
+	// run this process actually makes.
+	runs.Add(run)
 	fmt.Printf("run %s: %s\n", run.ID, run.SwarmName)
 
 	logCh := run.Subscribe()
