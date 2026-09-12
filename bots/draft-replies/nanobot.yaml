@@ -49,7 +49,7 @@ spec:
     - name: write
       type: ai.generate
       prompt_file: ./prompts/draft.md
-      inputs: { threads: "{{inputs.threads}}", instructions: "{{inputs.instructions}}" }
+      inputs: { threads: "{{inputs.threads}}", instructions: "{{inputs.instructions}}", voice_sample: "{{inputs.voice_sample}}" }
       outputs:
         drafts: "{{steps.write.output.drafts}}"
     - name: create

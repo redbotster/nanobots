@@ -34,9 +34,6 @@ spec:
       - name: blurbs
         type: list<string>
         required: true
-      - name: template
-        type: file
-        required: false
       - name: to
         type: string
         default: me@example.com

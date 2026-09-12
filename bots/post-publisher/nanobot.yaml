@@ -29,9 +29,6 @@ spec:
       - name: posts
         type: json
         required: true
-      - name: schedule
-        type: datetime
-        required: false
     outputs:
       - name: post_ids
         type: list<string>

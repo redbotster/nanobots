@@ -15,4 +15,6 @@ Rules:
 - Concrete and specific to `{{niche}}` — no generic "share your story" filler.
 - Varied formats and angles across the ten.
 - Output raw JSON only.
+Past posts, for voice and to avoid repeating an angle:
+{{past_posts}}
 {{instructions}}

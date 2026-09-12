@@ -21,8 +21,6 @@ spec:
       - name: content
         type: string
         required: true
-      - name: template
-        type: file
     outputs:
       - name: pdf
         type: file

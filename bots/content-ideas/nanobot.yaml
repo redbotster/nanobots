@@ -41,7 +41,7 @@ spec:
     - name: brainstorm
       type: ai.generate
       prompt_file: ./prompts/ideas.md
-      inputs: { niche: "{{inputs.niche}}", instructions: "{{inputs.instructions}}" }
+      inputs: { niche: "{{inputs.niche}}", instructions: "{{inputs.instructions}}", past_posts: "{{inputs.past_posts}}" }
       outputs:
         ideas: "{{steps.brainstorm.output.ideas}}"
 

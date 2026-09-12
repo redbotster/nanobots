@@ -1,9 +1,11 @@
 package contract
 
 import (
+	"github.com/redbotster/nanobots/internal/schema"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -123,5 +125,65 @@ func TestRunConformanceMissingInputsFixtureErrors(t *testing.T) {
 	_, err := RunConformance(filepath.Join(root, "bots", "email-drive-file"), filepath.Join(root, "bots"))
 	if err == nil {
 		t.Fatal("expected an error when fixtures/inputs.json is missing from the given dir")
+	}
+}
+
+// A declared input port that nothing reads is a promise the bot doesn't
+// keep: a swarm can snap real data into it, the planner will type-check
+// that snap, and the value is then silently discarded. The AI composer sees
+// these ports in the catalog too, so it can wire one in good faith.
+//
+// Seven of them existed when this test was written — two voice_sample
+// ports, past_posts, kb, two template ports and a schedule. Four were
+// wired up; three couldn't be honoured at all and were removed.
+func TestNoBotDeclaresAnInputNothingReads(t *testing.T) {
+	root := repoRoot(t)
+	botsDir := filepath.Join(root, "bots")
+	entries, err := os.ReadDir(botsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var dead []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		dir := filepath.Join(botsDir, e.Name())
+		nb, err := schema.LoadNanobot(filepath.Join(dir, "nanobot.yaml"))
+		if err != nil {
+			continue
+		}
+
+		// Everything a step could read the port through: a template
+		// reference anywhere in the spec, or {{name}} in a prompt file.
+		raw, err := os.ReadFile(filepath.Join(dir, "nanobot.yaml"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		haystack := string(raw)
+		for _, s := range nb.Spec.Steps {
+			if s.PromptFile == "" {
+				continue
+			}
+			body, err := os.ReadFile(filepath.Join(dir, filepath.Clean(s.PromptFile)))
+			if err == nil {
+				haystack += string(body)
+			}
+		}
+
+		for _, p := range nb.Spec.Ports.Inputs {
+			if strings.Contains(haystack, "inputs."+p.Name) ||
+				strings.Contains(haystack, "{{"+p.Name+"}}") {
+				continue
+			}
+			dead = append(dead, e.Name()+"."+p.Name)
+		}
+	}
+
+	if len(dead) > 0 {
+		t.Errorf("these input ports are declared but nothing reads them, so a snap into one is silently discarded:\n  %s\n"+
+			"Either wire the port into a step or a prompt, or remove it from the port list.",
+			strings.Join(dead, "\n  "))
 	}
 }

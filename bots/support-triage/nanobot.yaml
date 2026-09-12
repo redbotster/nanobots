@@ -58,7 +58,7 @@ spec:
     - name: triage
       type: ai.generate
       prompt_file: ./prompts/triage.md
-      inputs: { messages: "{{steps.fetch.output}}", instructions: "{{inputs.instructions}}" }
+      inputs: { messages: "{{steps.fetch.output}}", instructions: "{{inputs.instructions}}", kb: "{{inputs.kb}}" }
       outputs:
         tickets: "{{steps.triage.output.tickets}}"
         escalations: "{{steps.triage.output.escalations}}"
