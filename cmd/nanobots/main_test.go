@@ -136,3 +136,20 @@ func TestAnAnswerWithoutATrailingNewlineIsStillAnAnswer(t *testing.T) {
 		t.Errorf("decided_by = %q, want cli", decidedBy)
 	}
 }
+
+// `-f` means the same thing to `plan` and to `run`. It didn't: run joined
+// the path onto the repo root unconditionally, so an absolute path came
+// back as <repo>/tmp/... — a missing file at a path the user never typed.
+func TestAbsoluteSwarmPathsAreLeftAlone(t *testing.T) {
+	root := "/Users/someone/nanobots"
+	for _, tc := range []struct{ in, want string }{
+		{"examples/swarms/inbox-autopilot.yaml", "/Users/someone/nanobots/examples/swarms/inbox-autopilot.yaml"},
+		{"./probe.yaml", "/Users/someone/nanobots/probe.yaml"},
+		{"/tmp/probe.yaml", "/tmp/probe.yaml"},
+		{"/Users/someone/elsewhere/probe.yaml", "/Users/someone/elsewhere/probe.yaml"},
+	} {
+		if got := resolveSwarmPath(root, tc.in); got != tc.want {
+			t.Errorf("resolveSwarmPath(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}

@@ -317,7 +317,7 @@ func runRun(args []string) error {
 	}
 	go http.Serve(listener, srv.Handler())
 
-	run, err := orch.ExecuteSwarm(filepath.Join(root, swarmPath))
+	run, err := orch.ExecuteSwarm(resolveSwarmPath(root, swarmPath))
 	if err != nil {
 		return err
 	}
@@ -362,6 +362,21 @@ func runRun(args []string) error {
 			}
 		}
 	}
+}
+
+// resolveSwarmPath interprets -f relative to the repo root, and leaves an
+// absolute path alone.
+//
+// It used to be an unconditional filepath.Join, which turns
+// `-f /tmp/probe.yaml` into `<repo>/tmp/probe.yaml` — a file that doesn't
+// exist, reported as a missing file at a path the user never typed. Worse,
+// `nanobots plan -f` takes the same flag and doesn't do this, so the two
+// commands disagreed about what one path meant.
+func resolveSwarmPath(root, swarmPath string) string {
+	if filepath.IsAbs(swarmPath) {
+		return swarmPath
+	}
+	return filepath.Join(root, swarmPath)
 }
 
 // noTerminalDecider is what shows up as `decided_by` when the run declined
