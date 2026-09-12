@@ -187,10 +187,26 @@ func (s *Server) handleSaveSwarm(w http.ResponseWriter, r *http.Request) {
 		path = uniqueSwarmPath(dir, slugify(req.Name))
 	}
 
-	raw, err := yaml.Marshal(sw)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+	// Overwriting an existing swarm merges into the file rather than
+	// replacing it: the builder only models name, description, bots and
+	// snaps, and a swarm file holds a trigger, vars, guardrail defaults, a
+	// deploy target, an owner and comments besides. See swarmmerge.go for
+	// what pressing "Save changes" used to destroy.
+	var raw []byte
+	var err error
+	if existing, readErr := os.ReadFile(path); readErr == nil {
+		raw, err = mergeIntoExistingSwarm(existing, req.Name, req.Description, req.Bots, req.Snaps)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError,
+				fmt.Errorf("could not update %s without losing the rest of the file: %w", filepath.Base(path), err))
+			return
+		}
+	} else {
+		raw, err = yaml.Marshal(sw)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
