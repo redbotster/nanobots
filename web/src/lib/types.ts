@@ -364,17 +364,8 @@ export interface FleetMember {
   used_in: string[];
 }
 
-export interface FleetTeam {
-  swarm: string;
-  path: string;
-  members: string[];
-  /** The subset of members you've tuned. */
-  tuned: string[];
-}
-
 export interface Fleet {
   members: FleetMember[];
-  teams: FleetTeam[];
 }
 
 /** One perspective a review team can be built from.

@@ -9,7 +9,7 @@ import type { BotSummary, Fleet, FleetMember } from "../lib/types";
  * The library is the catalog: every bot that exists, so you can see what
  * snaps into what. The Fleet is "who works for me, and how have I told them
  * to behave" — only the bots whose instructions you've actually changed,
- * and the teams they work in. A fresh install has an empty Fleet, which is
+ * and where that takes effect. A fresh install has an empty Fleet, which is
  * correct: you haven't told anyone anything yet.
  */
 function MemberRow({ member, onChanged }: { member: FleetMember; onChanged: () => void }) {
@@ -187,8 +187,6 @@ export function FleetPage() {
   }, []);
   useEffect(reload, [reload]);
 
-  const teamsWithTuned = (fleet?.teams ?? []).filter((t) => t.tuned.length > 0);
-
   return (
     <div className="h-full overflow-auto p-5 sm:p-6">
       <h1 className="font-display text-xl font-medium text-ink">Fleet</h1>
@@ -236,30 +234,6 @@ export function FleetPage() {
 
       <RoleLibrarySection />
 
-      {teamsWithTuned.length > 0 && (
-        <section className="mt-8">
-          <h2 className="font-display text-xs font-semibold uppercase tracking-wider text-muted">
-            Teams with someone you've tuned
-          </h2>
-          <div className="mt-2 flex flex-col gap-1.5">
-            {teamsWithTuned.map((t) => (
-              <div
-                key={t.path}
-                className="rounded-lg border border-edge bg-panel/40 px-4 py-2.5 text-[13px]"
-              >
-                <span className="font-display text-ink">{t.swarm}</span>
-                <span className="ml-2 text-[11px] text-muted">
-                  {t.members.map((m) => (
-                    <span key={m} className={t.tuned.includes(m) ? "text-tron" : undefined}>
-                      {m}{" "}
-                    </span>
-                  ))}
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   );
 }

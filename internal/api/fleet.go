@@ -114,31 +114,19 @@ type FleetMember struct {
 	UsedIn       []string `json:"used_in"`
 }
 
-// FleetTeam is a swarm that reads like a team: more than one LLM bot, or a
-// bot fanned out over a list. Reported so the Fleet can show tuned bots in
-// the context they actually work in.
-type FleetTeam struct {
-	Swarm   string   `json:"swarm"`
-	Path    string   `json:"path"`
-	Members []string `json:"members"`
-	// Tuned is the subset of Members the user has customised.
-	Tuned []string `json:"tuned"`
-}
-
 type fleetResponse struct {
 	Members []FleetMember `json:"members"`
-	Teams   []FleetTeam   `json:"teams"`
 }
 
 func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 	if s.Fleet == nil {
-		writeJSON(w, http.StatusOK, fleetResponse{Members: []FleetMember{}, Teams: []FleetTeam{}})
+		writeJSON(w, http.StatusOK, fleetResponse{Members: []FleetMember{}})
 		return
 	}
 	tuned, loadErr := s.Fleet.load()
 
 	// Which swarms use which bot, so a tuned bot can say where it works.
-	usedIn, teams := s.swarmMembership()
+	usedIn := s.swarmMembership()
 
 	members := make([]FleetMember, 0, len(tuned))
 	for botID, rec := range tuned {
@@ -156,34 +144,26 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(members, func(i, j int) bool { return members[i].BotID < members[j].BotID })
 
-	// Mark which team members are tuned, and keep only teams worth showing.
-	kept := make([]FleetTeam, 0, len(teams))
-	for _, t := range teams {
-		for _, m := range t.Members {
-			if _, ok := tuned[m]; ok {
-				t.Tuned = append(t.Tuned, m)
-			}
-		}
-		t.Tuned = nonNil(t.Tuned)
-		kept = append(kept, t)
-	}
-	sort.Slice(kept, func(i, j int) bool { return kept[i].Swarm < kept[j].Swarm })
-
 	if loadErr != nil {
 		w.Header().Set("X-Fleet-Warning", loadErr.Error())
 	}
-	writeJSON(w, http.StatusOK, fleetResponse{Members: members, Teams: kept})
+	writeJSON(w, http.StatusOK, fleetResponse{Members: members})
 }
 
-// swarmMembership maps bot id -> swarm names, and lists every swarm with
-// the bots in it.
-func (s *Server) swarmMembership() (map[string][]string, []FleetTeam) {
+// swarmMembership maps a bot id to the swarms it appears in, so a tuned
+// bot's card can say where the tuning actually takes effect.
+//
+// It used to also return every swarm and its members, for a third Fleet
+// section listing "swarms containing a bot you've tuned" — which showed the
+// same relationship as the cards, from the other direction, read-only, and
+// duplicated what the Swarms page already does. Cut, and the API surface
+// with it: a field nothing reads is a field someone later has to reason
+// about.
+func (s *Server) swarmMembership() map[string][]string {
 	usedIn := map[string][]string{}
-	var teams []FleetTeam
-
 	entries, err := os.ReadDir(s.swarmsDir())
 	if err != nil {
-		return usedIn, teams
+		return usedIn
 	}
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
@@ -194,7 +174,6 @@ func (s *Server) swarmMembership() (map[string][]string, []FleetTeam) {
 		if err != nil {
 			continue
 		}
-		team := FleetTeam{Swarm: sw.Metadata.Name, Path: e.Name()}
 		seen := map[string]bool{}
 		for _, b := range sw.Spec.Bots {
 			botID, _, _ := strings.Cut(b.Use, "@")
@@ -202,16 +181,13 @@ func (s *Server) swarmMembership() (map[string][]string, []FleetTeam) {
 				continue
 			}
 			seen[botID] = true
-			team.Members = append(team.Members, botID)
 			usedIn[botID] = append(usedIn[botID], sw.Metadata.Name)
 		}
-		sort.Strings(team.Members)
-		teams = append(teams, team)
 	}
 	for k := range usedIn {
 		sort.Strings(usedIn[k])
 	}
-	return usedIn, teams
+	return usedIn
 }
 
 func instructionsDefaultOf(nb *schema.Nanobot) string {
