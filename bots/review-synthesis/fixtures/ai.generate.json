@@ -1,0 +1,10 @@
+{
+  "verdict": {
+    "decision": "ship-with-changes",
+    "blockers": ["Stop returning the stored token in the settings response."],
+    "disagreements": [
+      { "between": ["security engineer", "product designer"], "about": "whether masking the token in the UI is enough, or it must never leave the server at all" }
+    ]
+  },
+  "summary": "Two of three reviewers would ship this once the token stops coming back in the save response. The designer and the security engineer disagree about whether masking is sufficient; that is a real decision for you, not a detail."
+}

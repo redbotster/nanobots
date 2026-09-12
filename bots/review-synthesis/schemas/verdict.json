@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanobots.dev/bots/review-synthesis/schemas/verdict.json",
+  "title": "Verdict",
+  "type": "object",
+  "required": ["decision", "blockers", "disagreements"],
+  "properties": {
+    "decision": { "type": "string", "enum": ["ship", "ship-with-changes", "do-not-ship"] },
+    "blockers": { "type": "array", "items": { "type": "string" } },
+    "disagreements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["between", "about"],
+        "properties": {
+          "between": { "type": "array", "items": { "type": "string" } },
+          "about": { "type": "string" }
+        }
+      }
+    }
+  }
+}

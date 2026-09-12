@@ -1,0 +1,50 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: review-synthesis
+  version: 0.1.0
+  description: Turn several reviews into one decision, keeping the disagreements visible.
+  tags: [supervisor, review]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: llm
+    entrypoint: ./bot.md
+
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    max_tokens: 1500
+    temperature: 0.2
+
+  ports:
+    inputs:
+      - name: reviews
+        type: list<json>
+        required: true
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "Lead with the decision. Keep every disagreement visible; never average two reviewers into a compromise neither said."
+    outputs:
+      - name: verdict
+        type: json
+        schema: ./schemas/verdict.json
+      - name: summary
+        type: string
+
+  steps:
+    - name: synthesise
+      type: ai.generate
+      prompt_file: ./prompts/synthesise.md
+      inputs: { reviews: "{{inputs.reviews}}", instructions: "{{inputs.instructions}}" }
+      outputs:
+        verdict: "{{steps.synthesise.output.verdict}}"
+        summary: "{{steps.synthesise.output.summary}}"
+
+  guardrails:
+    pii: redact
+    max_runtime_secs: 90

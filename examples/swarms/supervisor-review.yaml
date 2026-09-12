@@ -1,0 +1,62 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanoswarm
+metadata:
+  name: supervisor-review
+  description: Pick a review team for a piece of work, get each perspective, and turn them into one decision.
+  owner: me@example.com
+
+# A supervisor, expressed as composition rather than as a new kind of bot.
+#
+# Three things make this work with no new machinery. The team is *chosen*
+# (review-board decides who should look at this particular work, which is a
+# judgement, not configuration). The reviewer's role is an input, so one bot
+# is every reviewer rather than five near-identical ones. And `.*` fans that
+# bot out over the chosen roles, which already collects its outputs into the
+# list<json> the synthesiser wants — so no join step is needed.
+#
+# Team size is whatever review-board decided for this run, not a number
+# baked into this file.
+
+spec:
+  defaults:
+    model: { provider: anthropic, name: claude-sonnet-4-6 }
+    guardrails:
+      pii: redact
+      injection_threshold: 0.7
+      daily_budget_usd: 5
+
+  vars:
+    work: >
+      A plan to let users paste an API token into the settings page, store it
+      in a vault, and show the last four characters back to them afterwards.
+
+  trigger:
+    type: manual
+
+  bots:
+    - id: board
+      use: review-board@0.1.0
+      inputs:
+        work: "{{vars.work}}"
+    - id: panel
+      use: reviewer@0.1.0
+      inputs:
+        work: "{{vars.work}}"
+    - id: chair
+      use: review-synthesis@0.1.0
+
+  snaps:
+    # The team the board picked — one reviewer run per role.
+    - from: board.roles.*
+      to: panel.role
+    # The shared brief goes to every reviewer unchanged; no marker, so it
+    # isn't iterated.
+    - from: board.brief
+      to: panel.brief
+    # A fanned-out bot's outputs are already list<json>, which is exactly
+    # what the synthesiser takes.
+    - from: panel.review
+      to: chair.reviews
+
+  deploy:
+    target: local

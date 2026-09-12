@@ -1,0 +1,49 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: review-board
+  version: 0.1.0
+  description: Decide which perspectives should review a piece of work, and brief them.
+  tags: [supervisor, review, planning]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: llm
+    entrypoint: ./bot.md
+
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    max_tokens: 1200
+    temperature: 0.3
+
+  ports:
+    inputs:
+      - name: work
+        type: string
+        required: true
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "Pick the fewest reviewers that genuinely disagree with each other. Never pick two who would say the same thing."
+    outputs:
+      - name: roles
+        type: list<string>
+      - name: brief
+        type: string
+
+  steps:
+    - name: choose
+      type: ai.generate
+      prompt_file: ./prompts/choose.md
+      inputs: { work: "{{inputs.work}}", instructions: "{{inputs.instructions}}" }
+      outputs:
+        roles: "{{steps.choose.output.roles}}"
+        brief: "{{steps.choose.output.brief}}"
+
+  guardrails:
+    pii: redact
+    max_runtime_secs: 60

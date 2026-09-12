@@ -1,0 +1,52 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: reviewer
+  version: 0.1.0
+  description: Review a piece of work from one named perspective.
+  tags: [supervisor, review]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: llm
+    entrypoint: ./bot.md
+
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    max_tokens: 1500
+    temperature: 0.4
+
+  ports:
+    inputs:
+      - name: work
+        type: string
+        required: true
+      - name: role
+        type: string
+        required: true
+      - name: brief
+        type: string
+        required: false
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "Say the one thing this role would actually block on. No praise, no summary of what the work already says."
+    outputs:
+      - name: review
+        type: json
+        schema: ./schemas/review.json
+
+  steps:
+    - name: review
+      type: ai.generate
+      prompt_file: ./prompts/review.md
+      inputs: { work: "{{inputs.work}}", role: "{{inputs.role}}", brief: "{{inputs.brief}}", instructions: "{{inputs.instructions}}" }
+      output: review
+
+  guardrails:
+    pii: redact
+    max_runtime_secs: 90

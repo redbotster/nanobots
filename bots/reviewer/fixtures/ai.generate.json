@@ -1,0 +1,8 @@
+{
+  "role": "security engineer",
+  "concerns": [
+    { "issue": "The token is echoed back in the settings response after saving.", "severity": "blocker", "why": "Anything that can read that response can read the credential, including a logged proxy." }
+  ],
+  "recommendation": "ship-with-changes",
+  "one_line": "Don't return the token you just stored."
+}

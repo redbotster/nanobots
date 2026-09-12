@@ -1,0 +1,4 @@
+{
+  "roles": ["security engineer", "product designer", "on-call SRE"],
+  "brief": "This ships to every user on day one and touches stored credentials, so blast radius matters more than elegance."
+}
