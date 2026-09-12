@@ -55,6 +55,10 @@ type Server struct {
 	// values are ready to use.
 	docker dockerProbe
 	vault  vaultProbe
+
+	// Fleet remembers which bots the user has tuned. nil disables the
+	// Fleet view rather than failing anything.
+	Fleet *FleetStore
 }
 
 func (s *Server) swarmsDir() string {
@@ -72,6 +76,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/bots", s.handleListBots)
 	mux.HandleFunc("POST /api/bots/{id}/services/{serviceId}/connection", s.handleSetBotServiceConnection)
 	mux.HandleFunc("POST /api/bots/{id}/instructions", s.handleSetBotInstructions)
+	mux.HandleFunc("GET /api/fleet", s.handleFleet)
 	mux.HandleFunc("GET /api/swarms", s.handleListSwarms)
 	mux.HandleFunc("GET /api/swarms/plan", s.handlePlan)
 	mux.HandleFunc("GET /api/swarms/yaml", s.handleSwarmYAML)

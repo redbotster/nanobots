@@ -67,6 +67,17 @@ func (s *Server) handleSetBotInstructions(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Read the current default before overwriting it. What it shipped with
+	// is what lets the Fleet say "you changed this" and offer to put it
+	// back. The record itself is written after a successful save, below, so
+	// a failed write can't leave a record of a change that never happened.
+	previous := ""
+	for _, port := range nb.Spec.Ports.Inputs {
+		if port.Name == "instructions" {
+			previous = port.Default
+		}
+	}
+
 	raw, err := os.ReadFile(botPath)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
@@ -86,6 +97,15 @@ func (s *Server) handleSetBotInstructions(w http.ResponseWriter, r *http.Request
 	if err := os.WriteFile(botPath, updated, 0o644); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
+	}
+
+	if s.Fleet != nil {
+		if shipped, known := s.Fleet.Shipped(filepath.Base(botID)); known && shipped == text {
+			// Put back to what it shipped with — it's no longer tuned.
+			_ = s.Fleet.Forget(filepath.Base(botID))
+		} else if text != previous {
+			_ = s.Fleet.RecordTuned(filepath.Base(botID), previous)
+		}
 	}
 
 	fresh, err := schema.LoadNanobot(botPath)

@@ -101,6 +101,7 @@ func Run(opts Options) error {
 		FoundryJobs:  foundry.NewJobStore(),
 		EnvFilePath:  opts.EnvFilePath,
 		VaultID:      svc.VaultID,
+		Fleet:        &api.FleetStore{Path: filepath.Join(paths.StateDir, "fleet.json")},
 	}
 
 	// Closes a real gap this build has had since its first commit: cron

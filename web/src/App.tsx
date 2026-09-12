@@ -4,6 +4,7 @@ import { SwarmsPage } from "./pages/SwarmsPage";
 import { BotLibrary } from "./pages/BotLibrary";
 import { RunsPage } from "./pages/RunsPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { FleetPage } from "./pages/FleetPage";
 import { LandingPage } from "./pages/LandingPage";
 import { StatusDot } from "./components/StatusDot";
 import { Switch } from "./components/Switch";
@@ -13,7 +14,7 @@ import { useApprovalNotifications } from "./lib/useApprovalNotifications";
 import { useTheme } from "./lib/theme";
 import { useStatus } from "./lib/useStatus";
 
-type Page = "swarm" | "bots" | "runs" | "settings";
+type Page = "swarm" | "bots" | "fleet" | "runs" | "settings";
 
 const NAV: { id: Page; label: string; icon: string }[] = [
   { id: "bots", label: "Bot library", icon: "M4 7h16M4 12h10M4 17h7" },
@@ -22,6 +23,9 @@ const NAV: { id: Page; label: string; icon: string }[] = [
     label: "Swarms",
     icon: "M4 5h7v6H4zM13 13h7v6h-7zM10 8h2a2 2 0 0 1 2 2v3",
   },
+  // Between the catalog and the run log: the Fleet is about who works for
+  // you, which sits naturally after "what exists" and before "what ran".
+  { id: "fleet", label: "Fleet", icon: "M4 18h16M7 18V9m5 9V5m5 13v-6" },
   { id: "runs", label: "Runs", icon: "M4 12h4l2-6 4 12 2-6h4" },
   {
     id: "settings",
@@ -190,6 +194,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
         <div className="min-h-0 flex-1 overflow-hidden">
           {page === "swarm" && <SwarmsPage uiMode={uiMode} />}
           {page === "bots" && <BotLibrary />}
+          {page === "fleet" && <FleetPage />}
           {page === "runs" && <RunsPage />}
           {page === "settings" && <SettingsPage status={status} />}
         </div>

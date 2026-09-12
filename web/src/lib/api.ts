@@ -1,4 +1,5 @@
 import type {
+  Fleet,
   BotSummary,
   ComposeResult,
   ConnectableService,
@@ -90,6 +91,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ live }),
     }),
+  fleet: () => req<Fleet>("/api/fleet"),
   setBotInstructions: (botId: string, instructions: string) =>
     req<BotSummary>(`/api/bots/${botId}/instructions`, {
       method: "POST",

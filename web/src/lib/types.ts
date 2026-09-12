@@ -308,3 +308,29 @@ export interface SetProviderConnectionResult {
    * not swallowed: the bots that did switch really did. */
   failed?: Record<string, string>;
 }
+
+/** One bot whose behaviour you've changed, and where it works. The Bot
+ * library is the catalog — every bot that exists. The Fleet is a different
+ * question: who works for you, and how have you told them to behave. */
+export interface FleetMember {
+  bot_id: string;
+  name: string;
+  instructions: string;
+  /** What it shipped with, so the UI can show the change and offer to put
+   * it back. */
+  shipped: string;
+  used_in: string[];
+}
+
+export interface FleetTeam {
+  swarm: string;
+  path: string;
+  members: string[];
+  /** The subset of members you've tuned. */
+  tuned: string[];
+}
+
+export interface Fleet {
+  members: FleetMember[];
+  teams: FleetTeam[];
+}
