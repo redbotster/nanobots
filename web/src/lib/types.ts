@@ -91,6 +91,22 @@ export interface PendingApproval {
   created: string;
 }
 
+/** What GET /api/runs returns per run: everything a list renders, and
+ * nothing it doesn't. The full Run (with log and outputs) comes from
+ * GET /api/runs/{id} — see internal/api/runs.go's runSummaryToJSON for why
+ * they're different shapes. */
+export interface RunSummary {
+  id: string;
+  swarm_name: string;
+  status: RunStatus;
+  started_at: string;
+  finished_at?: string;
+  error?: string;
+  triggered_by: "manual" | "schedule";
+  swarm_path?: string;
+  pending_approval_count: number;
+}
+
 export interface Run {
   id: string;
   swarm_name: string;

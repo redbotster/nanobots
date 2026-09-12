@@ -7,6 +7,7 @@ import type {
   Port,
   PlanResult,
   Run,
+  RunSummary,
   SaveSwarmRequest,
   SaveSwarmResult,
   StatusResponse,
@@ -87,7 +88,7 @@ export const api = {
       body: JSON.stringify({ swarm_path: swarmPath }),
     }),
   getRun: (id: string) => req<Run>(`/api/runs/${id}`),
-  listRuns: () => req<Run[]>("/api/runs"),
+  listRuns: () => req<RunSummary[]>("/api/runs"),
   decideApproval: (runId: string, approvalId: string, approved: boolean) =>
     req<{ ok: boolean }>(`/api/runs/${runId}/approvals/${approvalId}/decide`, {
       method: "POST",

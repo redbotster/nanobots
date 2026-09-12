@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
-import { api } from "../lib/api";
+import { useState } from "react";
 import type { Run } from "../lib/types";
+import { useRuns } from "../lib/runsFeed";
 import { StatusDot } from "../components/StatusDot";
 import { RunDetail } from "./RunDetail";
 import { relativeTime } from "../lib/relativeTime";
@@ -16,15 +16,8 @@ const tone: Record<Run["status"], "ok" | "warn" | "danger" | "muted"> = {
 export function RunsPage() {
   // null (not []) until the first fetch lands, so the empty state doesn't
   // flash "nothing has run yet" at someone who does in fact have runs.
-  const [runs, setRuns] = useState<Run[] | null>(null);
+  const runs = useRuns();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const load = () => api.listRuns().then(setRuns).catch(() => {});
-    load();
-    const id = setInterval(load, 2000);
-    return () => clearInterval(id);
-  }, []);
 
   if (selectedId) {
     return (

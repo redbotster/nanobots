@@ -1,43 +1,60 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
+import { useRuns } from "./runsFeed";
 
-/** Polls both swarm runs and foundry jobs for anything awaiting_approval —
- * independent of whichever page is open, the same reason App.tsx's own nav
- * badge already polls this way — and fires a real browser notification
- * the moment the combined count *increases*, not on every poll, so
- * approving one thing doesn't immediately notify you about the next
- * unrelated one still pending. Returns the live count for the nav badge
- * plus whether notifications are actually available/granted, so the
- * header can offer to turn them on. */
+/** Foundry jobs are a rare escalation path, not an everyday surface, and a
+ * job runs for minutes — polling them as hard as swarm runs bought nothing. */
+const FOUNDRY_POLL_MS = 6000;
+
+/** Anything waiting on a human decision, across swarm runs and foundry jobs,
+ * independent of whichever page is open — the nav badge needs it everywhere.
+ *
+ * Runs come from the shared feed (see runsFeed.ts) rather than a second
+ * poller of the same endpoint, so this hook costs one request per six
+ * seconds now instead of one per two seconds on top of whatever the Runs
+ * page was already doing.
+ *
+ * The browser notification fires only when the combined count *increases*,
+ * so approving one thing doesn't immediately notify you about the next
+ * unrelated one still pending. */
 export function useApprovalNotifications() {
-  const [count, setCount] = useState(0);
+  const runs = useRuns();
+  const [foundryPending, setFoundryPending] = useState(0);
   const [permission, setPermission] = useState<NotificationPermission | "unsupported">(
     "Notification" in window ? Notification.permission : "unsupported",
   );
   const prevCount = useRef(0);
 
   useEffect(() => {
-    const check = async () => {
-      const [runs, jobs] = await Promise.all([
-        api.listRuns().catch(() => []),
-        api.listFoundryJobs().catch(() => []),
-      ]);
-      const total =
-        runs.filter((r) => r.status === "awaiting_approval").length +
-        jobs.filter((j) => j.status === "awaiting_approval").length;
-
-      if (total > prevCount.current && permission === "granted") {
-        new Notification("Nanobots needs your approval", {
-          body: total === 1 ? "One thing is waiting on you." : `${total} things are waiting on you.`,
-        });
-      }
-      prevCount.current = total;
-      setCount(total);
-    };
+    let alive = true;
+    const check = () =>
+      api
+        .listFoundryJobs()
+        .then((jobs) => {
+          if (alive) {
+            setFoundryPending(jobs.filter((j) => j.status === "awaiting_approval").length);
+          }
+        })
+        .catch(() => {});
     check();
-    const id = setInterval(check, 2000);
-    return () => clearInterval(id);
-  }, [permission]);
+    const id = setInterval(check, FOUNDRY_POLL_MS);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
+
+  const count =
+    (runs ?? []).filter((r) => r.status === "awaiting_approval").length + foundryPending;
+
+  useEffect(() => {
+    if (count > prevCount.current && permission === "granted") {
+      new Notification("Nanobots needs your approval", {
+        body: count === 1 ? "One thing is waiting on you." : `${count} things are waiting on you.`,
+      });
+    }
+    prevCount.current = count;
+  }, [count, permission]);
 
   const requestPermission = () => {
     if (!("Notification" in window)) return;

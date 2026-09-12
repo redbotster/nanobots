@@ -1,13 +1,24 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { api } from "../lib/api";
 import type { ComposeGap, SaveSwarmRequest, SwarmSummary } from "../lib/types";
 import type { UIMode } from "../lib/uiMode";
 import { SwarmView } from "./SwarmView";
-import { BuilderPage } from "./BuilderPage";
-import { FoundryJobPage } from "./FoundryJobPage";
 import { Button } from "../components/Button";
 import { StatusDot } from "../components/StatusDot";
 import { relativeTime } from "../lib/relativeTime";
+
+// Both are reached only by an explicit action — opening the builder, or
+// opting into a foundry job after a composer gap — and the builder drags in
+// the whole canvas/palette/inspector tree. Loading them lazily keeps them
+// out of the bundle everyone downloads to look at a list of swarms.
+const BuilderPage = lazy(() => import("./BuilderPage").then((m) => ({ default: m.BuilderPage })));
+const FoundryJobPage = lazy(() => import("./FoundryJobPage").then((m) => ({ default: m.FoundryJobPage })));
+
+/** Deliberately quiet: these chunks load from the same local machine in a
+ * few milliseconds, so a spinner would flash more than it informs. */
+function LazyFallback() {
+  return <div className="p-6 text-sm text-muted/60">Loading…</div>;
+}
 
 const RUN_TONE: Record<string, "ok" | "warn" | "danger" | "muted"> = {
   succeeded: "ok",
@@ -146,7 +157,8 @@ export function SwarmsPage({ uiMode }: { uiMode: UIMode }) {
 
   if (mode.kind === "build") {
     return (
-      <BuilderPage
+      <Suspense fallback={<LazyFallback />}>
+        <BuilderPage
         existing={mode.swarm}
         composedDraft={mode.composedDraft}
         onDone={(savedPath) => {
@@ -162,13 +174,15 @@ export function SwarmsPage({ uiMode }: { uiMode: UIMode }) {
           });
         }}
       />
+      </Suspense>
     );
   }
 
   if (mode.kind === "foundry") {
     const request = mode.request;
     return (
-      <FoundryJobPage
+      <Suspense fallback={<LazyFallback />}>
+        <FoundryJobPage
         jobId={mode.jobId}
         onDone={() => setMode({ kind: "list" })}
         onPromoted={() => {
@@ -179,6 +193,7 @@ export function SwarmsPage({ uiMode }: { uiMode: UIMode }) {
           });
         }}
       />
+      </Suspense>
     );
   }
 

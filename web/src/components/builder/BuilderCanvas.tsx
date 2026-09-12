@@ -17,6 +17,21 @@ const NODE_WIDTH = 208;
 const ROW_HEIGHT = 24;
 const HEADER_HEIGHT = 40;
 
+type Point = { x: number; y: number };
+
+/** Cheap equality for the measured port map — sub-pixel jitter from a
+ * scrollbar appearing shouldn't count as movement and re-render the canvas. */
+function samePositions(a: Record<string, Point>, b: Record<string, Point>) {
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  for (const k of keys) {
+    const p = a[k];
+    const q = b[k];
+    if (!q || Math.abs(p.x - q.x) > 0.5 || Math.abs(p.y - q.y) > 0.5) return false;
+  }
+  return true;
+}
+
 function portKey(instanceId: string, dir: "in" | "out", port: string) {
   return `${instanceId}:${dir}:${port}`;
 }
@@ -73,11 +88,21 @@ export function BuilderCanvas({
     else portEls.current.delete(key);
   };
 
-  // Recomputes every port's canvas-relative pixel center from the live DOM
-  // after each render — getBoundingClientRect is viewport-relative for both
-  // the port and the canvas, so their difference is correct regardless of
-  // scroll position, no manual scroll bookkeeping needed.
-  useLayoutEffect(() => {
+  // Recomputes every port's canvas-relative pixel center from the live DOM —
+  // getBoundingClientRect is viewport-relative for both the port and the
+  // canvas, so their difference is correct regardless of scroll position, no
+  // manual scroll bookkeeping needed.
+  //
+  // This runs after *every* render rather than on a dependency list, and it
+  // is not laziness. It used to depend on [bots, snaps], which silently
+  // failed on the most common path there is: opening an existing swarm to
+  // edit it. Ports only render once botDefs has loaded over the network, so
+  // the effect measured an empty canvas, botDefs then arrived without
+  // changing bots or snaps, and the effect never ran again — a five-bot
+  // swarm opened in the builder with all of its connections invisible. Any
+  // dependency list here is a guess about what makes ports move; measuring
+  // unconditionally and writing only on a real change is not a guess.
+  const measure = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const canvasBox = canvas.getBoundingClientRect();
@@ -89,8 +114,23 @@ export function BuilderCanvas({
         y: box.top + box.height / 2 - canvasBox.top + canvas.scrollTop,
       };
     }
-    setPositions(next);
-  }, [bots, snaps]);
+    // Bail unless something actually moved — setPositions on every render
+    // would loop forever.
+    setPositions((prev) => (samePositions(prev, next) ? prev : next));
+  };
+
+  useLayoutEffect(measure);
+
+  // A canvas resize moves every port without re-rendering React, so the
+  // effect above would never see it — the connectors would detach from the
+  // ports until the next unrelated render.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(canvas);
+    return () => ro.disconnect();
+  }, []);
 
   // Delete/Backspace removes the selected node — skipped while focus is in
   // a text field (the swarm name/description inputs, a palette search box)

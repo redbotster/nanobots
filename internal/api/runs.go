@@ -34,9 +34,35 @@ func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 	runs := s.Runs.List()
 	out := make([]any, len(runs))
 	for i, run := range runs {
-		out[i] = runToJSON(run)
+		out[i] = runSummaryToJSON(run)
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// runSummaryToJSON is what the list endpoint returns: everything a run list
+// renders, and nothing it doesn't.
+//
+// The list used to return whole runs, logs and outputs included. With only
+// nine runs on this machine that was already 22KB, 76% of it log and output
+// text no list view has ever displayed — and both the Runs page and the
+// approval poller fetch it every two seconds, so ~1.3 MB/min to render nine
+// rows. Run history is now capped at 200 and persisted, so that was on its
+// way to tens of MB a minute. GET /api/runs/{id} still returns the whole
+// thing; that's the endpoint that has a reader for it.
+func runSummaryToJSON(run *runner.Run) map[string]any {
+	return map[string]any{
+		"id":           run.ID,
+		"swarm_name":   run.SwarmName,
+		"status":       run.GetStatus(),
+		"started_at":   run.StartedAt,
+		"finished_at":  run.GetFinishedAt(),
+		"error":        run.GetError(),
+		"triggered_by": run.TriggeredBy,
+		"swarm_path":   run.SwarmPath,
+		// A count, not the approvals themselves — enough for a badge and
+		// for "N runs are waiting on you", which is all a list needs.
+		"pending_approval_count": len(run.PendingApprovals()),
+	}
 }
 
 func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
