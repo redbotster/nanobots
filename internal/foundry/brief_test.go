@@ -1,8 +1,10 @@
 package foundry
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -68,5 +70,70 @@ func TestBuildBriefWorksWithNoSuggestedPortsOrExistingIDs(t *testing.T) {
 	}
 	if !strings.Contains(brief, "y") {
 		t.Errorf("brief missing the missing_capability text")
+	}
+}
+
+// The brief is assembled from the repo at runtime precisely so it cannot go
+// stale — and then it carried a hand-written sentence about the repo that
+// did. It claimed bots with an ai.generate step "almost always use harness:
+// openclaw", which was true before the llm harness existed and is now
+// backwards; both worked examples embedded a few lines above it are llm, so
+// an agent got a rule and two counterexamples, and a pointer at a 1.1 GB
+// Chromium image for a bot needing no browser.
+func TestTheBriefsHarnessAdviceMatchesTheCatalog(t *testing.T) {
+	root := repoRootForTest(t)
+	guidance := harnessGuidance(root)
+
+	if !strings.Contains(guidance, "llm") || !strings.Contains(strings.ToLower(guidance), "ai.generate") {
+		t.Errorf("the guidance never points an ai.generate bot at the llm harness:\n%s", guidance)
+	}
+	// The specific reversal that was there.
+	if regexp.MustCompile(`(?i)ai\.generate[^.\n]*openclaw`).MatchString(guidance) {
+		t.Errorf("the guidance still sends ai.generate bots to openclaw:\n%s", guidance)
+	}
+	// openclaw must still be named, with the one reason to use it.
+	if !strings.Contains(guidance, "transform.render") {
+		t.Errorf("the guidance does not say when openclaw IS right:\n%s", guidance)
+	}
+
+	// The counts are read from the catalog, so they have to be the real
+	// ones — a number in a prompt is a claim like any other.
+	llm, openclaw := 0, 0
+	entries, err := os.ReadDir(filepath.Join(root, "bots"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		nb, err := schema.LoadNanobot(filepath.Join(root, "bots", e.Name(), "nanobot.yaml"))
+		if err != nil {
+			continue
+		}
+		switch nb.Spec.Harness.Type {
+		case "llm":
+			llm++
+		case "openclaw":
+			openclaw++
+		}
+	}
+	if !strings.Contains(guidance, fmt.Sprintf("%d llm", llm)) {
+		t.Errorf("guidance does not report the real llm count (%d):\n%s", llm, guidance)
+	}
+	if !strings.Contains(guidance, fmt.Sprintf("%d openclaw", openclaw)) {
+		t.Errorf("guidance does not report the real openclaw count (%d):\n%s", openclaw, guidance)
+	}
+}
+
+// A worked example the brief embeds is a template an agent copies. One that
+// contradicts the brief's own advice teaches the wrong thing twice.
+func TestTheWorkedExamplesStillExistAndAgreeWithTheAdvice(t *testing.T) {
+	root := repoRootForTest(t)
+	for _, id := range referenceBots {
+		nb, err := schema.LoadNanobot(filepath.Join(root, "bots", id, "nanobot.yaml"))
+		if err != nil {
+			t.Fatalf("worked example %q is gone: %v", id, err)
+		}
+		if nb.Spec.Harness.Type == "openclaw" {
+			t.Errorf("%s is openclaw, and the brief tells agents to avoid it — pick an example that agrees", id)
+		}
 	}
 }

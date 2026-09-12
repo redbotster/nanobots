@@ -39,3 +39,24 @@ curl -X POST http://127.0.0.1:7474/api/foundry/<id>/approvals/<approvalId>/decid
 ```
 
 Or, in the WebUI: describe something the catalog genuinely can't do in the Swarms page's compose box, click **Build it** on the gap panel that appears, and watch the live log.
+
+## The brief is assembled, not written
+
+Every brief is built from the repo at the moment a job starts — the bot
+contract doc, the design rules, two complete worked examples, the live
+catalog ids — precisely so it cannot drift from what the repo actually is.
+
+It still managed to. A hand-written sentence in the middle of it claimed
+that bots with an `ai.generate` step "almost always use `harness:
+openclaw`". True before the `llm` harness existed; now backwards, with 18
+llm bots to 4 openclaw. And both worked examples embedded a few lines above
+it are `llm` — so an agent received a rule and two counterexamples, plus a
+pointer at a 1.1 GB Chromium image for a bot that needs no browser.
+
+The harness section is now counted from the catalog, and two tests hold it
+there: the advice must not send an `ai.generate` bot to openclaw, must still
+say when openclaw *is* right, must report the real counts — and the worked
+examples must not themselves contradict it.
+
+The lesson generalises past this file: a prompt assembled from a repo should
+contain no hand-written claim *about* that repo.
