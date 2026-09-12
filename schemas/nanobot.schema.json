@@ -217,6 +217,7 @@
         "steps": {
           "items": {
             "properties": {
+              "data": {},
               "inputs": {
                 "additionalProperties": true,
                 "type": "object"
@@ -230,14 +231,24 @@
               "op": {
                 "type": "string"
               },
+              "optional": {
+                "type": "boolean"
+              },
               "output": {
                 "type": "string"
+              },
+              "outputs": {
+                "additionalProperties": true,
+                "type": "object"
               },
               "params": {
                 "additionalProperties": true,
                 "type": "object"
               },
               "prompt_file": {
+                "type": "string"
+              },
+              "query": {
                 "type": "string"
               },
               "risk_tier": {

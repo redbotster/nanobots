@@ -52,6 +52,9 @@
                 "additionalProperties": true,
                 "type": "object"
               },
+              "on_error": {
+                "type": "string"
+              },
               "path": {
                 "type": "string"
               },
@@ -159,6 +162,9 @@
           "items": {
             "properties": {
               "from": {
+                "type": "string"
+              },
+              "join": {
                 "type": "string"
               },
               "to": {

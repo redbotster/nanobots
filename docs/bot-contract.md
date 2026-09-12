@@ -16,7 +16,27 @@ A nanobot is a container that follows one contract. Any harness that can read a 
 
 ## What the container never gets
 
-No bot container ever holds a real 1Claw credential, not even a short-lived one. Every step that needs the outside world — `service.call`, `ai.generate`, `web.fetch`, `memory.get`/`put`, `approve`, `notify` — is a callback to nanobotd instead, authenticated with a random per-run token that means nothing outside that one run. See `internal/step.RemoteDeps` and `docs/oneclaw-bridge.md`.
+No bot container ever holds a real 1Claw credential, not even a short-lived one. Every step that needs the outside world is a callback to nanobotd instead, authenticated with a random per-run token that means nothing outside that one run. See `internal/step.RemoteDeps` and `docs/oneclaw-bridge.md`.
+
+## The step types
+
+These twelve are what the interpreter implements. `step.Types()` is the list in Go, and a test checks it against the interpreter's own switch — and this section against that list — so none of the three can drift apart:
+
+| step | does |
+|---|---|
+| `service.call` | one op against a declared service (`connection: demo` serves a fixture) |
+| `ai.generate` | a prompt file, rendered with this step's `inputs:`, through whatever model is configured (`docs/llm.md`) |
+| `web.fetch` | fetch a url or urls — credential-free, still routed through the host so demo mode can serve a fixture |
+| `transform.render` | a template plus data to `pdf`, `png` or `html`. The only step needing the `openclaw` harness |
+| `transform.now` | the current time, injectable so conformance is deterministic |
+| `transform.pick` | shape a value — pull a field out, build a small literal — without pretending it's a service call |
+| `memory.get` / `memory.put` | durable key/value, namespaced per bot (`docs/memory.md`) |
+| `memory.recall` | ask a question in plain language. Mark it `optional: true` unless the bot genuinely cannot work without an answer — the default backend is key/value and cannot answer at all |
+| `memory.remember` | record an observation for a recall-capable backend to derive from. Never fails a run |
+| `approve` | block until a human decides (`docs/approvals.md`) |
+| `notify` | send a message to a channel |
+
+A step binds its result to a port with `output:`, or pulls several fields out of one result at once with `outputs:`.
 
 `transform.render` and `transform.now` run entirely inside the container — rendering needs no credential, so there's no reason to round-trip it through nanobotd.
 

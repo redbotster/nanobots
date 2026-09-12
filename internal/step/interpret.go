@@ -695,6 +695,34 @@ func firstNonEmpty(a, b string) string {
 	return b
 }
 
+// Types is every step type the interpreter implements.
+//
+// Exported because two other things have to agree with this list and kept
+// drifting from it: docs/bot-contract.md, which the foundry feeds verbatim
+// to an agent authoring a brand-new bot, and any error message that offers
+// the alternatives. The doc listed six of them for a long time, so a
+// foundry-authored bot could not have used memory.recall or transform.pick
+// — it had never heard of them.
+//
+// A test checks this against the interpreter's own switch, so the list
+// cannot drift from the code either.
+func Types() []string {
+	return []string{
+		"service.call",
+		"ai.generate",
+		"web.fetch",
+		"transform.render",
+		"transform.now",
+		"transform.pick",
+		"memory.get",
+		"memory.put",
+		"memory.recall",
+		"memory.remember",
+		"approve",
+		"notify",
+	}
+}
+
 // parseJSONValue decodes s if it is valid JSON, for callers that want the
 // value rather than the text. Used by RecordingDeps: a fixture is read back
 // with json.Unmarshal, so what belongs on disk is the JSON a model
