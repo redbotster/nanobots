@@ -12,9 +12,10 @@ metadata:
 # doesn't produce the `threads:list<json>` draft-replies would need as
 # input anyway. Standalone `approve` is skipped for the same reason as
 # every other swarm here — email-send-approved's own built-in gate is the
-# one approval. No per-item fan-out, so only the first drafted reply gets
-# sent per run (the same limitation documented on every multi-item swarm
-# in this build).
+# one approval, opening once for the whole batch and naming its size. The
+# `.*` snaps fan both terminal bots out (see docs/fan-out.md): notify
+# alerts on every escalation, and email-send-approved replies to every
+# ticket, rather than only the first of each.
 
 spec:
   defaults:
@@ -45,11 +46,11 @@ spec:
       use: email-send-approved@0.1.0
 
   snaps:
-    - from: triage.escalations.0.reason
+    - from: triage.escalations.*.reason
       to: alert.message
-    - from: triage.draft_ids.0
+    - from: triage.draft_ids.*
       to: sender.draft_id
-    - from: triage.tickets.0.subject
+    - from: triage.tickets.*.subject
       to: sender.summary
 
   deploy:

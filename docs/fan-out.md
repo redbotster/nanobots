@@ -44,6 +44,23 @@ This was a deliberate choice over one-approval-per-item. Twenty prompts means no
 
 Against real data, not fixtures. `content-ideas` generated 10 ideas from a live Shroud call; `post-writer` fanned out over them and produced 10 distinct posts, each tracking its own idea, in 10 separate containers. Before this, that swarm wrote one post and discarded nine ideas — which its own header comment admitted.
 
-## Not done
+## Which catalog swarms use it
 
-The catalog's six `.0` swarms have **not** been converted. Each needs a decision the syntax can't make: `get-paid`'s final `notifier` would fan out to 20 Slack messages unless something joins the results first, and there is no join operation. Converting them is a per-swarm design question, not a mechanical edit.
+Three are converted, and their header comments no longer apologise:
+
+| swarm | what it does now |
+|---|---|
+| `never-drop-a-thread` | nudges **every** stale thread, not the first |
+| `inbox-autopilot` | replies to **every** urgent thread |
+| `support-desk-lite` | alerts on **every** escalation and replies to **every** ticket |
+
+All three share a shape that makes the conversion safe: the fanned-out bot is *terminal*. Nothing reads its outputs, so nothing has to cope with them becoming lists.
+
+## Two that are deliberately left alone
+
+`get-paid` and `content-engine` both feed a bot **downstream** of the one that would fan out, and each needs a product decision the syntax cannot make:
+
+- **`get-paid`**: `sender.message_id -> notifier.message`. Fan `sender` out over twenty overdue invoices and `notifier` either fans too — twenty Slack messages — or reads `.0` and confirms only the first of twenty sends, which is worse than not confirming at all. What it wants is one notification summarising the batch, and there is no join or aggregate step to build that with.
+- **`content-engine`**: its own comment says the catalog intent is "scheduled across the week". Fanning `post-writer` and `post-publisher` would write ten posts and publish all ten at once, which is not "across the week" — it's a burst. Per-item scheduling doesn't exist, so `.0` remains the closer approximation.
+
+Both are blocked on the same missing primitive: a way to **join** a fanned-out bot's list back into one value. That's the natural next piece of this feature, and it isn't built.

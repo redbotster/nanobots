@@ -6,11 +6,12 @@ metadata:
   owner: me@example.com
 
 # Catalog's S4 is "follow-up-chaser -> approve -> email-send-approved",
-# "send each nudge". Same simplification as inbox-autopilot.yaml: this
-# build's swarm engine has no per-item fan-out, so this processes the first
-# stale thread only, and the standalone `approve` brick is skipped in favor
-# of email-send-approved's own built-in, un-bypassable gate — "the one
-# approval" either way.
+# "send each nudge" — which is now what this does: the `.*` snaps fan
+# email-send-approved out over every stale thread (see docs/fan-out.md).
+# The standalone `approve` brick is still skipped in favor of
+# email-send-approved's own built-in, un-bypassable gate, and with fan-out
+# that gate opens once for the whole batch, naming its size — "the one
+# approval", literally.
 
 spec:
   defaults:
@@ -34,9 +35,9 @@ spec:
       use: email-send-approved@0.1.0
 
   snaps:
-    - from: chaser.draft_ids.0
+    - from: chaser.draft_ids.*
       to: sender.draft_id
-    - from: chaser.stale_threads.0.subject
+    - from: chaser.stale_threads.*.subject
       to: sender.summary
 
   deploy:

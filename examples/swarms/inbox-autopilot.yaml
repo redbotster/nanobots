@@ -7,15 +7,17 @@ metadata:
 
 # Catalog's S3 is "inbox-triage -> draft-replies -> approve ->
 # email-send-approved", and describes the one approval as "send each reply"
-# — implying one approval per drafted reply. This build's swarm engine runs
-# every bot exactly once per run, with no per-item fan-out/loop and no
-# conditional execution based on an upstream bot's output (the standalone
-# `approve` brick's approved:boolean has nothing to actually gate). So this
-# swarm processes the first urgent thread only, and skips the standalone
-# `approve` brick entirely: email-send-approved's own built-in gate (which
-# cannot be bypassed — see its nanobot.yaml) is "the one approval" instead
-# of a redundant second one. Real per-thread iteration is future work, not
-# a hidden simplification.
+# — implying one approval per drafted reply. The `.*` snaps now fan
+# email-send-approved out over every drafted reply (see docs/fan-out.md),
+# so every urgent thread is handled rather than only the first.
+#
+# Two deliberate differences from the catalog remain. The standalone
+# `approve` brick is skipped: email-send-approved's own built-in gate
+# (which cannot be bypassed — see its nanobot.yaml) is the one approval,
+# and it opens once for the whole batch naming its size, rather than once
+# per reply. And there is still no conditional execution based on an
+# upstream bot's output, so the standalone brick's approved:boolean would
+# have nothing to gate even if it were here.
 
 spec:
   defaults:
@@ -43,9 +45,9 @@ spec:
   snaps:
     - from: triage.urgent
       to: replies.threads
-    - from: replies.draft_ids.0
+    - from: replies.draft_ids.*
       to: sender.draft_id
-    - from: replies.drafts.0.subject
+    - from: replies.drafts.*.subject
       to: sender.summary
 
   deploy:
