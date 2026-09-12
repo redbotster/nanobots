@@ -72,6 +72,28 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
       </section>
 
       <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-4">
+        <h2 className="font-display text-sm font-semibold text-ink">Memory</h2>
+        <div className="mt-3 flex items-center gap-2 text-sm">
+          <StatusDot tone={status?.memory_recall ? "ok" : "muted"} />
+          {status
+            ? status.memory_recall
+              ? `${status.memory_backend} — bots can remember and be asked about it`
+              : `${status.memory_backend} — stores values by key`
+            : "Checking…"}
+        </div>
+        {status && !status.memory_recall && (
+          <p className="mt-1.5 text-[12px] leading-snug text-muted">
+            Bots that could learn from what happened before are running
+            without that. inbox-triage, for one, falls back to its static
+            rules instead of what you've actually treated as urgent. Set{" "}
+            <code className="text-ink">NANOBOTS_MEMORY=honcho</code> with a{" "}
+            <code className="text-ink">HONCHO_URL</code> to change it — see
+            docs/memory.md.
+          </p>
+        )}
+      </section>
+
+      <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-4">
         <h2 className="font-display text-sm font-semibold text-ink">Docker</h2>
         <div className="mt-3 flex items-center gap-2 text-sm">
           <StatusDot tone={status?.docker_available ? "ok" : "warn"} />

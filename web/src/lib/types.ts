@@ -159,6 +159,13 @@ export interface StatusResponse {
    * already done real work. Reported up front for the same reason Docker is. */
   vault_locked: boolean;
   vault_reason: string;
+  /** Which backend is behind memory.* steps: "local", "1claw",
+   * "local + honcho". See docs/memory.md. */
+  memory_backend: string;
+  /** Whether that backend can answer questions, not just store keys. Bots
+   * that could learn from history degrade quietly without it, so the
+   * difference is worth showing. */
+  memory_recall: boolean;
 }
 
 export interface SwarmSummary {

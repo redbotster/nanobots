@@ -70,3 +70,10 @@ In demo mode `memory.recall` reads `fixtures/memory.recall.json` (a plain string
 - **Honcho**, against a fake server asserting the exact routes and bodies read out of its source: `POST /v3/workspaces/{ws}/sessions/{ns}-runs/messages` with `MessageBatchCreate` (`peer_name` is aliased `peer_id` on the wire), and `POST /v3/workspaces/{ws}/peers/{ns}/chat` with `DialecticOptions{query}` returning `DialecticResponse{content}`. Nullable content is treated as "nothing known", not an error, and no `Authorization` header is sent when no key is configured.
 
 **Not verified against a real Honcho server.** Nothing in this repo can reach one, so the client is built and tested against shapes read from Honcho's own routers and schemas — the same standard `internal/oneclaw` holds itself to — but the first run against a live deployment is still the first run.
+
+
+## Seeing which backend you're on
+
+`GET /api/status` reports `memory_backend` (`local`, `1claw`, `local + honcho`) and `memory_recall`, and Settings shows both.
+
+That matters because the degradation is deliberately quiet. `inbox-triage` declares its recall step `optional: true`, so on a key/value backend it logs one line and carries on — triaging by its static rules instead of by what you've actually treated as urgent. The run succeeds either way, and the only difference is quality. A capability that changes how well the product works while leaving no trace in the UI is the same problem a stopped Docker daemon was, so Settings says so plainly and names the one bot it currently affects.

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/redbotster/nanobots/internal/foundry"
+	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/runner"
 	"github.com/redbotster/nanobots/internal/step"
@@ -186,6 +187,7 @@ func (p *dockerProbe) get(now time.Time) (bool, string) {
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	dockerOK, dockerReason := s.docker.get(now)
+	memKind, memRecall := s.memoryStatus()
 	vaultLocked, vaultReason := s.vault.get(now, s.OneClaw, s.VaultID)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"oneclaw_configured": s.OneClaw != nil && s.OneClaw.Configured(),
@@ -193,10 +195,45 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		// once, and is fixed on the user's phone, not here.
 		"vault_locked": vaultLocked,
 		"vault_reason": vaultReason,
+		// Which memory backend is behind memory.* steps, and whether it can
+		// answer questions. A bot like inbox-triage triages measurably
+		// worse without recall and degrades quietly by design, so the
+		// difference has to be visible somewhere other than a run log.
+		"memory_backend": memKind,
+		"memory_recall":  memRecall,
 		// Reported separately from oneclaw because they fail independently
 		// and the fixes are unrelated: one is a key, the other is an app
 		// you have to go start.
 		"docker_available": dockerOK,
 		"docker_reason":    dockerReason,
 	})
+}
+
+// memoryStatus names the configured memory backend and says whether it can
+// answer questions as well as store keys. See internal/memory.
+func (s *Server) memoryStatus() (kind string, recall bool) {
+	if s.Orchestrator == nil || s.Orchestrator.Memory == nil {
+		return "none", false
+	}
+	store := s.Orchestrator.Memory
+	_, recall = memory.RecallerOf(store)
+	switch t := store.(type) {
+	case *memory.Composite:
+		if t.Rich != nil {
+			return "local + " + recallerName(t.Rich), true
+		}
+		return "local", false
+	case *memory.DeferredOneClaw:
+		return "1claw", false
+	case *memory.Local:
+		return "local", false
+	}
+	return "custom", recall
+}
+
+func recallerName(r memory.Recaller) string {
+	if _, ok := r.(*memory.Honcho); ok {
+		return "honcho"
+	}
+	return "recall"
 }
