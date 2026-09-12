@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/schema"
 )
 
@@ -108,11 +109,20 @@ func (r *RemoteDeps) MemoryGet(namespace, key string) (string, bool, error) {
 
 func (r *RemoteDeps) MemoryRecall(namespace, question string) (string, error) {
 	var out struct {
-		Answer string `json:"answer"`
+		Answer    string `json:"answer"`
+		Supported *bool  `json:"supported"`
 	}
 	err := r.call("/internal/steps/memory_recall",
 		map[string]any{"namespace": namespace, "question": question}, &out)
-	return out.Answer, err
+	if err != nil {
+		return "", err
+	}
+	// Rebuild the sentinel the host flattened for the wire, so the
+	// interpreter can tell "no recall here" from "recall failed".
+	if out.Supported != nil && !*out.Supported {
+		return "", memory.ErrNoRecall
+	}
+	return out.Answer, nil
 }
 
 func (r *RemoteDeps) MemoryRemember(namespace, text string) error {

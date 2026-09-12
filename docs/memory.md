@@ -53,12 +53,19 @@ HONCHO_API_KEY       omit for a self-hosted server (AUTH_USE_AUTH=false by defau
   value: "they escalated a refund again"
 ```
 
+`memory.recall` takes `optional: true` when the answer improves a bot rather than being required. That distinction exists because the *default* backend is key/value and cannot answer questions — without it, any bot using recall would fail outright on a fresh install, which would make the feature unusable. The bot declares which it is rather than the engine guessing.
+
+Getting that across the container boundary needed care. A bot runs in a container and reaches memory through a callback, so an `ErrNoRecall` returned as an error becomes a string and can no longer be type-asserted. The callback therefore reports it as data — `{"answer": "", "supported": false}` — and `RemoteDeps` rebuilds the sentinel, so the interpreter can still tell "no recall here" from "recall broke".
+
+A recall step's output is self-describing or absent: `internal/step.optionalTextBlock` wraps a non-empty answer in a labelled `<remembered>` block and renders nothing at all otherwise, so a prompt never carries its own "what this person usually does:" header pointing at emptiness.
+
 `memory.get`, `memory.put` and `memory.remember` are best-effort: a backend that can't do them logs and continues, because bookkeeping should not fail a run. **`memory.recall` is not.** A bot asking a question uses the answer to decide something, so a backend that can't answer errors rather than substituting silence. A recall-capable backend returning an empty answer is fine — that genuinely is "nothing known yet".
 
 In demo mode `memory.recall` reads `fixtures/memory.recall.json` (a plain string, or `{"<question>": "<answer>"}`), so a recall-using bot stays conformance-testable offline like everything else.
 
 ## Verified
 
+- **A bot really using it.** `inbox-triage` now recalls what this person has treated as urgent before (`optional: true`) and remembers each call. On the default key/value backend it logged `memory.recall skipped: this deployment has key/value memory only` and succeeded. Pointed at a recall-capable backend, the same bot and the same swarm — no code change, only `NANOBOTS_MEMORY=honcho` — logged `memory.recall ... -> 74 chars`, hitting `/v3/workspaces/nanobots/peers/inbox-triage/chat` and `/v3/workspaces/nanobots/sessions/inbox-triage-runs/messages`.
 - **Local**, end to end and twice: `competitor-watch` logged `memory.get last_summary (found=false)` on its first run and `found=true` on its second, with the summary on disk between them — and no 1Claw involved in either.
 - **Honcho**, against a fake server asserting the exact routes and bodies read out of its source: `POST /v3/workspaces/{ws}/sessions/{ns}-runs/messages` with `MessageBatchCreate` (`peer_name` is aliased `peer_id` on the wire), and `POST /v3/workspaces/{ws}/peers/{ns}/chat` with `DialecticOptions{query}` returning `DialecticResponse{content}`. Nullable content is treated as "nothing known", not an error, and no `Authorization` header is sent when no key is configured.
 

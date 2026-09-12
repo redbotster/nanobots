@@ -105,7 +105,14 @@ type Step struct {
 	// this person usually escalate?" — as opposed to Key, which names one
 	// stored value.
 	Query string `json:"query,omitempty" yaml:"query,omitempty"`
-	Value string `json:"value,omitempty" yaml:"value,omitempty"`
+	// Optional marks a step whose result improves the bot but isn't
+	// required. It exists for memory.recall: the default memory backend is
+	// key/value and cannot answer questions, so a bot that merely benefits
+	// from recall must be able to run without it, while one that genuinely
+	// depends on it should still fail loudly. The bot declares which it is
+	// rather than the engine guessing.
+	Optional bool   `json:"optional,omitempty" yaml:"optional,omitempty"`
+	Value    string `json:"value,omitempty" yaml:"value,omitempty"`
 	// Data is transform.pick's payload — unlike Value (a plain string, used
 	// by memory.put), this can be any YAML shape (a string, a number, an
 	// object) so a step can build something like an event payload directly.

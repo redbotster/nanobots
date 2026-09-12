@@ -54,10 +54,18 @@ spec:
       service: gmail
       op: messages.list
       params: { q: "after:{{inputs.since}}", max: 200 }
+    # What this person has actually treated as urgent before beats any
+    # static rule list. Optional: the default memory backend is key/value
+    # and can't answer questions, so triage still runs without it — just
+    # without the benefit. See docs/memory.md.
+    - name: recall_urgency
+      type: memory.recall
+      optional: true
+      query: "What kinds of message has this person treated as urgent before, and what have they consistently ignored?"
     - name: triage
       type: ai.generate
       prompt_file: ./prompts/triage.md
-      inputs: { messages: "{{steps.fetch.output}}", rules: "{{inputs.rules}}", instructions: "{{inputs.instructions}}" }
+      inputs: { messages: "{{steps.fetch.output}}", rules: "{{inputs.rules}}", instructions: "{{inputs.instructions}}", learned: "{{steps.recall_urgency.output}}" }
       outputs:
         urgent: "{{steps.triage.output.urgent}}"
         later: "{{steps.triage.output.later}}"
@@ -67,6 +75,11 @@ spec:
       service: gmail
       op: messages.modify
       params: { urgent: "{{steps.triage.output.urgent}}", later: "{{steps.triage.output.later}}" }
+    # Feed today's call back in, so a recall-capable backend has something
+    # to derive from. A no-op on key/value backends.
+    - name: note_urgency
+      type: memory.remember
+      value: "Triaged as urgent: {{steps.triage.output.urgent}}"
 
   guardrails:
     pii: redact

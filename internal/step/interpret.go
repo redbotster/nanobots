@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"errors"
+	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/schema"
 )
 
@@ -144,8 +146,25 @@ func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, swarmVars map[
 				break
 			}
 			out, err = deps.MemoryRecall(nb.Metadata.Name, question)
+			if errors.Is(err, memory.ErrNoRecall) && s.Optional {
+				// The bot said it can work without this. Degrade rather
+				// than fail — but say so, because the run will be worse
+				// than it would be with a recall-capable backend.
+				log(s.Name, "memory.recall skipped: this deployment has key/value memory only (see docs/memory.md)")
+				out, err = "", nil
+			}
 			if err == nil {
-				log(s.Name, "memory.recall %q -> %d chars", truncate(question, 48), len(fmt.Sprint(out)))
+				// Self-describing, or nothing at all. A prompt that
+				// carried its own "what this person usually does:" header
+				// would be left pointing at emptiness whenever recall is
+				// unavailable or has learned nothing yet — the same reason
+				// instructions and optional file inputs are wrapped here
+				// rather than in nineteen prompt files.
+				answer := fmt.Sprint(out)
+				out = optionalTextBlock("remembered", answer)
+				if answer != "" {
+					log(s.Name, "memory.recall %q -> %d chars", truncate(question, 48), len(answer))
+				}
 			}
 
 		case "memory.remember":

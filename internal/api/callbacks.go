@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strings"
 
+	"errors"
+	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/schema"
 	"github.com/redbotster/nanobots/internal/step"
 )
@@ -189,11 +191,18 @@ func (s *Server) handleStepMemoryRecall(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	answer, err := deps.MemoryRecall(req.Namespace, req.Question)
+	if errors.Is(err, memory.ErrNoRecall) {
+		// Not an error on the wire: "this deployment has no recall" is a
+		// fact the container needs to distinguish from "recall broke", and
+		// an error string can't be type-asserted after crossing HTTP.
+		writeCallbackResult(w, map[string]any{"answer": "", "supported": false})
+		return
+	}
 	if err != nil {
 		writeCallbackError(w, err)
 		return
 	}
-	writeCallbackResult(w, map[string]any{"answer": answer})
+	writeCallbackResult(w, map[string]any{"answer": answer, "supported": true})
 }
 
 // handleStepMemoryRemember records an observation for a recall-capable
