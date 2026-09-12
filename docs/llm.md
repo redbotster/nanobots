@@ -65,4 +65,25 @@ A `Retry-After` longer than a minute means a quota window rather than a blip, an
 
 A direct key alone is now enough to run bots live. It wasn't: `ai.generate` called Shroud directly, so a machine with an `ANTHROPIC_API_KEY` and no 1Claw account ran the entire catalog against demo fixtures — every generation returning canned text, with nothing in the log saying the key was being ignored. `BuildDeps` now treats "has an LLM" and "has 1Claw" as separate facts. 1Claw is still what adds real service calls, vault credentials and Shroud's guardrails on top.
 
-**Honcho cannot currently route through Shroud.** Honcho's config lets you override a base URL and an API-key env var, but not add a header — and Shroud requires `X-Shroud-Provider`. So a local Honcho's own LLM spend goes direct to its provider, outside 1Claw's budget. Closing that needs a small header-injecting proxy in front of Shroud; it isn't built.
+## Anything else that talks to a model
+
+Two things in this repo generate text without being a bot, and both go through the same layer:
+
+- **The composer** (`POST /api/compose`) — the "describe what you want automated" box. It used to build its own Shroud client and demand `ONECLAW_API_KEY` specifically, so someone with a Gemini key had a working catalog, working bots, and a compose box that returned 400 from the product's primary entry point. It now uses whatever backend is configured, resolving Shroud against its own agent.
+- **Honcho**, the recall-capable memory backend — see below.
+
+## Routing Honcho through Shroud
+
+```sh
+HONCHO_LLM=shroud ./docker/honcho/honcho.sh up -d
+```
+
+Worth doing, because the text Honcho handles is the most sensitive in the system: what's in someone's inbox, what they promised whom, what they escalate. By default that goes straight from a local container to a model provider with nothing in between. Through Shroud it gets billed against a daily budget, redacted for PII and secrets, and screened for injection first.
+
+This works because Shroud speaks `/v1/chat/completions` and forwards tools faithfully — confirmed live, `tool_choice: "auto"` included, with OpenAI-shaped `tool_calls` coming back, which Honcho's dialectic depends on. What Shroud also needs is an `X-Shroud-Provider` header and an agent `id:key` pair, and Honcho can only be given a base URL and an API-key env var. So nanobotd exposes a shim at `/shroud/v1` that adds exactly those two things and forwards the body byte for byte.
+
+The shim is the one route on nanobotd that authenticates. Everything else it serves is inert if reached; this one spends money, and it's reachable from more places than the rest of the API — Docker containers get to the host through `host.docker.internal` even though nanobotd binds loopback, which is precisely how Honcho reaches it. The token is generated on first start, stored `0600` at `~/.nanobots/state/agents/shroud-proxy-token`, and stable across restarts so a running Honcho doesn't break when nanobotd restarts. Spend is billed to its own `nanobots-shroud-proxy` agent with its own daily ceiling, rather than quietly eating a bot's budget.
+
+**Two honest limits.** Embeddings still go direct to Gemini: Shroud's embeddings route wants a provider key stored in the 1Claw vault, and an agent is scoped to one provider anyway — so the embedding model still sees observation text. And the model must be one the shim's agent may call; that agent is created with `AllowedProviders: [anthropic]`, so `config.shroud.toml` uses an Anthropic model.
+
+Verified end to end: an observation posted to Honcho was derived through Shroud (`observation_count=3`), the dialectic answered a real question about it, and a full `inbox-autopilot` run recalled 1100 and 1820 characters through the whole chain — bot → nanobotd → Honcho → shim → Shroud → model.

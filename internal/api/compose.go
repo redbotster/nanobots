@@ -1,7 +1,8 @@
 // The "head nanobot" — a natural-language swarm composer. A human describes
 // what they want automated ("Help me automate a daily email recap and list
-// it by priority"); this asks Shroud to snap together a draft swarm from
-// the real bot catalog, validates it through the same planner a real run
+// it by priority"); this asks whichever model this deployment configured
+// (see internal/llm) to snap together a draft swarm from the real bot
+// catalog, validates it through the same planner a real run
 // uses, and hands it back for the WebUI's visual builder to show for
 // review — this never saves or runs anything on its own. See
 // web/src/pages/SwarmsPage.tsx's compose box and BuilderPage's
@@ -9,11 +10,13 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 
+	"github.com/redbotster/nanobots/internal/llm"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/planner"
 	"github.com/redbotster/nanobots/internal/schema"
@@ -47,8 +50,15 @@ type composeResponse struct {
 }
 
 func (s *Server) handleCompose(w http.ResponseWriter, r *http.Request) {
-	if s.OneClaw == nil || !s.OneClaw.Configured() {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("1Claw isn't configured yet — add ONECLAW_API_KEY first"))
+	// What the composer needs is a model, which is not the same as needing
+	// 1Claw. This used to demand ONECLAW_API_KEY specifically, so someone
+	// with a working Gemini key had a working catalog, working bots, and a
+	// compose box — the product's primary entry point — that refused to do
+	// anything.
+	if s.Orchestrator == nil || s.Orchestrator.LLM == nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf(
+			"the composer needs a model — set ONECLAW_API_KEY, or one of "+
+				"ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY (see docs/llm.md)"))
 		return
 	}
 	var req composeRequest
@@ -71,17 +81,13 @@ func (s *Server) handleCompose(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agentID, agentAPIKey, err := s.OneClaw.EnsureAgent(s.Orchestrator.AgentStateDir, composeAgentName, oneclaw.CreateAgentRequest{
-		ShroudEnabled: true,
-		ShroudConfig:  &oneclaw.ShroudConfig{PIIPolicy: "redact", EnableSecretRedaction: true},
-	})
+	gen, err := s.composerGenerator()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("ensure composer agent: %w", err))
+		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	shroud := oneclaw.NewShroudClient(agentID, agentAPIKey)
 
-	raw, err := shroud.Chat("anthropic", "claude-sonnet-4-6", composePrompt(bots, req.Message), 3000)
+	raw, err := composeChat(r.Context(), gen, composePrompt(bots, req.Message))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Errorf("compose: %w", err))
 		return
@@ -96,7 +102,7 @@ func (s *Server) handleCompose(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	draft, plan := s.planWithOneCorrection(bots, req.Message, draft, shroud)
+	draft, plan := s.planWithOneCorrection(r.Context(), bots, req.Message, draft, gen)
 	writeJSON(w, http.StatusOK, composeResponse{Draft: draft, Plan: &plan})
 }
 
@@ -117,15 +123,14 @@ func (s *Server) handleCompose(w http.ResponseWriter, r *http.Request) {
 // is no better, return whichever is closer to working and let the builder
 // show the errors, exactly as before — never worse than not trying.
 func (s *Server) planWithOneCorrection(
-	bots []BotSummary, message string, draft *saveSwarmRequest, shroud *oneclaw.ShroudClient,
+	ctx context.Context, bots []BotSummary, message string, draft *saveSwarmRequest, gen llm.Generator,
 ) (*saveSwarmRequest, planResponse) {
 	plan := s.planDraft(draft)
 	if plan.OK {
 		return draft, plan
 	}
 
-	retryRaw, err := shroud.Chat("anthropic", "claude-sonnet-4-6",
-		composeRetryPrompt(bots, message, draft, plan), 3000)
+	retryRaw, err := composeChat(ctx, gen, composeRetryPrompt(bots, message, draft, plan))
 	if err != nil {
 		return draft, plan // the first attempt is still the best we have
 	}
@@ -305,4 +310,53 @@ func parseComposeResponse(raw string) (draft *saveSwarmRequest, gap *composeGapP
 		return nil, nil, fmt.Errorf("model response had no swarm name")
 	}
 	return &d, nil, nil
+}
+
+// composeModel is what the composer asks for. Every direct backend
+// substitutes its own model when it can't serve this provider, and Shroud
+// serves it as declared — see docs/llm.md.
+//
+// Composing is a structured-output task over a long catalog prompt, so it
+// wants a capable model rather than the cheapest one; a small model
+// produces drafts the planner then rejects, which costs a second call
+// anyway.
+var composeModel = schema.Model{Provider: "anthropic", Name: "claude-sonnet-4-6", MaxTokens: 3000}
+
+func composeChat(ctx context.Context, gen llm.Generator, prompt string) (string, error) {
+	return gen.Generate(ctx, prompt, composeModel)
+}
+
+// composerGenerator resolves what the composer talks to.
+//
+// The composer used to build its own Shroud client unconditionally, which
+// made "describe what you want and get a swarm" — the product's primary
+// entry point — require 1Claw specifically. Someone with a Gemini key had
+// a working catalog, working bots, and a compose box that returned a 500.
+//
+// Now it uses whatever internal/wiring chose, resolving the Shroud marker
+// against the composer's own agent (not a bot's) exactly as internal/runner
+// does per bot.
+func (s *Server) composerGenerator() (llm.Generator, error) {
+	if s.Orchestrator == nil || s.Orchestrator.LLM == nil {
+		return nil, fmt.Errorf("the composer needs a model: %w", llm.ErrNoGenerator)
+	}
+	gen := s.Orchestrator.LLM
+	if !llm.IsDeferredShroud(gen) {
+		return gen, nil
+	}
+	if s.OneClaw != nil && s.OneClaw.Configured() {
+		agentID, agentAPIKey, err := s.OneClaw.EnsureAgent(s.Orchestrator.AgentStateDir, composeAgentName,
+			oneclaw.CreateAgentRequest{
+				ShroudEnabled: true,
+				ShroudConfig:  &oneclaw.ShroudConfig{PIIPolicy: "redact", EnableSecretRedaction: true},
+			})
+		if err != nil {
+			return nil, fmt.Errorf("ensure composer agent: %w", err)
+		}
+		return llm.NewShroud(oneclaw.NewShroudClient(agentID, agentAPIKey)), nil
+	}
+	if fallback := gen.(*llm.DeferredShroud).Fallback; fallback != nil {
+		return fallback, nil
+	}
+	return nil, fmt.Errorf("the composer needs a model: %w", llm.ErrNoGenerator)
 }

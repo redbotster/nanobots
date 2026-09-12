@@ -2,13 +2,17 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/redbotster/nanobots/internal/llm"
 	"github.com/redbotster/nanobots/internal/oneclaw"
+	"github.com/redbotster/nanobots/internal/schema"
 )
 
 // testServerForCompose layers a fake 1Claw (agents + Shroud, in addition to
@@ -19,6 +23,10 @@ func testServerForCompose(t *testing.T, shroudResponse string) *Server {
 	srv := testServer(t)
 	srv.OneClaw = fakeOneClaw(t)
 	srv.Orchestrator.AgentStateDir = t.TempDir()
+	// The default backend: a Shroud marker, resolved by the composer
+	// against its own agent. Keeps these tests on the path most
+	// deployments actually take.
+	srv.Orchestrator.LLM = &llm.DeferredShroud{}
 
 	shroudMux := http.NewServeMux()
 	shroudMux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
@@ -35,8 +43,8 @@ func testServerForCompose(t *testing.T, shroudResponse string) *Server {
 	return srv
 }
 
-func TestHandleComposeRejectsWhenOneClawNotConfigured(t *testing.T) {
-	srv := testServer(t) // no OneClaw set
+func TestHandleComposeRejectsWhenNoModelIsConfigured(t *testing.T) {
+	srv := testServer(t) // no OneClaw, no LLM
 	body, _ := json.Marshal(composeRequest{Message: "recap my inbox"})
 	rec := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/compose", bytes.NewReader(body)))
@@ -189,5 +197,98 @@ func TestComposePromptListsCatalogBots(t *testing.T) {
 	prompt := composePrompt(bots, "recap my inbox")
 	if !strings.Contains(prompt, "recap-emails-to-pdf@0.3.0") || !strings.Contains(prompt, "recap my inbox") {
 		t.Errorf("prompt missing expected content:\n%s", prompt)
+	}
+}
+
+// fixedGenerator answers with canned text, standing in for any direct
+// provider. It is deliberately not a Shroud client and not an httptest
+// server: the point of this test is that neither is required.
+type fixedGenerator struct {
+	answers []string
+	prompts []string
+}
+
+func (f *fixedGenerator) Describe() string { return "gemini (direct)" }
+
+func (f *fixedGenerator) Generate(_ context.Context, prompt string, _ schema.Model) (string, error) {
+	f.prompts = append(f.prompts, prompt)
+	if len(f.answers) == 0 {
+		return "", fmt.Errorf("no more canned answers")
+	}
+	out := f.answers[0]
+	if len(f.answers) > 1 {
+		f.answers = f.answers[1:]
+	}
+	return out, nil
+}
+
+// The composer is the product's primary entry point, and it used to demand
+// 1Claw specifically — not a model, 1Claw. Someone who had added a Gemini
+// key and watched their bots run got a 400 from the one box on the page
+// that invites them to type something.
+func TestComposeWorksWithADirectProviderAndNoOneClawAtAll(t *testing.T) {
+	srv := testServer(t)
+	srv.OneClaw = nil
+	srv.Orchestrator.LLM = &fixedGenerator{answers: []string{`{
+		"name": "Daily inbox recap",
+		"description": "Recap my inbox and email me the link",
+		"bots": [
+			{"id": "recap", "use": "recap-emails-to-pdf@0.3.0"},
+			{"id": "mailer", "use": "email-drive-file@1.1.0"}
+		],
+		"snaps": [{"from": "recap.drive_file_id", "to": "mailer.file_id"}]
+	}`}}
+
+	body, _ := json.Marshal(composeRequest{Message: "recap my inbox"})
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/compose", bytes.NewReader(body)))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var out composeResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Draft == nil || len(out.Draft.Bots) != 2 {
+		t.Fatalf("draft = %+v", out.Draft)
+	}
+	if out.Plan == nil || !out.Plan.OK {
+		t.Errorf("plan = %+v, want a validated draft", out.Plan)
+	}
+}
+
+// The one-retry correction path is the composer's own quality guard. It has
+// to work on every backend, not just the one it was written against.
+func TestTheRetryCorrectionAlsoWorksOnADirectProvider(t *testing.T) {
+	srv := testServer(t)
+	srv.OneClaw = nil
+	gen := &fixedGenerator{answers: []string{
+		// A json output snapped into a string input — exactly the mistake
+		// the correction pass exists for.
+		`{"name":"x","description":"d","bots":[
+			{"id":"triage","use":"inbox-triage@0.1.0"},{"id":"note","use":"notify@0.1.0"}],
+		  "snaps":[{"from":"triage.triaged_count","to":"note.message"}]}`,
+		// Corrected on the second call.
+		`{"name":"x","description":"d","bots":[
+			{"id":"triage","use":"inbox-triage@0.1.0"},{"id":"note","use":"notify@0.1.0"}],
+		  "snaps":[]}`,
+	}}
+	srv.Orchestrator.LLM = gen
+
+	body, _ := json.Marshal(composeRequest{Message: "triage and tell me"})
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/compose", bytes.NewReader(body)))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	if len(gen.prompts) != 2 {
+		t.Fatalf("made %d model calls, want 2 — the correction pass never ran", len(gen.prompts))
+	}
+	// The retry has to carry the planner's actual complaint, or the model
+	// is being asked to fix something it can't see.
+	if !strings.Contains(gen.prompts[1], "triaged_count") {
+		t.Errorf("the retry prompt does not name the failing snap:\n%s", gen.prompts[1])
 	}
 }

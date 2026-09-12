@@ -82,6 +82,21 @@ func Run(opts Options) error {
 		return err
 	}
 
+	// The Shroud shim lets a client that can only be handed a base URL and
+	// a bearer token — a local Honcho, say — still have its LLM spend
+	// metered and its prompts redacted. Only worth exposing when there is a
+	// 1Claw key to bill against.
+	var shroudProxy *api.ShroudProxy
+	if oc != nil && oc.Configured() {
+		tok, err := api.LoadShroudProxyToken(paths.StateDir)
+		if err != nil {
+			return err
+		}
+		shroudProxy = &api.ShroudProxy{Token: tok, Provider: "anthropic"}
+		log.Printf("shroud proxy: http://127.0.0.1:%s/shroud/v1 (token in %s)",
+			portOf(opts.Addr), filepath.Join(paths.StateDir, "shroud-proxy-token"))
+	}
+
 	callbacks := runner.NewCallbackRegistry()
 	orch := wiring.BuildOrchestrator(wiring.OrchestratorOpts{
 		RepoRoot:     opts.RepoRoot,
@@ -114,6 +129,7 @@ func Run(opts Options) error {
 		EnvFilePath:  opts.EnvFilePath,
 		VaultID:      svc.VaultID,
 		Fleet:        &api.FleetStore{Path: filepath.Join(paths.StateDir, "fleet.json")},
+		Shroud:       shroudProxy,
 	}
 
 	// Closes a real gap this build has had since its first commit: cron

@@ -1,0 +1,168 @@
+# Local Honcho for nanobots, with text generation routed through 1Claw
+# Shroud instead of straight to a provider.
+#
+# Select it with HONCHO_LLM=shroud ./honcho.sh up -d.
+#
+# Why bother: the text Honcho handles is the most sensitive in this system
+# — what is in someone's inbox, what they promised whom, what they escalate.
+# Through Shroud that gets billed against a daily budget, redacted for PII
+# and secrets, and screened for injection before it reaches any model.
+#
+# Shroud speaks /v1/chat/completions and forwards tool calls faithfully
+# (verified live, tool_choice included), so it slots in as an
+# openai-transport endpoint. What it needs and Honcho cannot send is an
+# X-Shroud-Provider header — hence the shim at /shroud/v1 in nanobotd,
+# which adds it. See internal/api/shroudproxy.go and docs/llm.md.
+#
+# Two honest limits:
+#   - Embeddings still go direct to Gemini. Shroud's embeddings route wants
+#     a provider key in the 1Claw vault, and an agent is scoped to one
+#     provider anyway. So the embedding model still sees observation text.
+#   - The model must be one the shim's agent is allowed to call. That agent
+#     is created with AllowedProviders: [anthropic], so use an Anthropic
+#     model here. Every text-generation module is pinned to
+# Gemini Flash Lite and embeddings to Gemini, so this whole stack runs on
+# one free-tier key and no OpenAI account.
+#
+# Pin a model rather than using an alias like gemini-flash-latest: Google
+# retires models for new keys (gemini-2.5-flash already 404s for keys made
+# after its retirement), so this will need bumping one day — but a config
+# that changes model under you between runs is worse than one you update
+# deliberately.
+#
+# Written by hand rather than copied from config.toml.example because the
+# example defaults every module to openai/gpt-5.4-mini independently —
+# there is no single global provider switch, so each section has to say
+# gemini itself or it will look for an OpenAI key at startup.
+
+[app]
+LOG_LEVEL = "INFO"
+# Embedding every message costs a Gemini call per message. Representations
+# are what nanobots' memory.recall actually reads, so keep those and skip
+# per-message embedding to stay inside the free tier.
+EMBED_MESSAGES = false
+
+[auth]
+USE_AUTH = false
+
+[embedding]
+VECTOR_DIMENSIONS = 1536
+
+[embedding.model_config]
+transport = "gemini"
+model = "gemini-embedding-001"
+
+[deriver]
+ENABLED = true
+WORKERS = 1
+# Default is 512 tokens accumulated before the deriver picks up work, which
+# means a short observation sits in the queue indefinitely. nanobots writes
+# one short line per run, so process immediately or recall never sees it.
+FLUSH_ENABLED = true
+REPRESENTATION_BATCH_WORK_UNIT_TARGET_TOKENS = 0
+POLLING_STARTUP_JITTER_SECONDS = 0.0
+
+[deriver.model_config]
+transport = "openai"
+model = "claude-sonnet-4-6"
+
+[deriver.model_config.overrides]
+base_url = "http://host.docker.internal:7474/shroud/v1"
+api_key_env = "SHROUD_PROXY_TOKEN"
+
+[summary.model_config]
+transport = "openai"
+model = "claude-sonnet-4-6"
+
+[summary.model_config.overrides]
+base_url = "http://host.docker.internal:7474/shroud/v1"
+api_key_env = "SHROUD_PROXY_TOKEN"
+
+# Dream is background consolidation — real value over months, pure token
+# burn over an afternoon of testing.
+[dream]
+ENABLED = false
+
+[dream.deduction_model_config]
+transport = "openai"
+model = "claude-sonnet-4-6"
+
+[dream.deduction_model_config.overrides]
+base_url = "http://host.docker.internal:7474/shroud/v1"
+api_key_env = "SHROUD_PROXY_TOKEN"
+
+[dream.induction_model_config]
+transport = "openai"
+model = "claude-sonnet-4-6"
+
+[dream.induction_model_config.overrides]
+base_url = "http://host.docker.internal:7474/shroud/v1"
+api_key_env = "SHROUD_PROXY_TOKEN"
+
+# Free-tier Gemini allows 5 generate_content requests per minute. One
+# dialectic query is not one request — the model calls search_memory and
+# search_messages as tools and then answers, so the default iteration
+# budgets can spend a whole minute's quota on a single question. Two bots
+# in one swarm each asking one question was enough to hit it.
+#
+# Capping iterations is not just a quota dodge: nanobots asks one short,
+# specific question per run ("what has this person treated as urgent"), and
+# that does not need ten rounds of tool use. Raise these if you move to a
+# paid key and want deeper answers.
+[dialectic]
+MAX_OUTPUT_TOKENS = 2048
+
+[dialectic.levels.minimal]
+MAX_TOOL_ITERATIONS = 1
+
+[dialectic.levels.low]
+MAX_TOOL_ITERATIONS = 2
+
+[dialectic.levels.medium]
+MAX_TOOL_ITERATIONS = 2
+
+[dialectic.levels.high]
+MAX_TOOL_ITERATIONS = 3
+
+[dialectic.levels.max]
+MAX_TOOL_ITERATIONS = 4
+
+[dialectic.levels.minimal.model_config]
+transport = "openai"
+model = "claude-sonnet-4-6"
+
+[dialectic.levels.minimal.model_config.overrides]
+base_url = "http://host.docker.internal:7474/shroud/v1"
+api_key_env = "SHROUD_PROXY_TOKEN"
+
+[dialectic.levels.low.model_config]
+transport = "openai"
+model = "claude-sonnet-4-6"
+
+[dialectic.levels.low.model_config.overrides]
+base_url = "http://host.docker.internal:7474/shroud/v1"
+api_key_env = "SHROUD_PROXY_TOKEN"
+
+[dialectic.levels.medium.model_config]
+transport = "openai"
+model = "claude-sonnet-4-6"
+
+[dialectic.levels.medium.model_config.overrides]
+base_url = "http://host.docker.internal:7474/shroud/v1"
+api_key_env = "SHROUD_PROXY_TOKEN"
+
+[dialectic.levels.high.model_config]
+transport = "openai"
+model = "claude-sonnet-4-6"
+
+[dialectic.levels.high.model_config.overrides]
+base_url = "http://host.docker.internal:7474/shroud/v1"
+api_key_env = "SHROUD_PROXY_TOKEN"
+
+[dialectic.levels.max.model_config]
+transport = "openai"
+model = "claude-sonnet-4-6"
+
+[dialectic.levels.max.model_config.overrides]
+base_url = "http://host.docker.internal:7474/shroud/v1"
+api_key_env = "SHROUD_PROXY_TOKEN"

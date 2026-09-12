@@ -64,6 +64,12 @@ type Server struct {
 	// Fleet remembers which bots the user has tuned. nil disables the
 	// Fleet view rather than failing anything.
 	Fleet *FleetStore
+
+	// Shroud, when set, exposes /shroud/v1/* — an OpenAI-shaped endpoint
+	// that adds the headers Shroud needs, so a client that can only be
+	// given a base URL and a bearer token (Honcho) can still have its spend
+	// metered and its prompts redacted. nil leaves the route returning 404.
+	Shroud *ShroudProxy
 }
 
 func (s *Server) swarmsDir() string {
@@ -107,6 +113,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/foundry/{id}/events", s.handleFoundryJobEvents)
 	mux.HandleFunc("POST /api/foundry/{id}/approvals/{approvalID}/decide", s.handleDecideFoundryReview)
 	mux.HandleFunc("GET /api/blobs/{uri}", s.handleGetBlob)
+
+	// Token-authenticated, unlike everything above: this one spends money,
+	// and Docker containers can reach it through host.docker.internal even
+	// though nanobotd binds loopback.
+	mux.HandleFunc("POST /shroud/{path...}", s.handleShroudProxy)
 
 	mux.HandleFunc("POST /internal/steps/service_call", s.handleStepServiceCall)
 	mux.HandleFunc("POST /internal/steps/ai_generate", s.handleStepAIGenerate)

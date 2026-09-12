@@ -23,12 +23,16 @@ services:
       retries: 10
       start_period: 20s
     volumes:
-      - ./config.toml:/app/config.toml:ro
+      # Which config: ./config.toml (direct) or ./config.shroud.toml
+      # (generation through 1Claw). honcho.sh sets this from HONCHO_LLM.
+      - ${HONCHO_CONFIG:-./config.toml}:/app/config.toml:ro
     environment:
       - DB_CONNECTION_URI=postgresql+psycopg://postgres:postgres@database:5432/postgres
       - CACHE_URL=redis://redis:6379/0?suppress=true
       - CACHE_ENABLED=true
       - LLM_GEMINI_API_KEY=${GEMINI_API_KEY:?set GEMINI_API_KEY in ~/.secrets/nanobots.env}
+      # Only read by config.shroud.toml, as that config's api_key_env.
+      - SHROUD_PROXY_TOKEN=${SHROUD_PROXY_TOKEN:-}
     restart: unless-stopped
 
   deriver:
@@ -41,12 +45,16 @@ services:
       database: { condition: service_healthy }
       redis: { condition: service_healthy }
     volumes:
-      - ./config.toml:/app/config.toml:ro
+      # Which config: ./config.toml (direct) or ./config.shroud.toml
+      # (generation through 1Claw). honcho.sh sets this from HONCHO_LLM.
+      - ${HONCHO_CONFIG:-./config.toml}:/app/config.toml:ro
     environment:
       - DB_CONNECTION_URI=postgresql+psycopg://postgres:postgres@database:5432/postgres
       - CACHE_URL=redis://redis:6379/0?suppress=true
       - CACHE_ENABLED=true
       - LLM_GEMINI_API_KEY=${GEMINI_API_KEY:?set GEMINI_API_KEY in ~/.secrets/nanobots.env}
+      # Only read by config.shroud.toml, as that config's api_key_env.
+      - SHROUD_PROXY_TOKEN=${SHROUD_PROXY_TOKEN:-}
     restart: unless-stopped
 
   database:
