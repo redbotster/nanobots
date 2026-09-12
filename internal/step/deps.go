@@ -99,3 +99,39 @@ type Deps interface {
 	WebFetch(params map[string]any) (any, error)
 	Blobs() BlobStore
 }
+
+// FallbackBlobStore writes to Primary and reads from Primary first, then
+// Fallback.
+//
+// It exists because a bot container could not read a file another bot
+// produced. A file output is moved into nanobotd's own blob store on the
+// host when its container exits; the next bot's container gets a fresh,
+// empty store on a tmpfs, and nothing mounted the host's. So a snap of
+// `drafter.draft_html -> writer.voice_sample` type-checked, delivered a
+// correct nbf:// reference in inputs.json, and then failed inside the
+// container with "read file input: no such file or directory". File inputs
+// only ever worked when passed straight to a service.call, because that
+// round-trips to the host, which does have the blob.
+//
+// Reads fall back to a read-only mount of the host store; writes stay in
+// the container's own scratch, so a bot still cannot modify a blob another
+// run produced.
+type FallbackBlobStore struct {
+	Primary  BlobStore
+	Fallback BlobStore
+}
+
+func (s *FallbackBlobStore) Write(data []byte, mime string) (FileValue, error) {
+	return s.Primary.Write(data, mime)
+}
+
+func (s *FallbackBlobStore) Read(uri string) ([]byte, error) {
+	data, err := s.Primary.Read(uri)
+	if err == nil {
+		return data, nil
+	}
+	if s.Fallback == nil {
+		return nil, err
+	}
+	return s.Fallback.Read(uri)
+}

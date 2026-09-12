@@ -248,11 +248,14 @@ func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID str
 	// Exit code and stderr are both already inside RunContainer's error.
 	_, _, err = RunContainer(ContainerSpec{
 		Image: image, User: user,
-		BotDir: nb.SourcePath, RunDir: runDir,
+		BotDir: nb.SourcePath, RunDir: runDir, BlobDir: o.BlobDir,
 		Env: map[string]string{
 			"NANOBOTS_CALLBACK_URL": o.CallbackAddr,
 			"NANOBOTS_RUN_TOKEN":    token,
 			"NANOBOTS_BLOB_DIR":     "/tmp/nanobots-blobs",
+			// Where the host's own store is mounted, for reading files an
+			// upstream bot produced. See step.FallbackBlobStore.
+			"NANOBOTS_BLOB_READONLY_DIR": "/blobs",
 		},
 		MaxRuntime: maxRuntime,
 	})

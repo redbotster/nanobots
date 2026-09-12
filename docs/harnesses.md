@@ -88,3 +88,14 @@ ideas | starting (llm harness)
 The correction line still exists and still fires when a declaration and its steps genuinely disagree — `bots/render-pdf` declares `bare` and renders, so it's promoted on every run. Need always wins over declaration; the declaration is what the bot *is*, the steps are what it *needs*.
 
 `claude-code`, `opencode`, `openclaude` and `hermes` remain unimplemented and are still rejected by name. They describe *dynamic agent loops*, which is a different axis again — none of the three implemented harnesses runs one. The only place a real coding agent runs in this build is the foundry (`docs/foundry.md`), which authors new bots rather than running them.
+
+
+## Images rebuild when the interpreter changes
+
+The agent binary is compiled into the harness image, so an image built before an edit to `internal/step` or `cmd/nanobot-agent` silently runs the old interpreter. This used to be a documented trap — *"a harness image is only as fresh as the last time it was built"* — with `NANOBOTS_REBUILD_HARNESS=1` as the manual escape hatch.
+
+Relying on people remembering that failed in practice. A 36-hour-old image made a prompt-safety change look verified when the container was running code that predated it, and a genuine bug elsewhere was misdiagnosed twice before the stale image was noticed.
+
+`EnsureHarnessImage` now hashes everything that reaches the binary — `cmd/nanobot-agent`, all of `internal`, `go.mod` and `go.sum` — into a `nanobots.agent-source` label at build time, and compares it before reusing an image. A mismatch rebuilds. `_test.go` files are excluded, since they never reach the binary and including them would rebuild the image on every test edit.
+
+`NANOBOTS_REBUILD_HARNESS=1` still forces a rebuild. If the source tree can't be hashed, the old "the image exists, that's good enough" rule applies rather than rebuilding on every run.

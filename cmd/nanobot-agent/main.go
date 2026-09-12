@@ -55,9 +55,18 @@ func run() error {
 	}
 
 	blobDir := env("NANOBOTS_BLOB_DIR", "/tmp/nanobots-blobs")
-	blobs, err := step.NewFSBlobStore(blobDir)
+	scratch, err := step.NewFSBlobStore(blobDir)
 	if err != nil {
 		return fmt.Errorf("init blob store: %w", err)
+	}
+	// Reads fall back to nanobotd's own store, mounted read-only, so a bot
+	// can read a file an earlier bot in the swarm produced. Writes never go
+	// there. See step.FallbackBlobStore.
+	var blobs step.BlobStore = scratch
+	if ro := os.Getenv("NANOBOTS_BLOB_READONLY_DIR"); ro != "" {
+		if upstream, err := step.NewFSBlobStore(ro); err == nil {
+			blobs = &step.FallbackBlobStore{Primary: scratch, Fallback: upstream}
+		}
 	}
 
 	deps := buildDeps(botDir, blobs)
