@@ -101,7 +101,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  setRole: (id: string, body: { name?: string; focus?: string; retired?: boolean }) =>
+  setRole: (id: string, body: { name?: string; focus?: string; retired?: boolean; always?: boolean }) =>
     req<RoleLibrary>(`/api/roles/${id}`, { method: "POST", body: JSON.stringify(body) }),
   resetRole: (id: string) => req<RoleLibrary>(`/api/roles/${id}/reset`, { method: "POST" }),
   setBotInstructions: (botId: string, instructions: string) =>

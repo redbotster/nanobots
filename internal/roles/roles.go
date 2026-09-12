@@ -46,6 +46,15 @@ type Role struct {
 	Shipped string `json:"shipped,omitempty" yaml:"-"`
 	// Custom marks a role that exists only in the user's overrides.
 	Custom bool `json:"custom,omitempty" yaml:"-"`
+	// Always marks a role every review team must include.
+	//
+	// The board is deliberately left to choose its own team per run —
+	// pinning the same three reviewers to everything is how review theatre
+	// starts — but "whatever else you pick, always have security look at
+	// this" is a real thing to want, and the only way to express it was to
+	// stop using the board. One flag, and the board is told rather than
+	// overridden.
+	Always bool `json:"always,omitempty" yaml:"-"`
 	// Retired marks a shipped role the user has switched off. Kept rather
 	// than deleted so it can be switched back on, and so an upgrade that
 	// changes its focus doesn't quietly resurrect it.
@@ -57,6 +66,7 @@ type override struct {
 	Name    string `json:"name,omitempty"`
 	Focus   string `json:"focus,omitempty"`
 	Retired bool   `json:"retired,omitempty"`
+	Always  bool   `json:"always,omitempty"`
 	// Added distinguishes "a role you wrote" from "an edit to a shipped
 	// one", which decides whether Reset can put anything back.
 	Added bool `json:"added,omitempty"`
@@ -181,6 +191,7 @@ func (s *Store) list() ([]Role, error) {
 				role.Focus = o.Focus
 			}
 			role.Retired = o.Retired
+			role.Always = o.Always
 			if role.Focus != r.Focus {
 				role.Shipped = r.Focus
 			}
@@ -194,7 +205,7 @@ func (s *Store) list() ([]Role, error) {
 			continue
 		}
 		added = append(added, Role{
-			ID: id, Name: o.Name, Focus: o.Focus, Custom: true, Retired: o.Retired,
+			ID: id, Name: o.Name, Focus: o.Focus, Custom: true, Retired: o.Retired, Always: o.Always,
 		})
 	}
 	sort.Slice(added, func(i, j int) bool { return added[i].ID < added[j].ID })
@@ -231,7 +242,13 @@ func (s *Store) Roster() (string, error) {
 	}
 	var b strings.Builder
 	for _, r := range active {
-		fmt.Fprintf(&b, "- %s — %s\n", r.Name, collapse(r.Focus))
+		// The marker is in the line rather than in a separate list so the
+		// board reads it exactly where it reads the role.
+		always := ""
+		if r.Always {
+			always = " [ALWAYS INCLUDE]"
+		}
+		fmt.Fprintf(&b, "- %s%s — %s\n", r.Name, always, collapse(r.Focus))
 	}
 	return strings.TrimRight(b.String(), "\n"), nil
 }
@@ -274,7 +291,18 @@ func (s *Store) Set(id, name, focus string) error {
 		}
 	}
 	prev := ov[id]
-	ov[id] = override{Name: name, Focus: focus, Retired: prev.Retired, Added: prev.Added || !known}
+	ov[id] = override{Name: name, Focus: focus, Retired: prev.Retired, Always: prev.Always, Added: prev.Added || !known}
+	return s.writeOverrides(ov)
+}
+
+// SetAlways marks a role as one every review team must include.
+func (s *Store) SetAlways(id string, always bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ov, _ := s.overrides()
+	o := ov[id]
+	o.Always = always
+	ov[id] = o
 	return s.writeOverrides(ov)
 }
 

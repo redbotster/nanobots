@@ -395,6 +395,9 @@ export interface Role {
   /** Switched off: out of the roster, still in the library so it can be
    * switched back on. */
   retired?: boolean;
+  /** Every review team must include this one. The board still picks the
+   * rest — this is a floor, not a fixed team. */
+  always?: boolean;
 }
 
 export interface RoleLibrary {

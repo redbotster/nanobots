@@ -43,6 +43,7 @@ function RoleRow({ role, onChanged }: { role: Role; onChanged: (lib: Library) =>
     >
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
         <span className="font-display text-sm font-semibold text-ink">{role.name}</span>
+        {role.always && <span className="text-[11px] text-tron">on every team</span>}
         {role.custom && <span className="text-[11px] text-tron">yours</span>}
         {role.retired && <span className="text-[11px] text-warn">switched off</span>}
         {role.shipped && !role.retired && <span className="text-[11px] text-muted">edited</span>}
@@ -65,6 +66,22 @@ function RoleRow({ role, onChanged }: { role: Role; onChanged: (lib: Library) =>
         >
           {busy ? "Saving…" : "Save"}
         </button>
+        {/* The board picks its own team per run — pinning the same three
+            reviewers to everything is how review theatre starts. This is a
+            floor rather than a fixed team: "whatever else you choose,
+            always have security look at this." */}
+        {!role.retired && (
+          <label className="flex cursor-pointer items-center gap-1 text-muted">
+            <input
+              type="checkbox"
+              checked={!!role.always}
+              disabled={busy}
+              onChange={() => void run(() => api.setRole(role.id, { always: !role.always }))}
+              className="accent-tron"
+            />
+            on every team
+          </label>
+        )}
         <button
           onClick={() => void run(() => api.setRole(role.id, { retired: !role.retired }))}
           disabled={busy}
@@ -183,10 +200,11 @@ export function RoleLibrarySection() {
         Roles a review team is built from
       </h2>
       <p className="mt-1 max-w-2xl text-[13px] leading-snug text-muted">
-        A review board picks {active > 0 ? `from these ${active}` : "from these"} rather than
-        inventing a team each time, so the same work gets reviewed the same way twice. Each role's
-        line is what its reviewer is told to look at — keep them sharp and non-overlapping, since two
-        roles that would raise the same concern is one role too many.
+        These aren't bots — they're the perspectives a review board draws on. It picks two to five
+        {active > 0 ? ` of these ${active}` : " of these"} per review, so the same work gets looked
+        at the same way twice. Tick <span className="text-ink">on every team</span> for one that must
+        always be there. Each role's line is what its reviewer is told to look at; keep them sharp and
+        non-overlapping, since two roles that would raise the same concern is one role too many.
       </p>
 
       {error && (

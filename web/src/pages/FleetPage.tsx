@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { RoleLibrarySection } from "../components/RoleLibrary";
-import type { Fleet, FleetMember } from "../lib/types";
+import type { BotSummary, Fleet, FleetMember } from "../lib/types";
 
 /**
  * The Fleet answers a different question from the Bot library.
@@ -83,6 +83,98 @@ function MemberRow({ member, onChanged }: { member: FleetMember; onChanged: () =
   );
 }
 
+/** Start tuning a bot that hasn't been tuned yet.
+ *
+ * This is the entrance the Fleet never had. The page listed only bots whose
+ * instructions you had already changed, and told you to change one "on its
+ * card in the Bot library" — where no such control exists, and which is
+ * hidden entirely in Basic mode. So the one documented way to shape how a
+ * bot works was unreachable from the UI: a closed loop with no way in.
+ *
+ * The list stays what you've tuned rather than the whole catalog — that is
+ * the point of a Fleet — so adding someone is a deliberate act, here. */
+function TuneAnother({
+  tuned,
+  onChanged,
+}: {
+  tuned: Set<string>;
+  onChanged: () => void;
+}) {
+  const [all, setAll] = useState<BotSummary[] | null>(null);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open && all === null) api.listBots().then(setAll).catch((e: unknown) => setError(String(e)));
+  }, [open, all]);
+
+  // Only bots that actually take instructions — the rest have nothing to
+  // tune, and listing them would make the picker a bot catalog.
+  const tunable = (all ?? []).filter(
+    (b) => !tuned.has(b.id) && b.inputs.some((p) => p.name === "instructions"),
+  );
+
+  const start = async (b: BotSummary) => {
+    setBusy(b.id);
+    setError(null);
+    try {
+      // Seed with what it ships with, so the first edit is a change to
+      // something real rather than typing into an empty box.
+      const shipped = b.inputs.find((p) => p.name === "instructions")?.default ?? "";
+      await api.setBotInstructions(b.id, shipped);
+      onChanged();
+      setOpen(false);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="mt-3 rounded-lg border border-dashed border-edge-strong px-4 py-2.5 text-[13px] text-muted transition-colors hover:border-tron hover:text-ink"
+      >
+        + Tune how a bot works
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-tron/60 bg-panel p-4">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="font-display text-sm text-ink">Which bot?</span>
+        <button onClick={() => setOpen(false)} className="text-[11px] text-muted hover:text-ink">
+          Cancel
+        </button>
+      </div>
+      {all === null && !error && <p className="mt-2 text-[13px] text-muted/60">Loading…</p>}
+      {error && <p className="mt-2 text-[12px] text-danger">{error}</p>}
+      {all !== null && tunable.length === 0 && (
+        <p className="mt-2 text-[13px] text-muted">
+          Every bot that takes instructions is already in your fleet.
+        </p>
+      )}
+      <div className="mt-2 grid max-h-72 grid-cols-1 gap-1 overflow-auto sm:grid-cols-2">
+        {tunable.map((b) => (
+          <button
+            key={b.id}
+            onClick={() => void start(b)}
+            disabled={busy !== null}
+            className="rounded border border-edge px-2.5 py-1.5 text-left transition-colors hover:border-tron disabled:opacity-40"
+          >
+            <span className="font-display text-[13px] text-ink">{b.id}</span>
+            <span className="ml-1.5 text-[11px] text-muted">{b.description}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function FleetPage() {
   const [fleet, setFleet] = useState<Fleet | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -100,10 +192,11 @@ export function FleetPage() {
   return (
     <div className="h-full overflow-auto p-5 sm:p-6">
       <h1 className="font-display text-xl font-medium text-ink">Fleet</h1>
-      <p className="mt-1 hidden text-sm text-muted sm:block">
-        The bots you've told how to work, and the teams they work in. Every
-        bot ships with a suggestion; this is where the ones you've changed
-        live, so you can see what you asked for and put any of it back.
+      <p className="mt-1 hidden max-w-2xl text-sm text-muted sm:block">
+        How your team works — two separate things. Below: the bots you've told
+        how to do their job, each showing what it shipped with so you can put
+        it back. Further down: the perspectives a review board draws on, which
+        aren't bots and aren't assigned to them.
       </p>
 
       {error && (
@@ -118,12 +211,12 @@ export function FleetPage() {
 
       {fleet !== null && fleet.members.length === 0 && (
         <div className="mt-6 max-w-xl rounded-lg border border-edge bg-panel/40 p-5">
-          <p className="text-sm text-ink">Nobody's been tuned yet.</p>
+          <p className="text-sm text-ink">You haven't told anyone how to work yet.</p>
           <p className="mt-1.5 text-[13px] leading-snug text-muted">
             Every bot with an LLM step ships with a suggested way of working —
-            "Anything mentioning data loss or billing is top priority". Change
-            one on its card in the Bot library and it'll appear here, with what
-            it started from.
+            "Anything mentioning data loss or billing is top priority". Pick one
+            below to change it, and it'll appear here alongside what it started
+            with, so you can always put it back.
           </p>
         </div>
       )}
@@ -135,6 +228,11 @@ export function FleetPage() {
           ))}
         </div>
       )}
+
+      <TuneAnother
+        tuned={new Set((fleet?.members ?? []).map((m) => m.bot_id))}
+        onChanged={reload}
+      />
 
       <RoleLibrarySection />
 

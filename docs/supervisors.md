@@ -39,6 +39,18 @@ Two consequences worth stating:
 - **A role is still not a bot.** One `reviewer` becomes a security engineer or a designer depending on what it is handed. The library gives those perspectives names and wording; it does not turn them into eight near-identical bots to maintain.
 - **No library is a working state.** A deployment with no `roles/roles.yaml` and no overrides gets an empty roster, and the board invents a team exactly as it did before. Nothing here is required to run a review.
 
+### Requiring one
+
+The board picks its own team per run, and that is deliberate — pinning the
+same three reviewers to everything is how review theatre starts. But
+"whatever else you choose, always have security look at this" is a real
+thing to want, and until now the only way to express it was to stop using
+the board.
+
+Tick **on every team** on a role. The board is told, in the roster, on that
+role's own line; it includes it and chooses the rest as normal. A floor, not
+a fixed team.
+
 Keep the lines sharp and non-overlapping. The board is told that two roles which would raise the same concern is one role too many, and a roster of blurry perspectives is the fastest route back to review theatre.
 
 ## The rule that matters

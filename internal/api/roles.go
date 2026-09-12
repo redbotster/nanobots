@@ -53,6 +53,8 @@ type setRoleRequest struct {
 	// Retired switches a role off without losing its wording. Sent alone
 	// (with no name/focus) to toggle; sent with them, it is applied too.
 	Retired *bool `json:"retired,omitempty"`
+	// Always marks a role every review team must include.
+	Always *bool `json:"always,omitempty"`
 }
 
 // handleSetRole edits a role, adds one, or switches one off.
@@ -72,10 +74,21 @@ func (s *Server) handleSetRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Retired != nil && strings.TrimSpace(req.Name) == "" && strings.TrimSpace(req.Focus) == "" {
-		if err := s.Roles.SetRetired(id, *req.Retired); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
+	// A bare toggle: no name or focus means "just flip this flag", which is
+	// what a checkbox sends.
+	if strings.TrimSpace(req.Name) == "" && strings.TrimSpace(req.Focus) == "" &&
+		(req.Retired != nil || req.Always != nil) {
+		if req.Retired != nil {
+			if err := s.Roles.SetRetired(id, *req.Retired); err != nil {
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
+		}
+		if req.Always != nil {
+			if err := s.Roles.SetAlways(id, *req.Always); err != nil {
+				writeError(w, http.StatusInternalServerError, err)
+				return
+			}
 		}
 		s.handleListRoles(w, r)
 		return
@@ -89,6 +102,12 @@ func (s *Server) handleSetRole(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Retired != nil {
 		if err := s.Roles.SetRetired(id, *req.Retired); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+	}
+	if req.Always != nil {
+		if err := s.Roles.SetAlways(id, *req.Always); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}

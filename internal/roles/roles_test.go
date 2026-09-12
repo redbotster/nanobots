@@ -231,3 +231,69 @@ func TestNoCatalogIsAnEmptyRosterNotAFailure(t *testing.T) {
 		t.Errorf("roster = %q, want empty", roster)
 	}
 }
+
+// The board is deliberately left to pick its own team per run — pinning the
+// same three reviewers to everything is how review theatre starts. But
+// "whatever else you choose, always have security look at this" is a real
+// thing to want, and the only way to express it was to stop using the board.
+func TestARoleCanBeRequiredOnEveryTeam(t *testing.T) {
+	s := storeOn(t)
+	if err := s.SetAlways("security", true); err != nil {
+		t.Fatal(err)
+	}
+	roster, _ := s.Roster()
+
+	var securityLine string
+	for _, l := range strings.Split(roster, "\n") {
+		if strings.Contains(l, "Security") {
+			securityLine = l
+		}
+	}
+	if !strings.Contains(securityLine, "[ALWAYS INCLUDE]") {
+		t.Errorf("the board is never told: %q", securityLine)
+	}
+	// The marker rides on the role's own line rather than in a separate
+	// list, so a model reads it exactly where it reads the role.
+	if !strings.Contains(securityLine, "credential") && !strings.Contains(securityLine, "secrets") {
+		t.Errorf("the marker replaced the focus instead of joining it: %q", securityLine)
+	}
+	// Everything else stays a free choice — this is a floor, not a team.
+	others := 0
+	for _, l := range strings.Split(roster, "\n") {
+		if l != "" && !strings.Contains(l, "[ALWAYS INCLUDE]") {
+			others++
+		}
+	}
+	if others < 4 {
+		t.Errorf("only %d roles left for the board to choose from", others)
+	}
+
+	if err := s.SetAlways("security", false); err != nil {
+		t.Fatal(err)
+	}
+	if roster, _ := s.Roster(); strings.Contains(roster, "ALWAYS") {
+		t.Error("could not un-require a role")
+	}
+}
+
+// Editing a role's wording must not silently drop the flags set on it.
+func TestEditingARoleKeepsItsFlags(t *testing.T) {
+	s := storeOn(t)
+	if err := s.SetAlways("design", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Set("design", "Design", "Only the first-run experience."); err != nil {
+		t.Fatal(err)
+	}
+	all, _ := s.List()
+	for _, r := range all {
+		if r.ID == "design" {
+			if !r.Always {
+				t.Error("an edit cleared the always flag")
+			}
+			if !strings.Contains(r.Focus, "first-run") {
+				t.Errorf("the edit did not stick: %q", r.Focus)
+			}
+		}
+	}
+}
