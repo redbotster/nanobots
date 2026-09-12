@@ -83,6 +83,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/connections/x/start", s.handleConnectXStart)
 	mux.HandleFunc("POST /api/connections/linkedin/start", s.handleConnectLinkedInStart)
 	mux.HandleFunc("POST /api/connections/{service}", s.handleConnectToken)
+	mux.HandleFunc("GET /api/connections/{service}/bots", s.handleProviderBots)
+	mux.HandleFunc("POST /api/connections/{service}/bots", s.handleSetProviderConnection)
 	mux.HandleFunc("POST /api/runs", s.handleStartRun)
 	mux.HandleFunc("GET /api/runs", s.handleListRuns)
 	mux.HandleFunc("GET /api/runs/{id}", s.handleGetRun)

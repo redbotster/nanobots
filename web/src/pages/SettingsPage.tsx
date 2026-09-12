@@ -93,6 +93,7 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
           )}
           <div className="mt-4 flex flex-col divide-y divide-edge">
             <OAuthConnectRow
+              provider="google"
               label="Google"
               hint="Gmail, Drive, Sheets, Calendar — opens your browser to sign in"
               connected={isConnected("google")}
@@ -100,6 +101,7 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
               connectFn={api.connectGoogleStart}
             />
             <OAuthConnectRow
+              provider="x"
               label="X"
               hint="Posting to X — opens your browser to sign in"
               connected={isConnected("x")}
@@ -107,6 +109,7 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
               connectFn={api.connectXStart}
             />
             <OAuthConnectRow
+              provider="linkedin"
               label="LinkedIn"
               hint="Posting to LinkedIn — opens your browser to sign in"
               connected={isConnected("linkedin")}

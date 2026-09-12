@@ -63,3 +63,33 @@ nanobots run -f examples/swarms/daily-email-recap.yaml
 ```
 
 With every Google service still on `connection: demo`, everything in this swarm except the two Google calls runs for real — real 1Claw agents, real Shroud, a real run-level approval. The Google calls serve fixture data from each bot's `fixtures/*.json` instead.
+
+
+## Connecting an account, then actually using it
+
+These are two separate things, and the second one used to have no bulk path.
+
+Every bot ships on `connection: demo`. That is the right default — nothing should read a real inbox or write to a real Drive until a human says so. But it means connecting an account changes nothing on its own, and the catalog is lopsided: **24 of the 32 declared services are Google**. Measured on a fresh install, all 14 swarms sit entirely on demo data. Getting one of them live meant one OAuth round trip followed by up to twenty-four individual toggles, hunted down one bot at a time in the bot library.
+
+Settings now says, per provider, what connecting it would get you, and offers the second half in one action:
+
+```
+Google    Gmail, Drive, Sheets, Calendar — opens your browser to sign in   [Connect]
+          18 bots would use this once connected
+```
+
+and once connected:
+
+```
+          18 bots still on demo data   [Use my account in all 18]
+          6 bots using your account    [Back to demo]
+```
+
+- `GET /api/connections/{service}/bots` returns the bot ids split by demo/live, so the count is real rather than a guess.
+- `POST /api/connections/{service}/bots` with `{"live": true|false}` switches them all.
+
+**Going live is gated** exactly as the single-bot toggle is: the credential must genuinely be in the vault first, or the request is refused with `google isn't connected yet — connect it from Settings first`. This is the action that makes bots touch real accounts, so it cannot happen by accident.
+
+**Going back to demo is never gated.** Undoing should always be at least as easy as doing.
+
+Each bot's `nanobot.yaml` is edited with the same surgical line editor the single-bot toggle uses, so every comment in the file survives, and the result is re-parsed before it is written — a text edit that produced something unloadable never reaches disk. A bot that fails to switch is reported by name rather than silently skipped or rolled back: the bots that did switch really did switch, and claiming otherwise would be worse.

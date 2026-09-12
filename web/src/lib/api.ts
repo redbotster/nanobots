@@ -6,8 +6,10 @@ import type {
   FoundryJob,
   Port,
   PlanResult,
+  ProviderBots,
   Run,
   RunSummary,
+  SetProviderConnectionResult,
   SaveSwarmRequest,
   SaveSwarmResult,
   StatusResponse,
@@ -79,6 +81,12 @@ export const api = {
     req<ConnectionStatus>("/api/connections/linkedin/start", { method: "POST" }),
   setBotServiceConnection: (botId: string, serviceId: string, live: boolean) =>
     req<BotSummary>(`/api/bots/${botId}/services/${serviceId}/connection`, {
+      method: "POST",
+      body: JSON.stringify({ live }),
+    }),
+  providerBots: (service: string) => req<ProviderBots>(`/api/connections/${service}/bots`),
+  setProviderConnection: (service: string, live: boolean) =>
+    req<SetProviderConnectionResult>(`/api/connections/${service}/bots`, {
       method: "POST",
       body: JSON.stringify({ live }),
     }),

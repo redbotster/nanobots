@@ -291,3 +291,20 @@ export interface FoundryJob extends LoggableJob {
   outcome?: "promoted" | "rejected" | "conform_failed" | "sandbox_violation" | "timeout" | "";
   bot?: BotSummary;
 }
+
+/** Which catalog bots use one provider, split by whether they're on demo
+ * fixtures or the connected account — so the UI can offer "switch all 24"
+ * with a real number instead of a vague promise. */
+export interface ProviderBots {
+  provider: string;
+  demo: string[];
+  live: string[];
+}
+
+export interface SetProviderConnectionResult {
+  provider: string;
+  changed: string[];
+  /** bot id -> why it couldn't be switched. A partial failure is reported,
+   * not swallowed: the bots that did switch really did. */
+  failed?: Record<string, string>;
+}
