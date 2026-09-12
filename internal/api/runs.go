@@ -1,7 +1,6 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/redbotster/nanobots/internal/runner"
@@ -17,11 +16,15 @@ func (s *Server) handleStartRun(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	if req.SwarmPath == "" {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("swarm_path is required"))
+	// Resolved against the swarms directory rather than trusted as given:
+	// this endpoint executes what it's pointed at, so an unconstrained path
+	// is worse than a read.
+	swarmPath, err := swarmPathFromRequest(s.swarmsDir(), req.SwarmPath)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	run, err := s.Orchestrator.ExecuteSwarm(req.SwarmPath)
+	run, err := s.Orchestrator.ExecuteSwarm(swarmPath)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return

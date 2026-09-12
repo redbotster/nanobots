@@ -96,10 +96,108 @@ func (s *Server) handleCompose(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	draft, plan := s.planWithOneCorrection(bots, req.Message, draft, shroud)
+	writeJSON(w, http.StatusOK, composeResponse{Draft: draft, Plan: &plan})
+}
+
+// planWithOneCorrection type-checks the model's draft and, if the planner
+// rejects it, hands the exact failures back for a single retry.
+//
+// The composer sees every port's declared type, and still gets this wrong:
+// asked for "summarise my inbox and post the digest to Slack" it produced
+// inbox-triage -> notify with `triage.triaged_count -> notify.message`, a
+// json output into a string input. The draft is never auto-saved, so a
+// broken one is not dangerous — but it is the first thing a novice sees
+// from the product's primary entry point, and "here's a draft, it doesn't
+// work, go fix it in the builder" is a bad first impression when the fix is
+// mechanical.
+//
+// One retry, not a loop: the planner is ground truth and cheap, but each
+// attempt is a real LLM call the user waits on (~12s). If the second attempt
+// is no better, return whichever is closer to working and let the builder
+// show the errors, exactly as before — never worse than not trying.
+func (s *Server) planWithOneCorrection(
+	bots []BotSummary, message string, draft *saveSwarmRequest, shroud *oneclaw.ShroudClient,
+) (*saveSwarmRequest, planResponse) {
+	plan := s.planDraft(draft)
+	if plan.OK {
+		return draft, plan
+	}
+
+	retryRaw, err := shroud.Chat("anthropic", "claude-sonnet-4-6",
+		composeRetryPrompt(bots, message, draft, plan), 3000)
+	if err != nil {
+		return draft, plan // the first attempt is still the best we have
+	}
+	retryDraft, retryGap, err := parseComposeResponse(retryRaw)
+	// A gap on the retry is not actionable here: the model already committed
+	// to a draft, and switching to "the catalog can't do this" after the
+	// fact would discard a draft the human can still fix by hand.
+	if err != nil || retryGap != nil || retryDraft == nil {
+		return draft, plan
+	}
+	retryPlan := s.planDraft(retryDraft)
+	if !retryPlan.OK && countBadSnaps(retryPlan) >= countBadSnaps(plan) {
+		return draft, plan // no better; don't churn the user's draft for nothing
+	}
+	return retryDraft, retryPlan
+}
+
+func (s *Server) planDraft(draft *saveSwarmRequest) planResponse {
 	sw := draftToNanoswarm(draft.Name, draft.Description, "", draft.Bots, draft.Snaps)
 	result, resolveErr := planner.PlanSwarm(sw, s.BotsDir)
-	plan := buildPlanResponse(draft.Name, result, resolveErr)
-	writeJSON(w, http.StatusOK, composeResponse{Draft: draft, Plan: &plan})
+	return buildPlanResponse(draft.Name, result, resolveErr)
+}
+
+func countBadSnaps(p planResponse) int {
+	n := 0
+	if p.Error != "" {
+		n++
+	}
+	for _, sc := range p.Snaps {
+		if !sc.OK {
+			n++
+		}
+	}
+	return n
+}
+
+// composeRetryPrompt asks for a fix to a specific, already-validated
+// failure, rather than asking again from scratch. It restates the whole
+// catalog (the model has no memory between Shroud calls — each is a
+// single-shot completion) plus the draft it produced and exactly which
+// snaps the real planner rejected and why.
+//
+// The planner's own error text is quoted verbatim: "cannot snap
+// triage.triaged_count (json) to notify.message (string): types are not
+// assignable" names both types and both ports, which is more precise than
+// any paraphrase, and it's the same text the human would see in the builder.
+func composeRetryPrompt(bots []BotSummary, message string, draft *saveSwarmRequest, plan planResponse) string {
+	var b strings.Builder
+	b.WriteString(composePrompt(bots, message))
+	b.WriteString("\n\n---\n\nYou already answered this request with the following draft, and the real type checker REJECTED it:\n\n")
+
+	if draftJSON, err := json.MarshalIndent(draft, "", "  "); err == nil {
+		b.Write(draftJSON)
+		b.WriteString("\n\n")
+	}
+	b.WriteString("Problems the type checker found:\n")
+	if plan.Error != "" {
+		fmt.Fprintf(&b, "- %s\n", plan.Error)
+	}
+	for _, sc := range plan.Snaps {
+		if !sc.OK {
+			fmt.Fprintf(&b, "- snap %s -> %s: %s\n", sc.From, sc.To, sc.Error)
+		}
+	}
+	b.WriteString(`
+Fix these specific problems and return the corrected JSON in the same shape, and nothing else.
+
+- A snap is only legal when the output port's type is assignable to the input port's type. Re-read the catalog types above before connecting anything.
+- If no legal snap can carry the data between two bots you wanted to connect, drop that snap. A bot with an unconnected input is fine — the human fills it in — but a snap that doesn't type-check is not.
+- Do not add bots that weren't needed. Do not answer with a gap; you already committed to a draft.
+`)
+	return b.String()
 }
 
 // composePrompt enumerates the real, live catalog — id, name, description,

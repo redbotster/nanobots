@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // harnessBuild maps a nanobot.yaml harness.type to the local image tag and
@@ -87,9 +89,11 @@ type ContainerSpec struct {
 	MaxRuntime time.Duration // 0 means use a conservative default
 }
 
-func dockerRunArgs(spec ContainerSpec) []string {
+func dockerRunArgs(spec ContainerSpec, name string) []string {
 	args := []string{
 		"run", "--rm",
+		// Named so the timeout path can actually stop it — see RunContainer.
+		"--name", name,
 		"--read-only",
 		"--tmpfs", "/tmp:size=256m",
 		"--network", "bridge", // outbound only; see guardrails.network_egress TODO below
@@ -121,13 +125,32 @@ func RunContainer(spec ContainerSpec) (exitCode int, stderr string, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "docker", dockerRunArgs(spec)...)
+	name := "nanobot-" + uuid.NewString()
+	cmd := exec.CommandContext(ctx, "docker", dockerRunArgs(spec, name)...)
 	var errBuf bytes.Buffer
 	cmd.Stderr = &errBuf
 	runErr := cmd.Run()
 
 	if ctx.Err() == context.DeadlineExceeded {
-		return -1, errBuf.String(), fmt.Errorf("container exceeded %s and was killed", timeout)
+		// exec.CommandContext SIGKILLs the docker *CLI*, which does nothing
+		// to the container the daemon is running — verified against Docker
+		// 29.2.1: the container is still Up seconds after the client dies.
+		// So the old "was killed" message was simply false, and a hung bot
+		// kept burning CPU, holding its network egress, and writing to the
+		// bind-mounted /run directory of a run already marked failed.
+		// Repeated timeouts accumulated orphans until the host gave out.
+		//
+		// Stopping it needs a separate command against the daemon, on its
+		// own context since the original one is already expired.
+		killCtx, killCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer killCancel()
+		killErr := exec.CommandContext(killCtx, "docker", "kill", name).Run()
+		if killErr != nil {
+			return -1, errBuf.String(), fmt.Errorf(
+				"container exceeded %s, and stopping it failed (%v) — it may still be running as %s",
+				timeout, killErr, name)
+		}
+		return -1, errBuf.String(), fmt.Errorf("container exceeded %s and was stopped", timeout)
 	}
 	if runErr != nil {
 		if exitErr, ok := runErr.(*exec.ExitError); ok {

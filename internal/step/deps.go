@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"github.com/redbotster/nanobots/internal/schema"
 )
@@ -47,12 +48,25 @@ func (s *FSBlobStore) Write(data []byte, mime string) (FileValue, error) {
 	return FileValue{URI: "nbf://sha256/" + hash, Mime: mime}, nil
 }
 
+// sha256Hex is what the digest part of every nbf:// reference must look
+// like. Enforced here rather than only at the HTTP handler because it is a
+// property of the URI format itself, so every caller gets the check — and
+// because the one caller that forgot it turned this into an arbitrary file
+// read (see handleGetBlob).
+var sha256Hex = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
 func (s *FSBlobStore) Read(uri string) ([]byte, error) {
 	const prefix = "nbf://sha256/"
 	if len(uri) <= len(prefix) || uri[:len(prefix)] != prefix {
 		return nil, fmt.Errorf("not an nbf:// blob reference: %q", uri)
 	}
-	return os.ReadFile(filepath.Join(s.Dir, "sha256", uri[len(prefix):]))
+	digest := uri[len(prefix):]
+	// Without this, "nbf://sha256/../../../../.secrets/nanobots.env" joins
+	// to a real path outside the store and os.ReadFile happily returns it.
+	if !sha256Hex.MatchString(digest) {
+		return nil, fmt.Errorf("not a sha256 digest: %q", digest)
+	}
+	return os.ReadFile(filepath.Join(s.Dir, "sha256", digest))
 }
 
 // Deps is everything a step needs from the outside world. Interpret never

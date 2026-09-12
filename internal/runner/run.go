@@ -97,13 +97,20 @@ func NewRun(swarmName string) *Run {
 func (r *Run) Log(bot, step, format string, a ...any) {
 	entry := LogEntry{Time: time.Now(), Bot: bot, Step: step, Msg: fmt.Sprintf(format, a...)}
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.log = append(r.log, entry)
-	subs := make([]chan LogEntry, 0, len(r.subscribers))
+	// Sent while still holding r.mu, deliberately. This used to snapshot the
+	// subscribers, unlock, and then send — which raced with Unsubscribe's
+	// close() and panicked with "send on closed channel". The select's
+	// default guards a *full* channel, not a *closed* one. And because
+	// ExecuteSwarm runs a swarm in a detached goroutine, that panic wasn't
+	// caught by net/http's per-connection recover: it took down the whole
+	// daemon and lost the run. Closing a tab on a running swarm was enough
+	// to trigger it.
+	//
+	// Holding the lock here is cheap: every send is non-blocking, and the
+	// subscriber count is the number of open SSE streams.
 	for ch := range r.subscribers {
-		subs = append(subs, ch)
-	}
-	r.mu.Unlock()
-	for _, ch := range subs {
 		select {
 		case ch <- entry:
 		default: // a slow subscriber never blocks the run
@@ -122,9 +129,14 @@ func (r *Run) Subscribe() chan LogEntry {
 }
 
 func (r *Run) Unsubscribe(ch chan LogEntry) {
+	// close() under the same lock Log sends under — the two must never
+	// interleave. See Log.
 	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.subscribers[ch]; !ok {
+		return // already unsubscribed; closing twice would panic too
+	}
 	delete(r.subscribers, ch)
-	r.mu.Unlock()
 	close(ch)
 }
 

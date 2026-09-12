@@ -1,10 +1,8 @@
 package api
 
 import (
-	"fmt"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/redbotster/nanobots/internal/planner"
 )
@@ -40,9 +38,9 @@ type planResponse struct {
 // handlePlan exposes `nanobots plan` over HTTP — the WebUI calls this before
 // offering to run a swarm, and to render the canvas's type-checked snaps.
 func (s *Server) handlePlan(w http.ResponseWriter, r *http.Request) {
-	path := r.URL.Query().Get("path")
-	if path == "" {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("?path=<swarm.yaml> is required"))
+	path, err := swarmPathFromRequest(s.swarmsDir(), r.URL.Query().Get("path"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
 		return
 	}
 	result, err := planner.Plan(path, s.BotsDir)
@@ -54,12 +52,18 @@ func (s *Server) handlePlan(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleSwarmYAML serves a swarm file's raw source for the WebUI's YAML
-// drawer. nanobotd only ever binds loopback (see internal/daemon), but this
-// still refuses to walk outside the repo on a malformed path.
+// drawer.
+//
+// It goes through swarmPathFromRequest like every other path-taking handler
+// now. It used to guard with `strings.Contains(path, "..")` and then
+// os.ReadFile the value as given — but an absolute path contains no "..", so
+// ?path=/Users/you/.ssh/id_rsa returned the file. nanobotd binds loopback,
+// which is no defence here: it answers with Access-Control-Allow-Origin: *
+// and no auth, so any page in the user's browser could read the response.
 func (s *Server) handleSwarmYAML(w http.ResponseWriter, r *http.Request) {
-	path := r.URL.Query().Get("path")
-	if path == "" || strings.Contains(path, "..") {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("invalid ?path="))
+	path, err := swarmPathFromRequest(s.swarmsDir(), r.URL.Query().Get("path"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
 		return
 	}
 	raw, err := os.ReadFile(path)

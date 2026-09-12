@@ -13,7 +13,7 @@ func TestDockerRunArgsIncludesSecurityFlags(t *testing.T) {
 		RunDir: "/tmp/run-1",
 		Env:    map[string]string{"NANOBOTS_CALLBACK_URL": "http://host.docker.internal:7474"},
 	}
-	args := dockerRunArgs(spec)
+	args := dockerRunArgs(spec, "nanobot-test-1")
 	joined := strings.Join(args, " ")
 
 	for _, want := range []string{
@@ -22,6 +22,9 @@ func TestDockerRunArgsIncludesSecurityFlags(t *testing.T) {
 		"-v /repo/bots/email-drive-file:/bot:ro",
 		"-v /tmp/run-1:/run",
 		"-e NANOBOTS_CALLBACK_URL=http://host.docker.internal:7474",
+		// Named so the MaxRuntime path can stop the container itself.
+		// Without this, killing the docker CLI left the container running.
+		"--name nanobot-test-1",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("docker run args missing %q\ngot: %s", want, joined)
