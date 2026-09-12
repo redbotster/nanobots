@@ -368,3 +368,64 @@ func TestAsVaultLocked(t *testing.T) {
 		})
 	}
 }
+
+// The other 403 that reaches a user mid-run. Unlike the passkey one, 1Claw
+// gives this a real machine-readable type, so match on that, not on prose.
+func TestAsAgentLimit(t *testing.T) {
+	capBody := `{"type":"resource_limit_exceeded","title":"Resource Limit Exceeded","status":403,` +
+		`"detail":"Agent limit reached (10/10 on pro tier). Upgrade your plan for more."}`
+
+	limit, ok := AsAgentLimit(&apiError{Status: 403, Body: []byte(capBody)})
+	if !ok {
+		t.Fatal("the real cap 403 was not recognised")
+	}
+	if !strings.Contains(limit.Detail, "10/10") {
+		t.Errorf("Detail = %q, want 1Claw's own sentence including the numbers", limit.Detail)
+	}
+
+	// A locked vault is also a 403 and must not be mistaken for the cap —
+	// the two need opposite advice.
+	lockedBody := `{"type":"about:blank","status":403,"detail":"Passkey verification required."}`
+	if _, ok := AsAgentLimit(&apiError{Status: 403, Body: []byte(lockedBody)}); ok {
+		t.Error("a locked vault was classified as the agent cap")
+	}
+	if _, ok := AsVaultLocked(&apiError{Status: 403, Body: []byte(capBody)}); ok {
+		t.Error("the agent cap was classified as a locked vault")
+	}
+	if _, ok := AsAgentLimit(errors.New("connection refused")); ok {
+		t.Error("an unrelated error was classified as the agent cap")
+	}
+}
+
+// The whole point is that the message names the bot and the fix, instead of
+// pasting a JSON blob into a container error.
+func TestEnsureAgentExplainsTheCap(t *testing.T) {
+	srv := newTestServer(t, map[string]http.HandlerFunc{
+		"/v1/auth/api-key-token": tokenHandler(t),
+		"/v1/agents": func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost {
+				w.WriteHeader(http.StatusForbidden)
+				w.Write([]byte(`{"type":"resource_limit_exceeded","status":403,` +
+					`"detail":"Agent limit reached (10/10 on pro tier). Upgrade your plan for more."}`))
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]any{"agents": []Agent{}})
+		},
+	})
+	c := NewClient("1ck_test")
+	c.BaseURL = srv.URL
+
+	_, _, err := c.EnsureAgent(t.TempDir(), "nanobots-content-ideas", CreateAgentRequest{})
+	if err == nil {
+		t.Fatal("expected an error at the cap")
+	}
+	msg := err.Error()
+	for _, want := range []string{"nanobots-content-ideas", "10/10", "Free a slot"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("error %q is missing %q", msg, want)
+		}
+	}
+	if strings.Contains(msg, `{"type"`) {
+		t.Errorf("error still contains a raw JSON body: %q", msg)
+	}
+}

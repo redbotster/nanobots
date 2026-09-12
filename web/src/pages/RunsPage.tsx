@@ -4,6 +4,7 @@ import { useRuns } from "../lib/runsFeed";
 import { StatusDot } from "../components/StatusDot";
 import { RunDetail } from "./RunDetail";
 import { relativeTime } from "../lib/relativeTime";
+import { shortRunError } from "../lib/runError";
 
 const tone: Record<Run["status"], "ok" | "warn" | "danger" | "muted"> = {
   succeeded: "ok",
@@ -84,7 +85,7 @@ export function RunsPage() {
                   Only failed rows pay the extra line. */}
               {run.status === "failed" && run.error && (
                 <div className="truncate text-[11px] text-danger" title={run.error}>
-                  {run.error.split("\n")[0]}
+                  {shortRunError(run.error)}
                 </div>
               )}
             </div>

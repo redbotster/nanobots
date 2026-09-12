@@ -184,6 +184,17 @@ func (c *Client) EnsureAgent(stateDir, name string, req CreateAgentRequest) (age
 	req.Name = name
 	agent, key, err := c.CreateAgent(req)
 	if err != nil {
+		// The cap is the single most likely reason this fails, and it
+		// used to reach the user as a raw JSON blob buried in a container
+		// error. Say which bot wanted the agent and what actually unblocks
+		// it — only bots that use Shroud, memory, or a generic 1Claw
+		// binding need one at all (see internal/runner/agentneed.go), so
+		// the count is smaller than the catalog and worth knowing.
+		if limit, ok := AsAgentLimit(err); ok {
+			return "", "", fmt.Errorf(
+				"%s needs its own 1Claw agent, but %s. Free a slot by deleting an unused agent in the 1Claw app, or upgrade the plan",
+				name, limit.Detail)
+		}
 		return "", "", fmt.Errorf("create agent %q: %w", name, err)
 	}
 	c.invalidateAgentCache() // the list we just read is now one agent short

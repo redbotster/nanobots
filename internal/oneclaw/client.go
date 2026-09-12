@@ -356,3 +356,38 @@ func detailFromProblemJSON(body []byte) string {
 	}
 	return strings.TrimSpace(truncate(body))
 }
+
+// AgentLimitError means the account is at its plan's agent cap. Like a
+// locked vault, this arrives as a 403 that callers used to pass through as a
+// raw JSON blob mid-run — see AsVaultLocked for the same reasoning.
+type AgentLimitError struct{ Detail string }
+
+func (e *AgentLimitError) Error() string {
+	if e.Detail != "" {
+		return "1Claw agent limit reached: " + e.Detail
+	}
+	return "1Claw agent limit reached"
+}
+
+// AsAgentLimit reports whether err is 1Claw refusing to create an agent
+// because the account is at its cap.
+//
+// 1Claw does give this one a machine-readable type ("resource_limit_exceeded"),
+// unlike the passkey 403, so this matches on that rather than on prose.
+func AsAgentLimit(err error) (*AgentLimitError, bool) {
+	var limit *AgentLimitError
+	if errors.As(err, &limit) {
+		return limit, true
+	}
+	var apiErr *apiError
+	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusForbidden {
+		return nil, false
+	}
+	var problem struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(apiErr.Body, &problem); err != nil || problem.Type != "resource_limit_exceeded" {
+		return nil, false
+	}
+	return &AgentLimitError{Detail: detailFromProblemJSON(apiErr.Body)}, true
+}

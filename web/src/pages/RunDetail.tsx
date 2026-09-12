@@ -5,6 +5,7 @@ import { Tabs } from "../components/Tabs";
 import { RunLog } from "../components/RunLog";
 import { RunResults } from "../components/RunResults";
 import { StatusDot } from "../components/StatusDot";
+import { parseRunError } from "../lib/runError";
 
 const tone: Record<string, "ok" | "warn" | "danger" | "muted"> = {
   succeeded: "ok",
@@ -13,6 +14,48 @@ const tone: Record<string, "ok" | "warn" | "danger" | "muted"> = {
   failed: "danger",
   pending: "muted",
 };
+
+/** The reason first, the full wrapped error behind a disclosure. The chain
+ * that produced an error (container -> agent -> bot -> step -> callback) is
+ * worth keeping, but it isn't what you're looking for when a run went red. */
+function FailureBanner({ error }: { error: string }) {
+  const [showRaw, setShowRaw] = useState(false);
+  const parts = parseRunError(error);
+  if (!parts) return null;
+  const hasMore = parts.message.trim() !== error.trim();
+  return (
+    <div className="mt-3 rounded-lg border border-danger/40 bg-danger/[0.06] px-3.5 py-2.5">
+      <div className="flex items-center gap-2">
+        <span className="font-display text-[11px] uppercase tracking-wider text-danger">
+          Why it failed
+        </span>
+        {parts.origin && (
+          <span className="rounded border border-danger/30 px-1.5 py-0.5 text-[10px] text-danger/80">
+            {parts.origin}
+          </span>
+        )}
+      </div>
+      <p className="mt-1 whitespace-pre-wrap break-words text-[12px] leading-snug text-ink">
+        {parts.message}
+      </p>
+      {hasMore && (
+        <>
+          <button
+            onClick={() => setShowRaw((v) => !v)}
+            className="mt-1.5 text-[11px] text-muted underline decoration-dotted hover:text-ink"
+          >
+            {showRaw ? "Hide full error" : "Show full error"}
+          </button>
+          {showRaw && (
+            <pre className="mt-1.5 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-void px-2 py-1.5 text-[11px] text-muted">
+              {error}
+            </pre>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 /** A run viewed on its own, independent of whichever SwarmView (if any)
  * originally started it — the same run.go/RunStore backs both, so an
@@ -93,16 +136,7 @@ export function RunDetail({
 
         {/* The backend has always sent this; nothing rendered it, so a failed
             run said "failed" and made you read the whole log to find out why. */}
-        {run?.status === "failed" && run.error && (
-          <div className="mt-3 rounded-lg border border-danger/40 bg-danger/[0.06] px-3.5 py-2.5">
-            <div className="font-display text-[11px] uppercase tracking-wider text-danger">
-              Why it failed
-            </div>
-            <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words text-[12px] leading-snug text-ink">
-              {run.error}
-            </pre>
-          </div>
-        )}
+        {run?.status === "failed" && run.error && <FailureBanner error={run.error} />}
         {rerunError && (
           <div className="mt-3 rounded-lg border border-danger/40 bg-danger/[0.06] px-3.5 py-2.5 text-[12px] text-danger">
             Couldn't start it again: {rerunError}
