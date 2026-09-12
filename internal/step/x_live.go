@@ -77,11 +77,11 @@ type xAPI interface {
 }
 
 func (l *LiveDeps) xClient() (xAPI, error) {
-	if !l.X.configured() {
+	if !l.Services.X.configured() {
 		return nil, fmt.Errorf("x: not configured — connect an account from Settings")
 	}
 	if l.xTS == nil {
-		l.xTS = &xTokenSource{oc: l.OneClaw, cfg: l.X}
+		l.xTS = &xTokenSource{oc: l.OneClaw, cfg: l.Services.X}
 	}
 	token, err := l.xTS.Token()
 	if err != nil {

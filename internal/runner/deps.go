@@ -21,7 +21,7 @@ import (
 // the log saying the key was being ignored. An LLM is now enough on its
 // own; 1Claw is still what adds real service calls, vault credentials and
 // Shroud's budget and redaction guardrails on top.
-func BuildDeps(run *Run, botID string, nb *schema.Nanobot, oc *oneclaw.Client, agentID, agentAPIKey string, blobs step.BlobStore, google step.GoogleConfig, github step.GitHubConfig, slack step.SlackConfig, stripeCfg step.StripeConfig, hubspot step.HubSpotConfig, xCfg step.XConfig, linkedin step.LinkedInConfig, override step.Approver, mem memory.Store, gen llm.Generator) step.Deps {
+func BuildDeps(run *Run, botID string, nb *schema.Nanobot, oc *oneclaw.Client, agentID, agentAPIKey string, blobs step.BlobStore, services step.ServiceConfigs, override step.Approver, mem memory.Store, gen llm.Generator) step.Deps {
 	fixturesDir := nb.SourcePath + "/fixtures"
 	var approver step.Approver = &RunQueueApprover{Run: run, Bot: botID, Step: "approve"}
 	if override != nil {
@@ -36,13 +36,7 @@ func BuildDeps(run *Run, botID string, nb *schema.Nanobot, oc *oneclaw.Client, a
 	}
 	ld := step.NewLiveDeps(oc, oneclaw.NewShroudClient(agentID, agentAPIKey), agentID, fixturesDir, blobs)
 	ld.Approver = approver
-	ld.Google = google
-	ld.GitHub = github
-	ld.Slack = slack
-	ld.Stripe = stripeCfg
-	ld.HubSpot = hubspot
-	ld.X = xCfg
-	ld.LinkedIn = linkedin
+	ld.Services = services
 	ld.Memory = mem
 	ld.LLM = generatorFor(run, botID, gen, oc, agentID, agentAPIKey)
 	return ld

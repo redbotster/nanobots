@@ -33,13 +33,9 @@ type Orchestrator struct {
 	AgentStateDir string
 	RunWorkDir    string // per-run container workspaces live under here
 	BlobDir       string // nanobotd's own persistent blob store
-	Google        step.GoogleConfig
-	GitHub        step.GitHubConfig
-	Slack         step.SlackConfig
-	Stripe        step.StripeConfig
-	HubSpot       step.HubSpotConfig
-	X             step.XConfig
-	LinkedIn      step.LinkedInConfig
+	// Services holds every connected-service credential in one value. See
+	// step.ServiceConfigs.
+	Services step.ServiceConfigs
 	// Memory backs every memory.* step. See internal/memory.
 	Memory memory.Store
 
@@ -369,7 +365,7 @@ func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID str
 	if err != nil {
 		return err
 	}
-	deps := BuildDeps(run, botID, nb, o.OneClaw, agentID, agentAPIKey, blobs, o.Google, o.GitHub, o.Slack, o.Stripe, o.HubSpot, o.X, o.LinkedIn, batch, o.memoryFor(agentID), o.LLM)
+	deps := BuildDeps(run, botID, nb, o.OneClaw, agentID, agentAPIKey, blobs, o.Services, batch, o.memoryFor(agentID), o.LLM)
 
 	token := uuid.NewString()
 	o.Callbacks.Register(token, deps)

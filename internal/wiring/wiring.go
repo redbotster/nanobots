@@ -74,19 +74,11 @@ func ResolvePaths() (Paths, error) {
 // ServiceConfigs are the per-provider step configs a live run needs. The
 // zero value is entirely valid: it means "every service runs on demo
 // fixtures", which is exactly what an unconfigured machine should do.
-type ServiceConfigs struct {
-	// VaultID is the shared "nanobots-main" vault every provider's
-	// credential lives in. Exposed so the API can probe whether it's
-	// currently locked; empty when 1Claw isn't configured.
-	VaultID  string
-	Google   step.GoogleConfig
-	GitHub   step.GitHubConfig
-	Slack    step.SlackConfig
-	Stripe   step.StripeConfig
-	HubSpot  step.HubSpotConfig
-	X        step.XConfig
-	LinkedIn step.LinkedInConfig
-}
+// An alias, not a copy: this used to be its own struct with the same seven
+// fields, which meant every provider added here had to be added again in
+// internal/step and unpacked field by field in between. One type, resolved
+// here and carried unchanged all the way to the bot.
+type ServiceConfigs = step.ServiceConfigs
 
 // Logf receives one line per configured provider. Pass nil to stay quiet.
 type Logf func(format string, args ...any)
@@ -181,13 +173,7 @@ func BuildOrchestrator(
 		AgentStateDir: paths.StateDir,
 		RunWorkDir:    paths.RunWorkDir,
 		BlobDir:       paths.BlobDir,
-		Google:        svc.Google,
-		GitHub:        svc.GitHub,
-		Slack:         svc.Slack,
-		Stripe:        svc.Stripe,
-		HubSpot:       svc.HubSpot,
-		X:             svc.X,
-		LinkedIn:      svc.LinkedIn,
+		Services:      svc,
 	}
 }
 

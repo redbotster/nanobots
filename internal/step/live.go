@@ -46,32 +46,23 @@ type LiveDeps struct {
 	// Approver, when set, overrides Approve entirely (see Approve below).
 	Approver Approver
 
-	// Google configures direct Gmail/Drive/Sheets access for services with
-	// provider: google and a non-demo connection (see google_live.go). Zero
-	// value means "not configured" — such a service call fails with a clear
-	// error rather than silently falling back to anything.
-	Google   GoogleConfig
-	googleTS *googleTokenSource
+	// Services holds every connected-service credential in one value —
+	// Google, GitHub, Slack, Stripe, HubSpot, X, LinkedIn. A zero field
+	// means "not configured", and a non-demo call to that provider fails
+	// with a clear error rather than silently falling back to anything.
+	//
+	// One field rather than seven: see ServiceConfigs for why.
+	Services ServiceConfigs
 
-	// GitHub/Slack configure direct access the same way — see
-	// github_live.go/slack_live.go. Both are zero-value "not configured" by
-	// default too.
-	GitHub            GitHubConfig
+	// Lazily built, vault-backed clients. Private because their lifetime is
+	// this LiveDeps' — one run — and nothing outside should hold one.
+	googleTS          *googleTokenSource
 	githubTokenCache  *vaultToken
-	Slack             SlackConfig
 	slackTokenCache   *vaultToken
-	Stripe            StripeConfig
 	stripeTokenCache  *vaultToken
-	HubSpot           HubSpotConfig
 	hubspotTokenCache *vaultToken
-
-	// X/LinkedIn configure direct posting once a real OAuth account is
-	// connected — see x_live.go/linkedin_live.go. Both are zero-value "not
-	// configured" by default, same as every other direct service here.
-	X          XConfig
-	xTS        *xTokenSource
-	LinkedIn   LinkedInConfig
-	linkedinTS *linkedinTokenSource
+	xTS               *xTokenSource
+	linkedinTS        *linkedinTokenSource
 }
 
 func NewLiveDeps(oc *oneclaw.Client, shroud *oneclaw.ShroudClient, agentID, fixturesDir string, blobs BlobStore) *LiveDeps {
@@ -98,47 +89,15 @@ func (l *LiveDeps) ServiceCall(svc schema.Service, op string, params map[string]
 	if svc.Connection == schema.ConnectionDemo || svc.Connection == "" {
 		return l.Demo.ServiceCall(svc, op, params)
 	}
-	if svc.Provider == "google" {
-		client, err := l.googleClient()
-		if err != nil {
-			return nil, err
-		}
-		return dispatchGoogle(client, op, params, l.Blobstore)
+	if dispatch, ok := serviceDispatchers[svc.Provider]; ok {
+		return dispatch(l, svc, op, params)
 	}
-	if svc.Provider == "github" {
-		client, err := l.githubClient()
-		if err != nil {
-			return nil, err
-		}
-		return dispatchGitHub(client, op, params)
-	}
-	if svc.Provider == "stripe" {
-		client, err := l.stripeClient()
-		if err != nil {
-			return nil, err
-		}
-		return dispatchStripe(client, op, params)
-	}
-	if svc.Provider == "hubspot" {
-		client, err := l.hubspotClient()
-		if err != nil {
-			return nil, err
-		}
-		return dispatchHubSpot(client, op, params)
-	}
-	if svc.Provider == "x" {
-		client, err := l.xClient()
-		if err != nil {
-			return nil, err
-		}
-		return dispatchX(client, op, params)
-	}
-	if svc.Provider == "linkedin" {
-		client, err := l.linkedinClient()
-		if err != nil {
-			return nil, err
-		}
-		return dispatchLinkedIn(client, op, params)
+	// No direct integration: fall back to a generic 1Claw execution-intent
+	// binding, which is how a provider works before anyone writes a client
+	// for it. Without 1Claw there is nothing left to try, and saying which
+	// providers *are* supported beats a nil-pointer panic.
+	if l.OneClaw == nil || !l.OneClaw.Configured() {
+		return nil, unsupportedProviderError(svc)
 	}
 	call := func() (*oneclaw.ExecuteResult, error) {
 		return l.OneClaw.Execute(l.AgentID, svc.ID, "http", map[string]any{"op": op, "params": params})

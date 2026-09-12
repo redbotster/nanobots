@@ -93,3 +93,30 @@ and once connected:
 **Going back to demo is never gated.** Undoing should always be at least as easy as doing.
 
 Each bot's `nanobot.yaml` is edited with the same surgical line editor the single-bot toggle uses, so every comment in the file survives, and the result is re-parsed before it is written — a text edit that produced something unloadable never reaches disk. A bot that fails to switch is reported by name rather than silently skipped or rolled back: the bots that did switch really did switch, and claiming otherwise would be worse.
+
+## Adding a provider
+
+Everything a connected service needs now lives in one place per layer,
+which it did not before: the same seven configs were resolved as a struct
+in `internal/wiring`, unpacked into seven positional arguments to
+`BuildDeps` (which had reached seventeen parameters — a signature where
+transposing two strings still compiles), stored as seven fields on the
+Orchestrator, and assigned one by one onto `LiveDeps`. Adding a provider
+meant editing all four and hoping you caught every name.
+
+Now:
+
+1. Add a `<name>Config` field to `step.ServiceConfigs` (`internal/step/services.go`).
+2. Fill it in `wiring.BuildServiceConfigs` when its credential is present.
+3. Register a dispatcher in `serviceDispatchers`, keyed by the string a bot
+   writes in `services[].provider`.
+
+Nothing between those three points needs to change — the config travels as
+one value from where it's resolved to where it's used, and
+`LiveDeps.ServiceCall` looks the provider up rather than testing for it.
+
+`step.LiveServiceProviders()` enumerates what's registered, so a provider
+with no direct integration fails with a message naming what this build
+*can* do, from the registry itself rather than from a list maintained
+beside it. Before, that path fell through to a nil 1Claw client and
+panicked.

@@ -28,7 +28,7 @@ type stripeAPI interface {
 }
 
 func (l *LiveDeps) stripeClient() (stripeAPI, error) {
-	cfg := l.Stripe.tokenConfig()
+	cfg := l.Services.Stripe.tokenConfig()
 	if !cfg.configured() {
 		return nil, fmt.Errorf("stripe: not configured — connect a secret key from Settings")
 	}

@@ -30,7 +30,7 @@ type hubspotAPI interface {
 }
 
 func (l *LiveDeps) hubspotClient() (hubspotAPI, error) {
-	cfg := l.HubSpot.tokenConfig()
+	cfg := l.Services.HubSpot.tokenConfig()
 	if !cfg.configured() {
 		return nil, fmt.Errorf("hubspot: not configured — connect a private-app token from Settings")
 	}

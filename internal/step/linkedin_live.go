@@ -102,11 +102,11 @@ type linkedinAPI interface {
 }
 
 func (l *LiveDeps) linkedinClient() (linkedinAPI, error) {
-	if !l.LinkedIn.configured() {
+	if !l.Services.LinkedIn.configured() {
 		return nil, fmt.Errorf("linkedin: not configured — connect an account from Settings")
 	}
 	if l.linkedinTS == nil {
-		l.linkedinTS = &linkedinTokenSource{oc: l.OneClaw, cfg: l.LinkedIn}
+		l.linkedinTS = &linkedinTokenSource{oc: l.OneClaw, cfg: l.Services.LinkedIn}
 	}
 	token, err := l.linkedinTS.Token()
 	if err != nil {

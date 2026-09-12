@@ -97,11 +97,11 @@ type googleAPI interface {
 // googleTokenSource (and therefore one cached access token) across every
 // call for the lifetime of this LiveDeps.
 func (l *LiveDeps) googleClient() (googleAPI, error) {
-	if !l.Google.configured() {
+	if !l.Services.Google.configured() {
 		return nil, fmt.Errorf("google: not configured (need GOOGLE_OAUTH_CLIENT_ID and a vault) — see docs/connections.md")
 	}
 	if l.googleTS == nil {
-		l.googleTS = &googleTokenSource{oc: l.OneClaw, cfg: l.Google}
+		l.googleTS = &googleTokenSource{oc: l.OneClaw, cfg: l.Services.Google}
 	}
 	return google.NewClient(l.googleTS.Token), nil
 }

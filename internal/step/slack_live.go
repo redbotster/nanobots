@@ -28,7 +28,7 @@ type slackAPI interface {
 }
 
 func (l *LiveDeps) slackClient() (slackAPI, error) {
-	cfg := l.Slack.tokenConfig()
+	cfg := l.Services.Slack.tokenConfig()
 	if !cfg.configured() {
 		return nil, fmt.Errorf("slack: not configured — connect a bot token from Settings")
 	}

@@ -29,7 +29,7 @@ type githubAPI interface {
 }
 
 func (l *LiveDeps) githubClient() (githubAPI, error) {
-	cfg := l.GitHub.tokenConfig()
+	cfg := l.Services.GitHub.tokenConfig()
 	if !cfg.configured() {
 		return nil, fmt.Errorf("github: not configured — connect a personal access token from Settings")
 	}
