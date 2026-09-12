@@ -45,3 +45,16 @@ A cron expression that *can't* be parsed now surfaces as `schedule_error` and re
 ## `7` means Sunday
 
 Standard cron accepts both `0` and `7` for Sunday. This parser only allowed `0-6`, so `0 9 * * 7` failed to parse — and the scheduler's response to a parse failure is to log and skip, meaning the swarm silently never ran. `Parse` now normalises `7` to `0`, which keeps `matches` comparing against `time.Weekday()` (only ever 0-6).
+
+
+## Triggers that aren't wired up
+
+`internal/scheduler` only handles `type: cron`. Three catalog swarms declare something else — `lead-to-meeting` wants `webhook: website.form.submitted`, and `meeting-to-action` and `repurpose-everything` want `event: drive.file.created`. Nothing in this build fires any of them.
+
+They used to render identically to a swarm with no trigger at all, which reads as "manual by design" rather than "its automation isn't built yet". `GET /api/swarms` now reports `trigger_type` for every swarm and `inert_trigger` for those two kinds, and the card says so:
+
+```
+⚡ drive.file.created — not wired up yet, so runs on demand
+```
+
+This is disclosure, not a fix: those swarms still only run when someone clicks Run.
