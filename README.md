@@ -62,6 +62,8 @@ Type that into the box at the top of **Swarms** and click **Automate it**. Under
 
 ### The foundry — when the catalog genuinely can't do it
 
+The composer writes in the full language, not a subset: it fans a bot out over a list with `.*`, collapses the results back with `join:`, and marks a trailing notification `on_error: continue` — and the catalog it's shown lists the *fields* inside each json port, because a snap can drill into one and a model shown only types will invent a field that isn't there. Asked for "find every overdue invoice, email each customer a reminder once I approve, then post one summary to Slack", it now produces essentially `get-paid`.
+
 If no combination of existing bots can satisfy the request, the composer says so instead of guessing (`{"gap": true, "missing_capability": "..."}`), and the WebUI offers to escalate: a sandboxed coding agent (Claude Code, running inside its own Docker container — see `docs/foundry.md` for why a container and not just CLI permission flags) authors a brand-new bot, self-tests it against the real conformance runner, and opens the same human-approval gate a swarm's `approve` step uses before the bot ever becomes part of the real catalog. Approve it and the composer automatically retries your original request. This needs its own `ANTHROPIC_API_KEY` (see `docs/foundry.md`) — a real, separate prerequisite from `ONECLAW_API_KEY`, since 1Claw's Shroud proxy can't back a multi-turn, tool-using coding session.
 
 ## Basic vs. advanced mode
@@ -252,7 +254,7 @@ Per the project's own working style, expensive verification is a single consolid
 go build ./... && go vet ./... && go test ./...
 ```
 
-451 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
+455 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
 - `internal/contract`'s `TestRunConformanceOnLaunchBots` — auto-discovers and conformance-tests all 30 bots under `bots/` against their own fixtures, no Docker or network.
 - `internal/planner`'s `TestPlanAllExampleSwarms` — auto-discovers and type-checks all 14 swarms under `examples/swarms/`.
 - httptest-mocked 1Claw/Google/Slack/GitHub/Stripe/HubSpot/X/LinkedIn API clients, built against each provider's real, documented endpoint shapes (verified against `@1claw/openapi-spec` and each provider's own docs, not guessed).

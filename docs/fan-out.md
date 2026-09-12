@@ -145,3 +145,17 @@ produces one reminder per line in words a person can act on. Echoing an
 input as an output is worth doing whenever a bot's real outputs are
 identifiers: the downstream bot is usually reporting on *what happened*,
 not on *what it is called*.
+
+## The composer knows all of this
+
+`POST /api/compose` — the "describe what you want automated" box — writes
+fan-outs and joins, not just plain snaps. That is not automatic: the
+composer knows exactly what its prompt tells it, and for a while the prompt
+predated both. Asked for a fan-out it would hardcode a literal
+`"chaser.draft_ids[0]"` string into an input, which type-checks as a string
+and sends those characters to Gmail as an id.
+
+Two things had to change. The prompt gained the vocabulary, and the catalog
+it is shown gained the *fields* inside each json output port — a snap can
+drill into one, and a model shown `drafted:list<json>` with no field list
+has no choice but to guess.

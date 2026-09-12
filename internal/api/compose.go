@@ -198,11 +198,15 @@ func composeRetryPrompt(bots []BotSummary, message string, draft *saveSwarmReque
 	for _, u := range plan.Unfed {
 		fmt.Fprintf(&b, "- bot %q has a required input %q that nothing fills: %s\n", u.Bot, u.Port, u.Reason)
 	}
+	for _, e := range plan.Invalid {
+		fmt.Fprintf(&b, "- %s\n", e)
+	}
 	b.WriteString(`
 Fix these specific problems and return the corrected JSON in the same shape, and nothing else.
 
 - A snap is only legal when the output port's type is assignable to the input port's type. Re-read the catalog types above before connecting anything.
 - If no legal snap can carry the data between two bots you wanted to connect, drop that snap. An *optional* input left unconnected is fine — the human fills it in — but a snap that doesn't type-check is not.
+- A list feeding a single-item port is not a type error to drop: it is a fan-out. Put ".*" on the from side. A fanned-out bot's list output feeding a single-value port is a "join".
 - A *required* input must be filled, by a snap or by an "inputs" value on the bot. A draft that leaves one empty cannot run at all. When no upstream bot produces it, put a sensible literal in "inputs" — an email address, a channel, a label — rather than leaving it out.
 - Do not add bots that weren't needed. Do not answer with a gap; you already committed to a draft.
 `)
@@ -233,6 +237,16 @@ func composePrompt(bots []BotSummary, message string) string {
 			parts := make([]string, len(bot.Outputs))
 			for i, p := range bot.Outputs {
 				parts[i] = fmt.Sprintf("%s:%s", p.Name, p.Type)
+				// The fields, for a json port that declares a schema.
+				// Without these the model cannot write a snap that drills
+				// into one — "chaser.drafted.*.subject" requires knowing
+				// that `drafted` has a subject — so it guesses, and a
+				// plausible-sounding field that isn't there fails exactly
+				// like a misspelled port. A real composed draft invented
+				// `.summary` for precisely this reason.
+				if fields := bot.OutputFields[p.Name]; len(fields) > 0 {
+					parts[i] += "{" + strings.Join(fields, ",") + "}"
+				}
 			}
 			b.WriteString(strings.Join(parts, ", "))
 			b.WriteString("\n")
@@ -247,18 +261,28 @@ Produce **only** JSON in this shape:
   "name": "a short, human-readable swarm name",
   "description": "one sentence describing what it does",
   "bots": [
-    { "id": "a short instance id you choose, e.g. 'triage'", "use": "<catalog-id>@<version>", "inputs": {} }
+    { "id": "a short instance id you choose, e.g. 'triage'", "use": "<catalog-id>@<version>", "inputs": {}, "on_error": "stop" }
   ],
   "snaps": [
-    { "from": "<instance-id>.<output-port>", "to": "<instance-id>.<input-port>" }
+    { "from": "<instance-id>.<output-port>", "to": "<instance-id>.<input-port>", "join": "" }
   ]
 }
+
+"on_error" and "join" are optional; omit them unless you mean them. Note
+where they live: "on_error" is a sibling of "id" and "use", never a key
+inside "inputs" — "inputs" holds only that bot's declared input ports.
+"join" is a sibling of "from" and "to" on a snap.
 
 Rules:
 - Pick the smallest set of bots that actually accomplishes the request — usually 1-4.
 - Every "use" must be exactly "<catalog-id>@<version>" from the list above, verbatim.
-- Every snap's port names and types must genuinely match what's declared above for that bot.
-- Every *required* input must end up filled — by a snap, or by a literal in that bot's own "inputs" map. Leaving one empty produces a swarm that cannot run at all, and the planner will reject it. Never invent a snap from a port that doesn't exist to satisfy one; use a sensible literal instead (an email address, a Slack channel, a label).
+- Every snap's port names and types must genuinely match what's declared above for that bot. When drilling into a json port with a dot (e.g. "x.items.*.subject"), the field must be one the catalog lists for that port's schema — a plausible-sounding field that isn't there fails the same as a misspelled port.
+- Every *required* input must end up filled — by a snap, or by a literal in that bot's own "inputs" map. Leaving one empty produces a swarm that cannot run at all, and the planner will reject it. Never invent a snap from a port that doesn't exist to satisfy one.
+- A value in "inputs" is a real, literal value — an email address, a Slack channel, a label. It is NEVER a reference to another bot's port. Writing "draft_id": "chaser.draft_ids[0]" does not read that port; it sends the characters c-h-a-s-e-r-dot-... to the API as if they were an id. If you mean "take this from that bot", that is a snap.
+- Never give a port both a snap and an "inputs" value. The value wins and the snap is silently dropped, so the swarm looks wired and isn't. Pick one.
+- When an upstream bot produces a **list** and the downstream bot takes **one item**, run the downstream bot once per item by putting ".*" on the from side, e.g. from "chaser.drafted.*.draft_id" to "sender.draft_id". That is how "for each overdue invoice, send a reminder" is expressed. Two snaps into the same fanned-out bot iterate together on one index, so they must come from the same list — snap "x.items.*.a" and "x.items.*.b", never "x.list_one.*" and "x.list_two.*", which are not guaranteed to be the same length.
+- A fanned-out bot's own outputs become a list. To feed one downstream bot afterwards, collapse it by adding "join" to the snap, e.g. from "sender.acted_on" to "notifier.message" with "join": "lines". The modes are lines (one per line), json (a JSON array), count (how many), flatten (list of lists into one list) and first.
+- Set "on_error": "continue" on a bot whose failure should not lose the run — a notification at the end that nothing else reads. The run then finishes and reports that one step didn't. Do not use it on a bot the swarm exists to run.
 - Prefer bots whose job already includes an approval gate (their bot.md/description says so) for anything that sends, posts, pays, or deletes.
 - Output raw JSON only, no prose, no markdown fences.
 

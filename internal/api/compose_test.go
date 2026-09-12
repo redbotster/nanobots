@@ -292,3 +292,56 @@ func TestTheRetryCorrectionAlsoWorksOnADirectProvider(t *testing.T) {
 		t.Errorf("the retry prompt does not name the failing snap:\n%s", gen.prompts[1])
 	}
 }
+
+// The composer's prompt is the whole of what it knows. The language grew
+// twice — fan-out with a join, and a per-bot error policy — and the prompt
+// did not, so the composer produced swarms in an older dialect: no fan-out
+// at all, a hardcoded "chaser.draft_ids[0]" string where a snap belonged,
+// and every notification able to fail a run.
+func TestTheComposerIsTaughtTheWholeLanguage(t *testing.T) {
+	prompt := composePrompt([]BotSummary{{ID: "x", Name: "x", Version: "0.1.0"}}, "do a thing")
+	for _, want := range []string{
+		".*",       // fan-out
+		"join",     // and the way back
+		"lines",    // its modes
+		"on_error", // the error policy
+		"continue", //
+		"never",    // a value is not a port reference
+	} {
+		if !strings.Contains(strings.ToLower(prompt), strings.ToLower(want)) {
+			t.Errorf("the prompt never mentions %q", want)
+		}
+	}
+}
+
+// A snap can drill into a json port's fields, and the model can only do
+// that if it knows the fields exist. Shown types but not fields, it
+// invented `.summary` on a port that has none — which fails exactly like a
+// misspelled port.
+func TestTheCatalogPromptListsAJSONPortsFields(t *testing.T) {
+	bots := []BotSummary{{
+		ID: "chaser", Name: "invoice-chaser", Version: "0.1.0",
+		Outputs:      []schema.OutputPort{{Name: "drafted", Type: "list<json>", Schema: "./schemas/drafted.json"}},
+		OutputFields: map[string][]string{"drafted": {"draft_id", "subject", "to"}},
+	}}
+	prompt := composePrompt(bots, "chase invoices")
+	if !strings.Contains(prompt, "drafted:list<json>{draft_id,subject,to}") {
+		t.Errorf("fields missing from the catalog line:\n%s", prompt)
+	}
+}
+
+// The retry pass can only fix what it is shown. Swarm-level problems — an
+// unrecognised on_error, a port both snapped and set — were making a draft
+// unrunnable while the retry prompt listed nothing wrong with it.
+func TestTheRetryPromptCarriesSwarmLevelProblems(t *testing.T) {
+	plan := planResponse{
+		Invalid: []string{`notifier.message has both a snap and a value in inputs:`},
+		Unfed:   []unfedInputJSON{{Bot: "mailer", Port: "to", Reason: "nothing supplies it"}},
+	}
+	prompt := composeRetryPrompt(nil, "do a thing", &saveSwarmRequest{Name: "x"}, plan)
+	for _, want := range []string{"notifier.message", "both a snap and a value", "mailer", "nothing supplies it"} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("the retry prompt does not mention %q", want)
+		}
+	}
+}

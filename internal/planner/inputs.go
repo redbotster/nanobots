@@ -117,3 +117,39 @@ func CheckOnError(rs *ResolvedSwarm) []error {
 	}
 	return out
 }
+
+// CheckSnapAndValueCollision finds a port that is both snapped into and
+// given an explicit value.
+//
+// The runner resolves explicit inputs first, so the snap is silently
+// dropped: the swarm diagram shows a wire, the plan type-checks it, and at
+// run time it carries nothing. There is no reading of that which is what
+// someone meant — either the wire is real or the literal is.
+//
+// Found in a composed draft, which set notifier.message to a fixed string
+// *and* snapped a summary into it. The plan said OK. The Slack message
+// would have been the fixed string forever.
+func CheckSnapAndValueCollision(rs *ResolvedSwarm) []error {
+	snapped := map[string]bool{}
+	for _, snap := range rs.Swarm.Spec.Snaps {
+		if to, err := ParseEndpoint(snap.To); err == nil {
+			snapped[to.BotID+"."+to.Port] = true
+		}
+	}
+	var out []error
+	for _, b := range rs.Swarm.Spec.Bots {
+		names := make([]string, 0, len(b.Inputs))
+		for name := range b.Inputs {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			if snapped[b.ID+"."+name] {
+				out = append(out, fmt.Errorf(
+					"%s.%s has both a snap and a value in inputs: — the value wins and the snap is"+
+						" silently dropped, so remove whichever one you did not mean", b.ID, name))
+			}
+		}
+	}
+	return out
+}

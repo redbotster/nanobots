@@ -48,7 +48,13 @@ type planResponse struct {
 	Error string            `json:"error,omitempty"`
 	Snaps []snapCheckJSON   `json:"snaps"`
 	Unfed []unfedInputJSON  `json:"unfed,omitempty"`
-	OK    bool              `json:"ok"`
+	// Invalid are swarm-level mistakes that belong to neither a snap nor a
+	// port — an unrecognised on_error, a port that is both snapped and
+	// given a literal. Carried here because the composer's retry pass can
+	// only fix problems it is shown, and these were making a draft
+	// unrunnable while the retry prompt listed nothing wrong with it.
+	Invalid []string `json:"invalid,omitempty"`
+	OK      bool     `json:"ok"`
 }
 
 // handlePlan exposes `nanobots plan` over HTTP — the WebUI calls this before

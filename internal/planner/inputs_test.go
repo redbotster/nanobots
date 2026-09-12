@@ -159,3 +159,54 @@ func contains(hay []string, needle string) bool {
 	}
 	return false
 }
+
+// A port that is both snapped into and given a value: the runner resolves
+// explicit inputs first, so the snap is silently dropped. The diagram shows
+// a wire, the plan type-checks it, and at run time it carries nothing.
+//
+// Found in a real composed draft that set notifier.message to a fixed
+// string and snapped a summary into it. The plan said OK, and that Slack
+// message would have been the fixed string forever.
+func TestAPortCannotBeBothSnappedAndGivenAValue(t *testing.T) {
+	res := planYAML(t, unfedHeader+`  bots:
+    - id: recap
+      use: recap-emails-to-pdf@0.3.0
+    - id: mailer
+      use: email-drive-file@1.1.0
+      inputs:
+        to: me@example.com
+        file_id: "hardcoded"
+  snaps:
+    - from: recap.drive_file_id
+      to: mailer.file_id
+`)
+	if res.OK() {
+		t.Fatal("a swarm whose snap is silently dropped planned OK")
+	}
+	var found bool
+	for _, e := range res.Invalid {
+		if strings.Contains(e.Error(), "mailer.file_id") && strings.Contains(e.Error(), "silently dropped") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the collision was not reported: %v", res.Invalid)
+	}
+
+	// Either one alone is fine — this must not become "you may never set
+	// an input on a bot that has any snap".
+	res = planYAML(t, unfedHeader+`  bots:
+    - id: recap
+      use: recap-emails-to-pdf@0.3.0
+    - id: mailer
+      use: email-drive-file@1.1.0
+      inputs:
+        to: me@example.com
+  snaps:
+    - from: recap.drive_file_id
+      to: mailer.file_id
+`)
+	if len(res.Invalid) != 0 {
+		t.Errorf("a value on a different port was reported: %v", res.Invalid)
+	}
+}

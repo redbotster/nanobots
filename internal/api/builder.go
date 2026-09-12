@@ -96,6 +96,9 @@ func buildPlanResponse(swarmName string, result *planner.PlanResult, resolveErr 
 	} else if order, err := result.DAG.TopoSort(); err == nil {
 		resp.Order = order
 	}
+	for _, e := range result.Invalid {
+		resp.Invalid = append(resp.Invalid, e.Error())
+	}
 	for _, u := range result.Unfed {
 		resp.Unfed = append(resp.Unfed, unfedInputJSON{Bot: u.BotID, Port: u.Port, Reason: u.Why})
 	}
@@ -112,6 +115,9 @@ func buildPlanResponse(swarmName string, result *planner.PlanResult, resolveErr 
 		resp.Snaps = append(resp.Snaps, sc)
 	}
 	resp.Bots = nonNil(resp.Bots)
+	for _, e := range result.Invalid {
+		resp.Invalid = append(resp.Invalid, e.Error())
+	}
 	for _, u := range result.Unfed {
 		resp.Unfed = append(resp.Unfed, unfedInputJSON{Bot: u.BotID, Port: u.Port, Reason: u.Why})
 	}
