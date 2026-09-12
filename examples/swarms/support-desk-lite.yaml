@@ -2,7 +2,7 @@ apiVersion: nanobots.dev/v1alpha1
 kind: Nanoswarm
 metadata:
   name: support-desk-lite
-  description: Every 30 minutes, triage support mail, flag anything urgent to Slack, and send the first drafted reply once approved.
+  description: Every 30 minutes, triage support mail, flag every escalation to Slack, and send every drafted reply once approved.
   owner: me@example.com
 
 # Catalog's S8 is "support-triage -> draft-replies -> notify (escalations)

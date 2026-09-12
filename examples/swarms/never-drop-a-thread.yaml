@@ -2,7 +2,7 @@ apiVersion: nanobots.dev/v1alpha1
 kind: Nanoswarm
 metadata:
   name: never-drop-a-thread
-  description: Every afternoon, find sent threads that never got a reply and draft a nudge for the first one.
+  description: Every afternoon, find sent threads that never got a reply and nudge every one of them.
   owner: me@example.com
 
 # Catalog's S4 is "follow-up-chaser -> approve -> email-send-approved",

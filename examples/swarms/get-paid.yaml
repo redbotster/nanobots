@@ -8,8 +8,14 @@ metadata:
 # Catalog's S10 is "invoice-chaser -> approve -> email-send-approved ->
 # notify", "the batch of reminders" as the one approval. Standalone
 # `approve` is skipped, same reason as every other swarm here —
-# email-send-approved's own built-in gate is the one approval. No per-item
-# fan-out, so only the first overdue invoice's reminder gets sent per run.
+# email-send-approved's own built-in gate is the one approval.
+#
+# Per-item fan-out exists (docs/fan-out.md) and is deliberately not used
+# here: `sender` feeds `notifier`, so fanning it would leave notifier
+# either posting one Slack message per invoice, or confirming only the
+# first of N sends — which is worse than not confirming. What this wants
+# is one notification summarising the batch, and there's no join step to
+# build that with yet. So it still chases the first overdue invoice only.
 
 spec:
   defaults:

@@ -39,7 +39,7 @@ Change `post-publisher`'s `services[].connection` from `demo` to `oauth_native` 
 
 ## Slack, GitHub, Stripe, and HubSpot (`api_key_vault`)
 
-All four use plain, non-expiring tokens rather than an OAuth flow, so connecting any of them is just: **Settings → paste the token → Save** (`POST /api/connections/{service}/token`, `internal/api/connections.go`). Same storage as Google — a 1Claw vault secret, never local disk, never inside a bot container. Unlike Google, there's no CLI equivalent yet (`nanobots connect` only implements `google`, below) — the WebUI is the only way to connect these four today.
+All four use plain, non-expiring tokens rather than an OAuth flow, so connecting any of them is just: **Settings → paste the token → Save** (`POST /api/connections/{service}` with `{"token": "..."}`, `internal/api/connections.go`). Same storage as Google — a 1Claw vault secret, never local disk, never inside a bot container. Unlike Google, there's no CLI equivalent yet (`nanobots connect` only implements `google`, below) — the WebUI is the only way to connect these four today.
 
 - **Slack**: create a bot token at [api.slack.com/apps](https://api.slack.com/apps), scoped to `chat:write`, and invite the bot to whatever channel it should post in. `bots/notify`'s `channel` input recognizes a `"slack:#channel-name"` or `"slack:C0123..."` value and posts there for real once connected (`internal/step/slack_live.go`) — any other channel prefix (`"email:..."`, `"sms:..."`) still has no live backend and stays a documented no-op.
 - **GitHub**: create a personal access token scoped to `repo` (or `public_repo` for public repos only). `bots/github-issues-digest` uses it via a normal `service.call` with `provider: github`, same pattern as Google.

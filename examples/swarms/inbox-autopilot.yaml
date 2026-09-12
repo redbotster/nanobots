@@ -2,7 +2,7 @@ apiVersion: nanobots.dev/v1alpha1
 kind: Nanoswarm
 metadata:
   name: inbox-autopilot
-  description: Every 2 hours during work hours, triage the inbox, draft replies to anything urgent, and send the first one once you approve it.
+  description: Every 2 hours during work hours, triage the inbox, draft a reply to everything urgent, and send them all once you approve.
   owner: me@example.com
 
 # Catalog's S3 is "inbox-triage -> draft-replies -> approve ->

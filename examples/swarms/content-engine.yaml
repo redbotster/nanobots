@@ -7,13 +7,15 @@ metadata:
 
 # Catalog's S5 is "content-ideas -> post-writer -> approve -> post-publisher
 # (scheduled across the week)", approving "the week's batch" at once. This
-# build has no per-item fan-out or a real scheduler beyond one cron trigger
-# per swarm, so this snaps content-ideas' first idea into post-writer and
-# publishes just that one post per run — skipping the standalone `approve`
-# brick in favor of post-publisher's own built-in, un-bypassable gate, the
-# same pattern as inbox-autopilot.yaml/never-drop-a-thread.yaml. Running
-# this swarm daily rather than weekly would get closer to "spread across
-# the week" without needing real fan-out.
+# build does have per-item fan-out now (docs/fan-out.md), but deliberately
+# doesn't use it here: fanning post-writer and post-publisher would write
+# ten posts and publish all ten at once, which is a burst, not "scheduled
+# across the week". Per-item scheduling doesn't exist, so snapping
+# content-ideas' first idea into post-writer stays the closer
+# approximation, and running this swarm daily rather than weekly gets
+# closer still. The standalone `approve` brick is skipped in favor of
+# post-publisher's own built-in, un-bypassable gate, the same pattern as
+# inbox-autopilot.yaml/never-drop-a-thread.yaml.
 
 spec:
   defaults:
