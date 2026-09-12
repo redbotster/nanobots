@@ -123,5 +123,9 @@ func runToJSON(run *runner.Run) map[string]any {
 		// them. A run carrying one of these is a success with a hole in
 		// it, and the UI renders it as a warning rather than plain green.
 		"tolerated": run.GetTolerated(),
+		// Services this run reached through fixtures rather than a real
+		// account. A run made of demo data succeeds and looks exactly like
+		// a real one, and that is the default.
+		"demo_services": run.DemoServices(),
 	}
 }

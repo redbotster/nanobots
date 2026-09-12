@@ -397,3 +397,30 @@ func TestOneToleratedFailureDoesNotExcuseAFatalOne(t *testing.T) {
 		t.Errorf("the tolerated failure was lost: %+v", run.GetTolerated())
 	}
 }
+
+// A run made entirely of demo data succeeds, produces plausible emails and
+// invoices, and is indistinguishable from a real one — and that is the
+// *default*, since every bot ships on `connection: demo`. The most
+// misleading thing this product can do is succeed convincingly on invented
+// data without saying so.
+func TestARunRecordsWhichServicesWereDemoData(t *testing.T) {
+	run := NewRun("probe")
+	run.NoteDemoService("triage", "gmail")
+	run.NoteDemoService("triage", "gmail") // same fact twice is one fact
+	run.NoteDemoService("mailer", "gdrive")
+
+	got := run.DemoServices()
+	if len(got) != 2 {
+		t.Fatalf("got %v, want two distinct pairs", got)
+	}
+	// Sorted, so a run detail page renders the same way twice.
+	if got[0] != "mailer.gdrive" || got[1] != "triage.gmail" {
+		t.Errorf("got %v, want sorted bot.service pairs", got)
+	}
+
+	// A run that touched nothing demo says nothing, rather than an empty
+	// banner on every live run.
+	if len(NewRun("clean").DemoServices()) != 0 {
+		t.Error("a clean run reported demo services")
+	}
+}

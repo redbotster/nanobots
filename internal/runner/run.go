@@ -7,6 +7,7 @@ package runner
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -78,6 +79,7 @@ type Run struct {
 
 	mu            sync.Mutex
 	captured      map[string]map[string]any // botID -> fixture filename -> value
+	demoServices  map[string]bool           // "<bot>.<service>" served from fixtures
 	log           []LogEntry
 	outputs       map[string]map[string]any // botID -> port -> value (JSON-safe)
 	approvals     map[string]*PendingApproval
@@ -237,6 +239,35 @@ func (r *Run) SetError(err error) {
 type ToleratedFailure struct {
 	Bot   string `json:"bot"`
 	Error string `json:"error"`
+}
+
+// NoteDemoService records that a bot reached a service through fixtures
+// rather than a real account.
+//
+// A run made entirely of demo data succeeds, produces plausible emails and
+// invoices, and is indistinguishable from a real one — and that is the
+// *default*, since every bot ships on `connection: demo`. The log now says
+// so per call; this is the same fact where someone reading a result will
+// actually meet it.
+func (r *Run) NoteDemoService(bot, service string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.demoServices == nil {
+		r.demoServices = map[string]bool{}
+	}
+	r.demoServices[bot+"."+service] = true
+}
+
+// DemoServices lists "<bot>.<service>" pairs served from fixtures, sorted.
+func (r *Run) DemoServices() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]string, 0, len(r.demoServices))
+	for k := range r.demoServices {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // SetCaptured stores what a bot's real run would produce as fixtures.

@@ -56,6 +56,11 @@ type LiveDeps struct {
 	// Approver, when set, overrides Approve entirely (see Approve below).
 	Approver Approver
 
+	// OnServiceCall, when set, is told about each service call and whether
+	// it was answered from fixtures. Used by the runner to record that a
+	// run was (partly) demo data; nil is fine.
+	OnServiceCall func(svc schema.Service, op string, demo bool)
+
 	// Services holds every connected-service credential in one value —
 	// Google, GitHub, Slack, Stripe, HubSpot, X, LinkedIn. A zero field
 	// means "not configured", and a non-demo call to that provider fails
@@ -97,7 +102,13 @@ func NewLiveDeps(oc *oneclaw.Client, shroud *oneclaw.ShroudClient, agentID, fixt
 // belongs once a non-demo service exists to provision.
 func (l *LiveDeps) ServiceCall(svc schema.Service, op string, params map[string]any) (any, error) {
 	if svc.Connection == schema.ConnectionDemo || svc.Connection == "" {
+		if l.OnServiceCall != nil {
+			l.OnServiceCall(svc, op, true)
+		}
 		return l.Demo.ServiceCall(svc, op, params)
+	}
+	if l.OnServiceCall != nil {
+		l.OnServiceCall(svc, op, false)
 	}
 	if dispatch, ok := serviceDispatchers[svc.Provider]; ok {
 		return dispatch(l, svc, op, params)

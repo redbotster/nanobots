@@ -134,6 +134,11 @@ export interface Run {
    * It's what makes "Run it again" possible from the run itself. */
   swarm_path?: string;
   tolerated?: ToleratedFailure[];
+  /** "<bot>.<service>" pairs this run reached through fixtures rather than
+   * a real account. A run made of demo data succeeds and looks exactly like
+   * a real one — and that is the default, since every bot ships on
+   * `connection: demo`. */
+  demo_services?: string[];
 }
 
 /** A file-typed output's shape on the wire — see internal/runner's

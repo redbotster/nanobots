@@ -86,6 +86,42 @@ function FailureBanner({
   );
 }
 
+/** A run that reached some services through fixtures.
+ *
+ * The most misleading thing this product can do is succeed convincingly on
+ * invented data. Every bot ships on `connection: demo`, so that is the
+ * default experience — plausible emails, plausible invoices, a green run,
+ * and nothing anywhere saying none of it was real. */
+function DemoDataBanner({
+  services,
+  onOpenSettings,
+}: {
+  services: string[];
+  onOpenSettings?: () => void;
+}) {
+  // Group by service, since "gmail" twice is one fact about one account.
+  const names = Array.from(new Set(services.map((s) => s.split(".").slice(1).join("."))));
+  return (
+    <div className="mt-3 rounded-lg border border-edge-strong bg-panel/50 px-3.5 py-2.5">
+      <span className="font-display text-[11px] uppercase tracking-wider text-muted">
+        Demo data
+      </span>
+      <p className="mt-1 text-[12px] leading-snug text-ink">
+        {names.join(", ")} {names.length === 1 ? "was" : "were"} answered from this repo's example
+        data, not your account. Nothing here was read from or written to anything real.
+      </p>
+      {onOpenSettings && (
+        <button
+          onClick={onOpenSettings}
+          className="mt-1.5 rounded border border-tron/50 px-2 py-0.5 text-[11px] text-tron transition-colors hover:bg-tron/10"
+        >
+          Connect an account
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** Bots the swarm was told to continue past. The run did its real work —
  * get-paid's reminders went out — and something at the edge didn't. Both
  * halves of that sentence matter, so this says "finished" and then names
@@ -225,6 +261,9 @@ export function RunDetail({
         {/* A run that finished with a hole in it. Rendered as a warning
             rather than left to the log, because the point of continuing
             past a failure is that someone still finds out. */}
+        {(run?.demo_services?.length ?? 0) > 0 && (
+          <DemoDataBanner services={run!.demo_services!} onOpenSettings={onOpenSettings} />
+        )}
         {run?.status === "succeeded" && <PinFixtures runId={run.id} />}
         {run?.status === "succeeded" && (run.tolerated?.length ?? 0) > 0 && (
           <ToleratedBanner tolerated={run.tolerated!} onOpenSettings={onOpenSettings} />

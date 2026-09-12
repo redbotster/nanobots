@@ -765,3 +765,47 @@ func TestAWrongShapedOutputStillFails(t *testing.T) {
 		t.Error("a string where a list belongs was accepted")
 	}
 }
+
+// "gmail.messages.list -> ok" for fixture data is the single most
+// misleading line this product can print: it is exactly what a real call
+// looks like, and it is what every bot does by default.
+func TestADemoServiceCallSaysSoInTheLog(t *testing.T) {
+	nb := &schema.Nanobot{
+		Metadata: schema.Metadata{Name: "probe", Version: "0.1.0"},
+		Spec: schema.NanobotSpec{
+			Services: []schema.Service{
+				{ID: "gmail", Provider: "google", Connection: schema.ConnectionDemo},
+				{ID: "live", Provider: "slack", Connection: schema.ConnectionAPIKeyVault},
+			},
+			Steps: []schema.Step{
+				{Name: "fetch", Type: "service.call", Service: "gmail", Op: "messages.list", Output: "a"},
+				{Name: "post", Type: "service.call", Service: "live", Op: "chat.post", Output: "b"},
+			},
+			Ports: schema.Ports{Outputs: []schema.OutputPort{
+				{Name: "a", Type: "json"}, {Name: "b", Type: "json"},
+			}},
+		},
+	}
+	res, err := Interpret(nb, map[string]any{}, nil, &fakeDeps{serviceResult: map[string]any{"ok": true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var demoLine, liveLine string
+	for _, l := range res.Log {
+		if l.Step == "fetch" {
+			demoLine = l.Msg
+		}
+		if l.Step == "post" {
+			liveLine = l.Msg
+		}
+	}
+	if !strings.Contains(demoLine, "demo data") {
+		t.Errorf("a fixture-served call reads as real: %q", demoLine)
+	}
+	// And a real call must not be labelled as demo, or the marker means
+	// nothing.
+	if strings.Contains(liveLine, "demo") {
+		t.Errorf("a live call was marked demo: %q", liveLine)
+	}
+}

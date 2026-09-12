@@ -94,6 +94,21 @@ and once connected:
 
 Each bot's `nanobot.yaml` is edited with the same surgical line editor the single-bot toggle uses, so every comment in the file survives, and the result is re-parsed before it is written — a text edit that produced something unloadable never reaches disk. A bot that fails to switch is reported by name rather than silently skipped or rolled back: the bots that did switch really did switch, and claiming otherwise would be worse.
 
+## Demo data is never silent
+
+Every bot ships on `connection: demo`, so the default experience is a run
+that succeeds, produces plausible emails and invoices, and is
+indistinguishable from a real one. That is the most misleading thing this
+product can do, and for a long time nothing said otherwise — not even the
+log, which printed `gmail.messages.list -> ok` for fixture data exactly as
+it does for a real call.
+
+Now it says so in three places, each where someone actually is:
+
+- **the log**, per call: `gmail.messages.list -> ok (demo data — not your real google)`
+- **the run**, aggregated: "gmail, gdrive were answered from this repo's example data, not your account", with a button to connect one
+- **Settings**, which already counts how many bots are still on demo data per provider and switches them over in one click
+
 ## Adding a provider
 
 Everything a connected service needs now lives in one place per layer,

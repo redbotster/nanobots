@@ -37,43 +37,48 @@ type snapshot struct {
 	// so "turn this run into test data" still works after a restart —
 	// otherwise the button quietly disappears from every run in history.
 	Captured map[string]map[string]any `json:"captured,omitempty"`
-	Log      []LogEntry                `json:"log"`
-	Outputs  map[string]map[string]any `json:"outputs"`
+	// DemoServices are "<bot>.<service>" pairs served from fixtures, kept
+	// so a run in history still says its results were invented.
+	DemoServices []string                  `json:"demo_services,omitempty"`
+	Log          []LogEntry                `json:"log"`
+	Outputs      map[string]map[string]any `json:"outputs"`
 }
 
 func snapshotOf(r *Run) snapshot {
 	return snapshot{
-		ID:          r.ID,
-		SwarmName:   r.SwarmName,
-		SwarmPath:   r.SwarmPath,
-		Status:      r.GetStatus(),
-		StartedAt:   r.StartedAt,
-		FinishedAt:  r.GetFinishedAt(),
-		Error:       r.GetError(),
-		Tolerated:   r.GetTolerated(),
-		Captured:    cappedCaptures(r.Captured()),
-		TriggeredBy: r.TriggeredBy,
-		Log:         r.LogEntries(),
-		Outputs:     r.AllOutputs(),
+		ID:           r.ID,
+		SwarmName:    r.SwarmName,
+		SwarmPath:    r.SwarmPath,
+		Status:       r.GetStatus(),
+		StartedAt:    r.StartedAt,
+		FinishedAt:   r.GetFinishedAt(),
+		Error:        r.GetError(),
+		Tolerated:    r.GetTolerated(),
+		Captured:     cappedCaptures(r.Captured()),
+		DemoServices: r.DemoServices(),
+		TriggeredBy:  r.TriggeredBy,
+		Log:          r.LogEntries(),
+		Outputs:      r.AllOutputs(),
 	}
 }
 
 func (s snapshot) toRun() *Run {
 	r := &Run{
-		ID:          s.ID,
-		SwarmName:   s.SwarmName,
-		SwarmPath:   s.SwarmPath,
-		Status:      s.Status,
-		StartedAt:   s.StartedAt,
-		FinishedAt:  s.FinishedAt,
-		Error:       s.Error,
-		Tolerated:   s.Tolerated,
-		captured:    s.Captured,
-		TriggeredBy: s.TriggeredBy,
-		log:         s.Log,
-		outputs:     s.Outputs,
-		approvals:   map[string]*PendingApproval{},
-		subscribers: map[chan LogEntry]bool{},
+		ID:           s.ID,
+		SwarmName:    s.SwarmName,
+		SwarmPath:    s.SwarmPath,
+		Status:       s.Status,
+		StartedAt:    s.StartedAt,
+		FinishedAt:   s.FinishedAt,
+		Error:        s.Error,
+		Tolerated:    s.Tolerated,
+		captured:     s.Captured,
+		demoServices: demoSet(s.DemoServices),
+		TriggeredBy:  s.TriggeredBy,
+		log:          s.Log,
+		outputs:      s.Outputs,
+		approvals:    map[string]*PendingApproval{},
+		subscribers:  map[chan LogEntry]bool{},
 	}
 	if r.outputs == nil {
 		r.outputs = map[string]map[string]any{}
@@ -195,6 +200,17 @@ func cappedCaptures(in map[string]map[string]any) map[string]map[string]any {
 	}
 	if len(out) == 0 {
 		return nil
+	}
+	return out
+}
+
+func demoSet(in []string) map[string]bool {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]bool, len(in))
+	for _, k := range in {
+		out[k] = true
 	}
 	return out
 }

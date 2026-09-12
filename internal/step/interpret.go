@@ -70,7 +70,17 @@ func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, swarmVars map[
 			params, _ := resolveValue(s.Params, ctx).(map[string]any)
 			out, err = deps.ServiceCall(svc, s.Op, params)
 			if err == nil {
-				log(s.Name, "%s.%s -> ok", s.Service, s.Op)
+				// Say when the answer was invented. Every bot ships on
+				// `connection: demo`, so the default experience is a run
+				// that succeeds, produces plausible emails and invoices,
+				// and looks exactly like a real one. A log that reads
+				// "gmail.messages.list -> ok" for fixture data is the
+				// single most misleading line this product can print.
+				if svc.Connection == schema.ConnectionDemo || svc.Connection == "" {
+					log(s.Name, "%s.%s -> ok (demo data — not your real %s)", s.Service, s.Op, svc.Provider)
+				} else {
+					log(s.Name, "%s.%s -> ok", s.Service, s.Op)
+				}
 				out, err = maybeMaterializeFile(nb, s, out, deps)
 			}
 
