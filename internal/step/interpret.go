@@ -30,6 +30,13 @@ type Result struct {
 // bots/recap-emails-to-pdf/nanobot.yaml's upload step) — pass nil for a bot
 // run outside any swarm context. It returns an error on the first step that
 // fails, or if a declared output port is never produced.
+// A failing Interpret returns the partial *Result alongside the error, not
+// nil. cmd/nanobot-agent writes that result to log.jsonl on the failure path
+// specifically so a human debugging a failed run can see which steps did
+// succeed — but every error return here used to be `nil, err`, so writeLog
+// got nothing, log.jsonl was never created, and the Runs page showed only
+// "starting" followed by the failure. The steps that ran are exactly the
+// context you need to know why the next one didn't.
 func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, swarmVars map[string]any, deps Deps) (*Result, error) {
 	ctx := map[string]any{
 		"inputs":  resolvedInputs,
@@ -56,7 +63,7 @@ func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, swarmVars map[
 		case "service.call":
 			svc, ok := findService(nb, s.Service)
 			if !ok {
-				return nil, fmt.Errorf("step %q: no service %q declared on this bot", s.Name, s.Service)
+				return res, fmt.Errorf("step %q: no service %q declared on this bot", s.Name, s.Service)
 			}
 			params, _ := resolveValue(s.Params, ctx).(map[string]any)
 			out, err = deps.ServiceCall(svc, s.Op, params)
@@ -140,7 +147,7 @@ func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, swarmVars map[
 				// swarm around it decides what to do with a "no", not this
 				// bot.
 				if !approved && s.Output == "" && len(s.Outputs) == 0 {
-					return nil, fmt.Errorf("step %q: not approved (decided_by=%s)", s.Name, decidedBy)
+					return res, fmt.Errorf("step %q: not approved (decided_by=%s)", s.Name, decidedBy)
 				}
 			}
 
@@ -161,7 +168,7 @@ func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, swarmVars map[
 		}
 
 		if err != nil {
-			return nil, fmt.Errorf("step %q: %w", s.Name, err)
+			return res, fmt.Errorf("step %q: %w", s.Name, err)
 		}
 
 		stepsCtx[s.Name] = map[string]any{"output": out}
@@ -177,10 +184,10 @@ func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, swarmVars map[
 	for _, port := range nb.Spec.Ports.Outputs {
 		val, ok := outputsCtx[port.Name]
 		if !ok {
-			return nil, fmt.Errorf("declared output port %q was never produced by any step", port.Name)
+			return res, fmt.Errorf("declared output port %q was never produced by any step", port.Name)
 		}
 		if err := validateOutputType(val, port.Type); err != nil {
-			return nil, fmt.Errorf("output port %q: %w", port.Name, err)
+			return res, fmt.Errorf("output port %q: %w", port.Name, err)
 		}
 		res.Outputs[port.Name] = val
 	}

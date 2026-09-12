@@ -1,6 +1,8 @@
 package runner
 
 import (
+	"errors"
+	"github.com/redbotster/nanobots/internal/step"
 	"sync"
 	"testing"
 	"time"
@@ -104,4 +106,72 @@ func TestUnsubscribeIsIdempotent(t *testing.T) {
 	ch := run.Subscribe()
 	run.Unsubscribe(ch)
 	run.Unsubscribe(ch)
+}
+
+// A container that hits its own max_runtime while a human is still deciding
+// leaves the run failed and already written to history. A decision arriving
+// after that used to flip it back to "running" — leaving a run with
+// finished_at set, error set, status running, and nothing alive to ever move
+// it again. On-disk history said failed; the API said running, forever.
+func TestLateApprovalDoesNotResurrectAFailedRun(t *testing.T) {
+	run := NewRun("post-publisher")
+
+	decided := make(chan struct{})
+	go func() {
+		defer close(decided)
+		approved, _, err := run.RequestApproval("publisher", "gate", "Publish this post?", "high", time.Minute)
+		if err == nil {
+			t.Errorf("expected an error once the run ended, got approved=%v", approved)
+		}
+		if approved {
+			t.Error("an approval decided after the run failed must not count as approved")
+		}
+	}()
+
+	// Wait for the approval to actually be pending before ending the run.
+	waitFor(t, func() bool { return len(run.PendingApprovals()) == 1 })
+
+	run.SetError(errors.New("container exceeded 60s and was stopped"))
+	run.SetStatus(StatusFailed)
+
+	select {
+	case <-decided:
+	case <-time.After(5 * time.Second):
+		t.Fatal("RequestApproval never returned; the waiter is stuck until its full timeout")
+	}
+
+	if got := run.GetStatus(); got != StatusFailed {
+		t.Errorf("status = %q, want it to stay failed", got)
+	}
+	if n := len(run.PendingApprovals()); n != 0 {
+		t.Errorf("%d approvals still listed on a dead run — the UI would keep asking", n)
+	}
+	// And a human clicking Approve now gets told, not silently ignored.
+	if err := run.Decide("whatever", true, "you"); err == nil {
+		t.Error("deciding on an ended run should report that it ended")
+	}
+}
+
+// The container's HTTP client has to outlast the longest thing a callback
+// can legitimately block on. It was 5 minutes against a 30-minute approval
+// budget, so approving at minute six failed the run. These two constants
+// live in different packages and drifted silently; this is what notices.
+func TestContainerHTTPTimeoutOutlastsApprovals(t *testing.T) {
+	deps := step.NewRemoteDeps("http://host.docker.internal:7474", "token", nil)
+	if deps.HTTPClient.Timeout <= approvalTimeout {
+		t.Errorf("RemoteDeps HTTP timeout is %s but approvals may take %s — a human approving inside the budget would still fail the run",
+			deps.HTTPClient.Timeout, approvalTimeout)
+	}
+}
+
+func waitFor(t *testing.T, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("condition never became true")
 }

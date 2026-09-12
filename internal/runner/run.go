@@ -156,6 +156,15 @@ func (r *Run) SetStatus(s RunStatus) {
 		r.FinishedAt = time.Now()
 	}
 	fns := r.onTerminalFns
+	if terminal {
+		// Whatever was waiting on a human is unreachable now — its
+		// container is gone. Leaving these listed kept a dead run showing
+		// "1 approval waiting" in the nav badge and the Runs page.
+		for id, pa := range r.approvals {
+			delete(r.approvals, id)
+			close(pa.decision)
+		}
+	}
 	r.mu.Unlock()
 
 	// Outside the lock: a callback that reads the run (RunStore's does, to
@@ -269,11 +278,28 @@ func (r *Run) RequestApproval(bot, step, summary, riskTier string, timeout time.
 	r.Log(bot, step, "awaiting approval (%s): %s", pa.ID, summary)
 
 	select {
-	case d := <-pa.decision:
+	case d, ok := <-pa.decision:
+		if !ok {
+			// Closed by SetStatus's terminal sweep: the run ended while a
+			// human was still deciding. Not approved, and say why rather
+			// than returning a silent false.
+			return false, "", fmt.Errorf("the run ended before %q was decided", summary)
+		}
 		r.mu.Lock()
 		delete(r.approvals, pa.ID)
+		// Only back to running if the run is still alive. A container can
+		// hit its own max_runtime_secs while a human is still deciding —
+		// 60s budgets with a person in the loop make that the normal case,
+		// not an edge one — and the run is then already failed and written
+		// to history. Flipping it back to "running" left a run with
+		// finished_at and error both set, status running, and nothing left
+		// alive to ever move it again: on-disk history said failed while
+		// the API said running, forever.
+		alive := r.Status != StatusSucceeded && r.Status != StatusFailed
 		r.mu.Unlock()
-		r.SetStatus(StatusRunning)
+		if alive {
+			r.SetStatus(StatusRunning)
+		}
 		return d.approved, d.decidedBy, nil
 	case <-time.After(timeout):
 		r.mu.Lock()
@@ -286,11 +312,15 @@ func (r *Run) RequestApproval(bot, step, summary, riskTier string, timeout time.
 // Decide resolves a pending approval — called from the REST API when a human
 // approves or rejects in the WebUI.
 func (r *Run) Decide(approvalID string, approved bool, decidedBy string) error {
+	// One critical section, not a lookup followed by a send: SetStatus's
+	// terminal sweep closes these channels, and sending on one it just
+	// closed would panic. The send itself never blocks — the channel is
+	// buffered with room for exactly this one decision.
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	pa, ok := r.approvals[approvalID]
-	r.mu.Unlock()
 	if !ok {
-		return fmt.Errorf("no pending approval %s on run %s", approvalID, r.ID)
+		return fmt.Errorf("no pending approval %s on run %s (it may have timed out, or the run may have ended)", approvalID, r.ID)
 	}
 	pa.decision <- approvalDecision{approved: approved, decidedBy: decidedBy}
 	return nil

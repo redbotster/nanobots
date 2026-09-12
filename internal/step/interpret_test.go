@@ -357,3 +357,39 @@ func (p *paramCapturingDeps) ServiceCall(svc schema.Service, op string, params m
 	p.lastParams = params
 	return p.fakeDeps.ServiceCall(svc, op, params)
 }
+
+// A failing bot must still report the steps that ran before the failure.
+// Every error return in Interpret used to discard the Result, so
+// cmd/nanobot-agent's writeLog got nil, log.jsonl was never written, and a
+// failed run showed only "starting" and "FAILED: container exited 1" — the
+// diagnostics its own comment promises to preserve.
+func TestInterpretReturnsThePartialLogOnFailure(t *testing.T) {
+	nb := &schema.Nanobot{
+		Metadata: schema.Metadata{Name: "probe", Version: "0.1.0"},
+		Spec: schema.NanobotSpec{
+			Steps: []schema.Step{
+				{Name: "recall", Type: "memory.get", Key: "last_seen", Output: "seen"},
+				{Name: "boom", Type: "definitely.not.a.real.step"},
+			},
+			Ports: schema.Ports{Outputs: []schema.OutputPort{{Name: "seen", Type: "string"}}},
+		},
+	}
+
+	res, err := Interpret(nb, map[string]any{}, nil, NewDemoDeps(t.TempDir(), nil))
+	if err == nil {
+		t.Fatal("expected the unknown step type to fail the bot")
+	}
+	if res == nil {
+		t.Fatal("Result was nil, so the partial log is gone — this is the bug")
+	}
+	var steps []string
+	for _, l := range res.Log {
+		steps = append(steps, l.Step)
+	}
+	if len(steps) == 0 {
+		t.Fatalf("no log lines survived the failure; got %+v", res.Log)
+	}
+	if steps[0] != "recall" {
+		t.Errorf("log starts at %q, want the step that actually ran (%q)", steps[0], "recall")
+	}
+}

@@ -35,12 +35,17 @@ export function useLiveJob<T extends LoggableJob & { status: string }>(
   subscribeRef.current = subscribe;
 
   useEffect(() => {
-    if (!id) {
-      setJob(null);
-      return;
-    }
-    let cancelled = false;
+    // Clear on every id change, not just when id goes null. Without this,
+    // "Run it again" re-rendered with the new run's id while still showing
+    // the old run's status, error banner and log for a full round trip —
+    // and because the poll merges as `log: prev?.log ?? fresh.log`, the new
+    // run inherited the old one's log lines as its own. Worse, the stale
+    // "finished" status re-enabled the Run button, so a second click
+    // started a third run of the same swarm — real sends, for a live bot.
+    setJob(null);
     logRef.current = [];
+    if (!id) return;
+    let cancelled = false;
 
     const poll = async () => {
       try {

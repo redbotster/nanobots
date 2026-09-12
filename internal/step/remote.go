@@ -32,8 +32,16 @@ func NewRemoteDeps(callbackURL, runToken string, blobs BlobStore) *RemoteDeps {
 	return &RemoteDeps{
 		CallbackURL: callbackURL,
 		RunToken:    runToken,
-		HTTPClient:  &http.Client{Timeout: 5 * time.Minute}, // approvals can wait a while
-		Blobstore:   blobs,
+		// Must outlast the longest thing a callback can legitimately block
+		// on, which is a human deciding an approval:
+		// runner.approvalTimeout is 30 minutes, and bots/approve,
+		// bots/email-send-approved and bots/email-drive-file all declare
+		// max_runtime_secs: 1800 to match. This used to be 5 minutes with
+		// the comment "approvals can wait a while", so a human who
+		// approved at minute six got "context deadline exceeded" and a
+		// failed run despite deciding well inside the declared window.
+		HTTPClient: &http.Client{Timeout: 35 * time.Minute},
+		Blobstore:  blobs,
 	}
 }
 
