@@ -14,6 +14,7 @@ import (
 	"github.com/redbotster/nanobots/internal/api"
 	"github.com/redbotster/nanobots/internal/foundry"
 	"github.com/redbotster/nanobots/internal/oneclaw"
+	"github.com/redbotster/nanobots/internal/roles"
 	"github.com/redbotster/nanobots/internal/runner"
 	"github.com/redbotster/nanobots/internal/scheduler"
 	"github.com/redbotster/nanobots/internal/step"
@@ -97,6 +98,11 @@ func Run(opts Options) error {
 			portOf(opts.Addr), filepath.Join(paths.StateDir, "shroud-proxy-token"))
 	}
 
+	roleStore := &roles.Store{
+		CatalogPath:  filepath.Join(opts.RepoRoot, "roles", "roles.yaml"),
+		OverridePath: filepath.Join(paths.StateDir, "roles.json"),
+	}
+
 	callbacks := runner.NewCallbackRegistry()
 	orch := wiring.BuildOrchestrator(wiring.OrchestratorOpts{
 		RepoRoot:     opts.RepoRoot,
@@ -105,6 +111,7 @@ func Run(opts Options) error {
 	}, paths, oc, svc, callbacks)
 	orch.Memory = mem
 	orch.LLM = gen
+	orch.Roles = roleStore
 
 	foundryOrch := &foundry.Orchestrator{Config: foundry.Config{
 		RepoRoot:      opts.RepoRoot,
@@ -130,6 +137,7 @@ func Run(opts Options) error {
 		VaultID:      svc.VaultID,
 		Fleet:        &api.FleetStore{Path: filepath.Join(paths.StateDir, "fleet.json")},
 		Shroud:       shroudProxy,
+		Roles:        roleStore,
 	}
 
 	// Closes a real gap this build has had since its first commit: cron

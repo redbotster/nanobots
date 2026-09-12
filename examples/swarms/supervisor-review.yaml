@@ -47,8 +47,13 @@ spec:
 
   snaps:
     # The team the board picked — one reviewer run per role.
-    - from: board.roles.*
+    # Both from the same list, in lockstep: the role's name and the line
+    # saying what it is for. Two separate lists would be two lists nothing
+    # guarantees are the same length (docs/fan-out.md).
+    - from: board.roles.*.name
       to: panel.role
+    - from: board.roles.*.focus
+      to: panel.focus
     # The shared brief goes to every reviewer unchanged; no marker, so it
     # isn't iterated.
     - from: board.brief

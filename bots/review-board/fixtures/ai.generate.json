@@ -1,4 +1,8 @@
 {
-  "roles": ["security engineer", "product designer", "on-call SRE"],
+  "roles": [
+    { "name": "Security engineer", "focus": "Credentials, secrets and data exposure: what an attacker can reach that they could not before, what gets logged or stored that should not, and what happens when a token leaks." },
+    { "name": "Design", "focus": "What a person actually experiences: whether the first run makes sense without explanation, what the error states look like, and what the interface implies that is not true." },
+    { "name": "SRE", "focus": "What happens at 3am: how this fails, whether the failure is visible, what it costs to roll back, and what a stuck or half-finished run leaves behind." }
+  ],
   "brief": "This ships to every user on day one and touches stored credentials, so blast radius matters more than elegance."
 }

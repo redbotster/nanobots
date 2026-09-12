@@ -24,14 +24,28 @@ spec:
       - name: work
         type: string
         required: true
+      # The live role library, rendered one line per role. Resolved per
+      # run from internal/roles rather than baked in here, so editing a
+      # role in Fleet changes the next review immediately. Empty when no
+      # library is configured, and the board then invents a team as it did
+      # before the library existed.
+      - name: roster
+        type: string
+        required: false
+        default: "{{roles.roster}}"
       - name: instructions
         type: string
         required: false
         description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
         default: "Pick the fewest reviewers that genuinely disagree with each other. Never pick two who would say the same thing."
     outputs:
+      # Each chosen role with the focus it was chosen for, so the two fan
+      # into a reviewer in lockstep from one list. Two separate lists
+      # would be two lists nothing guarantees are the same length — see
+      # docs/fan-out.md.
       - name: roles
-        type: list<string>
+        type: list<json>
+        schema: ./schemas/role.json
       - name: brief
         type: string
 
@@ -39,7 +53,7 @@ spec:
     - name: choose
       type: ai.generate
       prompt_file: ./prompts/choose.md
-      inputs: { work: "{{inputs.work}}", instructions: "{{inputs.instructions}}" }
+      inputs: { work: "{{inputs.work}}", roster: "{{inputs.roster}}", instructions: "{{inputs.instructions}}" }
       outputs:
         roles: "{{steps.choose.output.roles}}"
         brief: "{{steps.choose.output.brief}}"

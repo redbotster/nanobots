@@ -40,8 +40,13 @@ func (o *Orchestrator) resolveInputsAt(run *Run, rs *planner.ResolvedSwarm, botI
 	}
 
 	ctx := map[string]any{
-		"vars":   rs.Swarm.Spec.Vars,
-		"run":    map[string]any{"date": time.Now().Format("2006-01-02")},
+		"vars": rs.Swarm.Spec.Vars,
+		"run":  map[string]any{"date": time.Now().Format("2006-01-02")},
+		// Resolved per run rather than baked into a bot's YAML, so editing
+		// a role in the UI changes the next review immediately and no bot
+		// file has to be rewritten. Empty when no library is configured,
+		// which is how review-board falls back to inventing a team.
+		"roles":  map[string]any{"roster": o.roster(run)},
 		"memory": map[string]any{},
 	}
 
@@ -216,4 +221,21 @@ func (o *Orchestrator) fanOutLength(run *Run, snap schema.Snap) (int, error) {
 		}
 	}
 	return 0, fmt.Errorf("%s carries no %s marker", snap.From, planner.FanOutMarker)
+}
+
+// roster renders the live role library for {{roles.roster}}.
+//
+// A failure here is logged and treated as no roster rather than failing
+// the run: a review board with no roster invents a team, which is exactly
+// what it did before the library existed, and is a far better outcome than
+// refusing to review anything because a JSON file is malformed.
+func (o *Orchestrator) roster(run *Run) string {
+	if o.Roles == nil {
+		return ""
+	}
+	text, err := o.Roles.Roster()
+	if err != nil {
+		run.Log("", "", "role library: %v — reviewers will be chosen without it", err)
+	}
+	return text
 }

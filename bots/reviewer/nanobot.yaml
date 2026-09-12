@@ -27,6 +27,15 @@ spec:
       - name: role
         type: string
         required: true
+      # The one line defining this perspective, from the role library
+      # (roles/roles.yaml, editable in Fleet -> Roles). Optional: a board
+      # that invented a role rather than picking one has only a name, and
+      # a reviewer given just "security engineer" still works — it is
+      # simply reviewing from a shared idea of the role rather than from
+      # the user's own.
+      - name: focus
+        type: string
+        required: false
       - name: brief
         type: string
         required: false

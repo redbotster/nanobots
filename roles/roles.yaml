@@ -1,0 +1,78 @@
+# The role library: the perspectives a review team can be built from.
+#
+# A role is not a bot. `reviewer` becomes a security engineer or a designer
+# depending on what it is handed, which is why a review team is a swarm
+# shape rather than eight near-identical bots to maintain
+# (docs/supervisors.md).
+#
+# What this file adds is that the perspectives are now *named and yours*.
+# review-board used to invent them fresh every run from a prompt, so the
+# team was unrepeatable and there was nowhere to say what your security
+# reviewer actually cares about. It now picks from this roster.
+#
+# Edit these in the UI (Fleet -> Roles) rather than here if you want your
+# changes to survive a `git pull`: the UI writes overrides to
+# ~/.nanobots/state/roles.json and always shows you what a role shipped
+# with, so any edit can be put back.
+#
+# `focus` is the one line the reviewer is given about its own perspective.
+# Keep them sharp and non-overlapping — the board is told that two roles
+# which would raise the same concern is one role too many, and a roster of
+# blurry, overlapping perspectives is how review theatre starts.
+
+roles:
+  - id: product
+    name: Product
+    focus: >-
+      Whether this is the right thing to build at all: who asked for it, what
+      they will do differently once it exists, and what gets worse elsewhere
+      to pay for it.
+
+  - id: staff-engineer
+    name: Staff engineer
+    focus: >-
+      Correctness and complexity: what breaks under load or concurrency, what
+      this makes harder to change later, and where a simpler design would do
+      the same job.
+
+  - id: security
+    name: Security engineer
+    focus: >-
+      Credentials, secrets and data exposure: what an attacker can reach that
+      they could not before, what gets logged or stored that should not, and
+      what happens when a token leaks.
+
+  - id: design
+    name: Design
+    focus: >-
+      What a person actually experiences: whether the first run makes sense
+      without explanation, what the error states look like, and what the
+      interface implies that is not true.
+
+  - id: devex
+    name: Developer experience
+    focus: >-
+      The person maintaining this in six months: whether the failure messages
+      say what to do, whether it can be tested and run locally, and what a
+      newcomer would misread.
+
+  - id: sre
+    name: SRE
+    focus: >-
+      What happens at 3am: how this fails, whether the failure is visible,
+      what it costs to roll back, and what a stuck or half-finished run
+      leaves behind.
+
+  - id: qa
+    name: QA
+    focus: >-
+      How to break it: the inputs nobody thought about, the empty and the
+      enormous case, and which of the claimed behaviours nothing actually
+      checks.
+
+  - id: privacy
+    name: Data and privacy
+    focus: >-
+      What is collected, where it goes and how long it stays: whether the
+      data leaving this machine is what a user would expect, and whether any
+      of it is kept longer than the job needs.

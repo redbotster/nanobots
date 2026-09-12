@@ -17,6 +17,7 @@ import type {
   SwarmFull,
   SwarmSummary,
   ValidateSwarmRequest,
+  RoleLibrary,
 } from "./types";
 
 async function reqText(path: string): Promise<string> {
@@ -92,6 +93,10 @@ export const api = {
       body: JSON.stringify({ live }),
     }),
   fleet: () => req<Fleet>("/api/fleet"),
+  roles: () => req<RoleLibrary>("/api/roles"),
+  setRole: (id: string, body: { name?: string; focus?: string; retired?: boolean }) =>
+    req<RoleLibrary>(`/api/roles/${id}`, { method: "POST", body: JSON.stringify(body) }),
+  resetRole: (id: string) => req<RoleLibrary>(`/api/roles/${id}/reset`, { method: "POST" }),
   setBotInstructions: (botId: string, instructions: string) =>
     req<BotSummary>(`/api/bots/${botId}/instructions`, {
       method: "POST",

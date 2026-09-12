@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
+import { RoleLibrarySection } from "../components/RoleLibrary";
 import type { Fleet, FleetMember } from "../lib/types";
 
 /**
@@ -134,6 +135,8 @@ export function FleetPage() {
           ))}
         </div>
       )}
+
+      <RoleLibrarySection />
 
       {teamsWithTuned.length > 0 && (
         <section className="mt-8">

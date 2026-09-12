@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "role",
+  "description": "One chosen reviewer: the perspective's name and the single line saying what it is for.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "The role name, echoed verbatim from the roster when one was offered."
+    },
+    "focus": {
+      "type": "string",
+      "description": "What this role looks at. Copied from the roster, or written by the board when it had none."
+    }
+  },
+  "required": [
+    "name",
+    "focus"
+  ],
+  "additionalProperties": false
+}

@@ -22,6 +22,7 @@ import (
 	"github.com/redbotster/nanobots/internal/google"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/planner"
+	"github.com/redbotster/nanobots/internal/roles"
 	"github.com/redbotster/nanobots/internal/runner"
 	"github.com/redbotster/nanobots/internal/schema"
 	"github.com/redbotster/nanobots/internal/step"
@@ -310,6 +311,10 @@ func runRun(args []string) error {
 	}, paths, oc, svc, callbacks)
 	orch.Memory = mem
 	orch.LLM = gen
+	orch.Roles = &roles.Store{
+		CatalogPath:  filepath.Join(root, "roles", "roles.yaml"),
+		OverridePath: filepath.Join(paths.StateDir, "roles.json"),
+	}
 	// The same persistent store the daemon uses, so a run started here shows
 	// up in the WebUI's Runs page and survives this command exiting.
 	runs := wiring.BuildRunStore(paths, func(f string, a ...any) { fmt.Printf(f+"\n", a...) })

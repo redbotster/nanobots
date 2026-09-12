@@ -17,6 +17,7 @@ import (
 	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/planner"
+	"github.com/redbotster/nanobots/internal/roles"
 	"github.com/redbotster/nanobots/internal/schema"
 	"github.com/redbotster/nanobots/internal/step"
 )
@@ -38,6 +39,13 @@ type Orchestrator struct {
 	Services step.ServiceConfigs
 	// Memory backs every memory.* step. See internal/memory.
 	Memory memory.Store
+
+	// Roles is the review-role library. A bot can read the live roster
+	// through {{roles.roster}} in a port default, so a review board picks
+	// from what the user has actually configured rather than inventing a
+	// team from scratch each run. nil means no roster, and a board falls
+	// back to inventing — see internal/roles.
+	Roles *roles.Store
 
 	// LLM backs every ai.generate step — 1Claw Shroud, or a direct
 	// provider key. Nil means this deployment has no LLM at all, and bots

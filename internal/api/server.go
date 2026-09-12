@@ -17,6 +17,7 @@ import (
 	"github.com/redbotster/nanobots/internal/llm"
 	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/oneclaw"
+	"github.com/redbotster/nanobots/internal/roles"
 	"github.com/redbotster/nanobots/internal/runner"
 	"github.com/redbotster/nanobots/internal/schema"
 	"github.com/redbotster/nanobots/internal/step"
@@ -65,6 +66,10 @@ type Server struct {
 	// Fleet view rather than failing anything.
 	Fleet *FleetStore
 
+	// Roles is the review-role library shown in Fleet. nil leaves the
+	// endpoints reporting an empty library rather than failing.
+	Roles *roles.Store
+
 	// Shroud, when set, exposes /shroud/v1/* — an OpenAI-shaped endpoint
 	// that adds the headers Shroud needs, so a client that can only be
 	// given a base URL and a bearer token (Honcho) can still have its spend
@@ -88,6 +93,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/bots/{id}/services/{serviceId}/connection", s.handleSetBotServiceConnection)
 	mux.HandleFunc("POST /api/bots/{id}/instructions", s.handleSetBotInstructions)
 	mux.HandleFunc("GET /api/fleet", s.handleFleet)
+	mux.HandleFunc("GET /api/roles", s.handleListRoles)
+	mux.HandleFunc("POST /api/roles/{id}", s.handleSetRole)
+	mux.HandleFunc("POST /api/roles/{id}/reset", s.handleResetRole)
 	mux.HandleFunc("GET /api/swarms", s.handleListSwarms)
 	mux.HandleFunc("GET /api/swarms/plan", s.handlePlan)
 	mux.HandleFunc("GET /api/swarms/yaml", s.handleSwarmYAML)

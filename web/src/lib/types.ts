@@ -364,3 +364,31 @@ export interface Fleet {
   members: FleetMember[];
   teams: FleetTeam[];
 }
+
+/** One perspective a review team can be built from.
+ *
+ * Not a bot: `reviewer` becomes a security engineer or a designer depending
+ * on what it is handed, which is why a review team is a swarm shape rather
+ * than eight near-identical bots (docs/supervisors.md). */
+export interface Role {
+  id: string;
+  name: string;
+  /** The one line the reviewer is given about its own perspective. */
+  focus: string;
+  /** What roles/roles.yaml says, when you have changed it. Absent when
+   * unedited, or for a role you added — which has nothing to go back to. */
+  shipped?: string;
+  /** A role you wrote, rather than one that shipped. */
+  custom?: boolean;
+  /** Switched off: out of the roster, still in the library so it can be
+   * switched back on. */
+  retired?: boolean;
+}
+
+export interface RoleLibrary {
+  roles: Role[];
+  /** Exactly what a review board is shown. Returned by the server rather
+   * than rebuilt here, so the page can show the real thing. */
+  roster: string;
+  error?: string;
+}
