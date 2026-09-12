@@ -1,15 +1,33 @@
 import type { StatusResponse } from "../lib/types";
 
-function Banner({ headline, detail }: { headline: string; detail: string }) {
+function Banner({
+  headline,
+  detail,
+  action,
+}: {
+  headline: string;
+  detail: string;
+  /** A banner that names a problem without offering the fix makes the
+   * reader go hunting. Where the fix is one click away, it goes here. */
+  action?: { label: string; onClick: () => void };
+}) {
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-warn/40 bg-warn/[0.08] px-4 py-1.5 text-[12px] text-warn sm:px-6">
       <span className="font-medium">{headline}</span>
       <span className="text-warn/80">{detail}</span>
+      {action && (
+        <button
+          onClick={action.onClick}
+          className="rounded border border-warn/50 px-1.5 py-0.5 text-warn transition-colors hover:bg-warn/10"
+        >
+          {action.label}
+        </button>
+      )}
     </div>
   );
 }
 
-/** The two prerequisites that silently break everything, reported before you
+/** The prerequisites that silently break everything, reported before you
  * press Run rather than several steps into a failed run.
  *
  * Docker: every bot runs in a container, so a stopped daemon makes the whole
@@ -22,10 +40,23 @@ function Banner({ headline, detail }: { headline: string; detail: string }) {
  * written to Drive for real.
  *
  * Both clear themselves once /api/status (polled) sees the problem go away. */
-export function PrereqBanners({ status }: { status: StatusResponse | null }) {
+export function PrereqBanners({
+  status,
+  onOpenSettings,
+}: {
+  status: StatusResponse | null;
+  onOpenSettings?: () => void;
+}) {
   if (!status) return null;
   return (
     <>
+      {status.llm_backend === "none" && (
+        <Banner
+          headline="No model configured"
+          detail="— every bot will return its demo fixtures, which look exactly like real output."
+          action={onOpenSettings && { label: "Set one up", onClick: onOpenSettings }}
+        />
+      )}
       {!status.docker_available && (
         <Banner
           headline={status.docker_reason || "Docker isn't available"}

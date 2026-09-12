@@ -14,7 +14,7 @@ const tone: Record<Run["status"], "ok" | "warn" | "danger" | "muted"> = {
   pending: "muted",
 };
 
-export function RunsPage() {
+export function RunsPage({ onOpenSettings }: { onOpenSettings?: () => void }) {
   // null (not []) until the first fetch lands, so the empty state doesn't
   // flash "nothing has run yet" at someone who does in fact have runs.
   const runs = useRuns();
@@ -23,6 +23,7 @@ export function RunsPage() {
   if (selectedId) {
     return (
       <RunDetail
+        onOpenSettings={onOpenSettings}
         runId={selectedId}
         onBack={() => setSelectedId(null)}
         onOpenRun={setSelectedId}

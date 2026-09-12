@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseRunError, shortRunError } from "./runError";
+import { parseRunError, shortRunError, runRemedy } from "./runError";
 
 describe("parseRunError", () => {
   // Verbatim from a real failed run on this machine.
@@ -66,5 +66,71 @@ describe("shortRunError", () => {
 
   it("omits the separator when there is no origin", () => {
     expect(shortRunError("docker daemon not reachable")).toBe("docker daemon not reachable");
+  });
+});
+
+describe("runRemedy", () => {
+  // The failure six of fifteen catalog swarms actually hit.
+  it("offers to connect the service a missing credential names", () => {
+    const r = runRemedy(
+      'container exited 1: nanobot-agent: error: bot notify: step "send": callback ' +
+        '/internal/steps/notify: no connected account yet (oneclaw: request failed (404): ' +
+        '{"detail":"Secret slack/bot_token not found"}) — connect it from Settings',
+    );
+    expect(r?.action?.label).toBe("Connect Slack");
+    expect(r?.action?.page).toBe("settings");
+    expect(r?.advice).toContain("Slack");
+  });
+
+  it("names the right service, not just any service", () => {
+    const stripe = runRemedy('bot invoice-chaser: Secret stripe/api_key not found');
+    expect(stripe?.action?.label).toBe("Connect Stripe");
+    const gh = runRemedy('bot github-issues-digest: Secret github/token not found');
+    expect(gh?.action?.label).toBe("Connect GitHub");
+  });
+
+  // The vault fix is on a phone, so offering a button would be a lie about
+  // where the work happens.
+  it("explains the vault lock without pretending there is a button", () => {
+    const r = runRemedy("1Claw vault is locked: Passkey verification required to access vault secrets.");
+    expect(r?.advice).toContain("passkey");
+    expect(r?.action).toBeUndefined();
+  });
+
+  // A declined approval is a decision. Someone debugging their own "no" is
+  // the failure mode here.
+  it("says a declined approval was not a fault", () => {
+    const r = runRemedy('bot email-send-approved: step "gate": not approved (decided_by=cli)');
+    expect(r?.advice).toContain("wasn't a fault");
+  });
+
+  it("distinguishes an unattended decline from a human one", () => {
+    const r = runRemedy(
+      'step "gate": not approved (decided_by=nobody — no terminal attached to ask)',
+    );
+    expect(r?.advice).toContain("Nothing was attached");
+  });
+
+  it("points a fan-out length mismatch at the doc that explains it", () => {
+    const r = runRemedy(
+      "fan-out inputs disagree: triage.tickets.*.subject has 2 item(s) but an earlier one has 1 — they iterate together, so they must be the same length",
+    );
+    expect(r?.docs).toBe("docs/fan-out.md");
+  });
+
+  it("recognises a provider rate limit", () => {
+    const r = runRemedy(
+      "llm: https://generativelanguage.googleapis.com/... returned 429: quota exceeded",
+    );
+    expect(r?.advice).toContain("rate-limiting");
+  });
+
+  // A confidently wrong suggestion sends someone to reconfigure a thing
+  // that was never the problem, which is worse than saying nothing.
+  it("offers nothing for a failure it does not recognise", () => {
+    expect(runRemedy("bot repurposer: model response was not valid JSON")).toBeNull();
+    expect(runRemedy("something nobody has seen before")).toBeNull();
+    expect(runRemedy("")).toBeNull();
+    expect(runRemedy(null)).toBeNull();
   });
 });

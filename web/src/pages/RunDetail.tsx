@@ -5,7 +5,7 @@ import { Tabs } from "../components/Tabs";
 import { RunLog } from "../components/RunLog";
 import { RunResults } from "../components/RunResults";
 import { StatusDot } from "../components/StatusDot";
-import { parseRunError } from "../lib/runError";
+import { parseRunError, runRemedy } from "../lib/runError";
 
 const tone: Record<string, "ok" | "warn" | "danger" | "muted"> = {
   succeeded: "ok",
@@ -18,9 +18,16 @@ const tone: Record<string, "ok" | "warn" | "danger" | "muted"> = {
 /** The reason first, the full wrapped error behind a disclosure. The chain
  * that produced an error (container -> agent -> bot -> step -> callback) is
  * worth keeping, but it isn't what you're looking for when a run went red. */
-function FailureBanner({ error }: { error: string }) {
+function FailureBanner({
+  error,
+  onOpenSettings,
+}: {
+  error: string;
+  onOpenSettings?: () => void;
+}) {
   const [showRaw, setShowRaw] = useState(false);
   const parts = parseRunError(error);
+  const remedy = runRemedy(error);
   if (!parts) return null;
   const hasMore = parts.message.trim() !== error.trim();
   return (
@@ -38,6 +45,26 @@ function FailureBanner({ error }: { error: string }) {
       <p className="mt-1 whitespace-pre-wrap break-words text-[12px] leading-snug text-ink">
         {parts.message}
       </p>
+      {/* What to do about it. The reason alone leaves someone to work out
+          that "Secret slack/bot_token not found" means "go to Settings and
+          connect Slack" — which is one click away, and was six of the
+          fifteen catalog swarms' only problem. */}
+      {remedy && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 rounded border border-edge bg-void/60 px-2.5 py-1.5">
+          <span className="text-[12px] leading-snug text-muted">{remedy.advice}</span>
+          {remedy.action && onOpenSettings && (
+            <button
+              onClick={onOpenSettings}
+              className="rounded border border-tron/50 px-2 py-0.5 text-[11px] text-tron transition-colors hover:bg-tron/10"
+            >
+              {remedy.action.label}
+            </button>
+          )}
+          {remedy.docs && (
+            <code className="text-[11px] text-muted/70">{remedy.docs}</code>
+          )}
+        </div>
+      )}
       {hasMore && (
         <>
           <button
@@ -66,12 +93,15 @@ export function RunDetail({
   runId,
   onBack,
   onOpenRun,
+  onOpenSettings,
 }: {
   runId: string;
   onBack: () => void;
   /** Lets "Run it again" hand the caller the brand-new run's id so the page
    * follows the retry instead of stranding you on the corpse of the old one. */
   onOpenRun?: (runId: string) => void;
+  /** Lets a failure offer its own fix — see runRemedy. */
+  onOpenSettings?: () => void;
 }) {
   const { run } = useRun(runId);
   const [rerunning, setRerunning] = useState(false);
@@ -136,7 +166,9 @@ export function RunDetail({
 
         {/* The backend has always sent this; nothing rendered it, so a failed
             run said "failed" and made you read the whole log to find out why. */}
-        {run?.status === "failed" && run.error && <FailureBanner error={run.error} />}
+        {run?.status === "failed" && run.error && (
+          <FailureBanner error={run.error} onOpenSettings={onOpenSettings} />
+        )}
         {rerunError && (
           <div className="mt-3 rounded-lg border border-danger/40 bg-danger/[0.06] px-3.5 py-2.5 text-[12px] text-danger">
             Couldn't start it again: {rerunError}

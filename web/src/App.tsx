@@ -115,16 +115,24 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
             label="Advanced"
             labelClassName="hidden sm:inline"
           />
+          {/* The one fact worth a permanent slot: will a run do real work,
+              or produce fixture text that looks exactly like real work?
+              That is decided by whether a model is configured — which used
+              to read "Demo mode — no 1Claw key configured" and was wrong
+              the moment any provider key would do. 1Claw's own state lives
+              in Settings, where there is room to explain it. */}
           <div
             className="flex min-w-0 items-center gap-2 text-xs text-muted"
             title={
               apiUnreachable
                 ? "nanobotd unreachable — run `nanobots up`"
-                : status
-                  ? status.oneclaw_configured
-                    ? "1Claw connected"
-                    : "Demo mode — no 1Claw key configured"
-                  : "connecting…"
+                : !status
+                  ? "connecting…"
+                  : status.llm_backend === "none"
+                    ? "No model configured — every bot returns its demo fixtures. Set a key in Settings."
+                    : status.llm_guardrails
+                      ? `Live via ${status.llm_backend} — spend is budgeted and prompts are redacted before they leave this machine`
+                      : `Live via ${status.llm_backend} — prompts go straight to the provider, with no budget ceiling or redaction`
             }
           >
             {apiUnreachable ? (
@@ -136,11 +144,19 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
               </>
             ) : status ? (
               <>
-                <StatusDot tone={status.oneclaw_configured ? "ok" : "warn"} />
+                <StatusDot
+                  tone={
+                    status.llm_backend === "none"
+                      ? "warn"
+                      : status.llm_guardrails
+                        ? "ok"
+                        : "muted"
+                  }
+                />
                 <span className="hidden truncate sm:inline">
-                  {status.oneclaw_configured
-                    ? "1Claw connected"
-                    : "Demo mode — no 1Claw key configured"}
+                  {status.llm_backend === "none"
+                    ? "Demo mode — no model configured"
+                    : `Live · ${status.llm_backend}`}
                 </span>
               </>
             ) : (
@@ -190,12 +206,12 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       </aside>
 
       <main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-        <PrereqBanners status={status} />
+        <PrereqBanners status={status} onOpenSettings={() => setPage("settings")} />
         <div className="min-h-0 flex-1 overflow-hidden">
           {page === "swarm" && <SwarmsPage uiMode={uiMode} />}
           {page === "bots" && <BotLibrary />}
           {page === "fleet" && <FleetPage />}
-          {page === "runs" && <RunsPage />}
+          {page === "runs" && <RunsPage onOpenSettings={() => setPage("settings")} />}
           {page === "settings" && <SettingsPage status={status} />}
         </div>
       </main>
