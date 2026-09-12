@@ -45,9 +45,16 @@ type Server struct {
 	// other credential-loading call in this build already reads from.
 	EnvFilePath string
 
-	// docker caches the "is Docker running" probe behind the status
-	// endpoint. Zero value is ready to use.
+	// VaultID is the shared 1Claw vault every connected service's credential
+	// lives in ("nanobots-main"), resolved once at startup by
+	// internal/wiring. Empty means 1Claw isn't configured, and the lock
+	// probe stays silent.
+	VaultID string
+
+	// docker and vault cache their probes behind the status endpoint. Zero
+	// values are ready to use.
 	docker dockerProbe
+	vault  vaultProbe
 }
 
 func (s *Server) swarmsDir() string {
@@ -115,6 +122,33 @@ func withCORS(next http.Handler) http.Handler {
 	})
 }
 
+// vaultProbe caches the "is the 1Claw vault locked" check. Longer TTL than
+// Docker's: unlocking involves a passkey prompt on another device, so
+// nobody does it inside 20 seconds, and this one is a network round trip
+// rather than a local command.
+type vaultProbe struct {
+	mu        sync.Mutex
+	checkedAt time.Time
+	locked    bool
+	detail    string
+}
+
+const vaultProbeTTL = 20 * time.Second
+
+func (p *vaultProbe) get(now time.Time, oc *oneclaw.Client, vaultID string) (bool, string) {
+	if oc == nil || !oc.Configured() || vaultID == "" {
+		return false, ""
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.checkedAt.IsZero() && now.Sub(p.checkedAt) < vaultProbeTTL {
+		return p.locked, p.detail
+	}
+	p.locked, p.detail = oc.VaultLocked(vaultID)
+	p.checkedAt = now
+	return p.locked, p.detail
+}
+
 // dockerProbe caches runner.DockerAvailable for a few seconds. The status
 // endpoint is polled by every open tab, and shelling out to `docker version`
 // on each poll would be wasteful; a few seconds of staleness is invisible
@@ -140,9 +174,15 @@ func (p *dockerProbe) get(now time.Time) (bool, string) {
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	dockerOK, dockerReason := s.docker.get(time.Now())
+	now := time.Now()
+	dockerOK, dockerReason := s.docker.get(now)
+	vaultLocked, vaultReason := s.vault.get(now, s.OneClaw, s.VaultID)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"oneclaw_configured": s.OneClaw != nil && s.OneClaw.Configured(),
+		// A locked vault blocks every Slack/GitHub/Stripe/HubSpot bot at
+		// once, and is fixed on the user's phone, not here.
+		"vault_locked": vaultLocked,
+		"vault_reason": vaultReason,
 		// Reported separately from oneclaw because they fail independently
 		// and the fixes are unrelated: one is a key, the other is an app
 		// you have to go start.

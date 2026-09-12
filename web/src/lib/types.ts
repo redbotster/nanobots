@@ -153,6 +153,12 @@ export interface StatusResponse {
   /** One line, only when docker_available is false: "Docker isn't running",
    * "Docker isn't installed", or a timeout. */
   docker_reason: string;
+  /** 1Claw's vault re-locks on its own schedule and needs passkey
+   * verification. While locked, every bot with a Slack/GitHub/Stripe/HubSpot
+   * credential fails — several steps into a run, after earlier bots have
+   * already done real work. Reported up front for the same reason Docker is. */
+  vault_locked: boolean;
+  vault_reason: string;
 }
 
 export interface SwarmSummary {

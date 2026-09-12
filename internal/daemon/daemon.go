@@ -100,6 +100,7 @@ func Run(opts Options) error {
 		Foundry:      foundryOrch,
 		FoundryJobs:  foundry.NewJobStore(),
 		EnvFilePath:  opts.EnvFilePath,
+		VaultID:      svc.VaultID,
 	}
 
 	// Closes a real gap this build has had since its first commit: cron

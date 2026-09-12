@@ -61,6 +61,14 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
             : "No key configured — everything runs in demo mode"}
         </div>
         {!status?.oneclaw_configured && <OneClawKeySetup />}
+        {status?.oneclaw_configured && (
+          <div className="mt-2 flex items-center gap-2 text-sm">
+            <StatusDot tone={status.vault_locked ? "warn" : "ok"} />
+            {status.vault_locked
+              ? `Vault locked — ${status.vault_reason || "unlock it with your passkey"}`
+              : "Vault unlocked — connected credentials are readable"}
+          </div>
+        )}
       </section>
 
       <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-4">

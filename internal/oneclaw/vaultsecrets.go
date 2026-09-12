@@ -40,3 +40,30 @@ func (c *Client) GetSecret(vaultID, path string) (string, error) {
 	}
 	return resp.Value, nil
 }
+
+// VaultLocked reports whether the vault is currently refusing secret reads
+// pending passkey verification.
+//
+// 1Claw's vault re-locks on its own schedule, and until now the only way to
+// discover that was to start a swarm and watch a bot fail several steps in,
+// after earlier bots had already done real work. The lock blocks every
+// Slack/GitHub/Stripe/HubSpot bot in the catalog at once, so it deserves to
+// be visible before you press Run — the same argument as reporting whether
+// Docker is running.
+//
+// It probes by reading a path that intentionally does not exist: a locked
+// vault answers 403 before it ever looks the path up, an unlocked one
+// answers 404. Nothing is created and no real secret is read, so this is
+// safe to poll.
+func (c *Client) VaultLocked(vaultID string) (locked bool, detail string) {
+	_, err := c.GetSecret(vaultID, "nanobots-lock-probe-does-not-exist")
+	if err == nil {
+		return false, "" // someone really made that key; unlocked either way
+	}
+	if l, ok := AsVaultLocked(err); ok {
+		return true, l.Detail
+	}
+	// A 404, a network blip, anything else: not evidence of a lock, and
+	// guessing "locked" would nag about a problem that may not exist.
+	return false, ""
+}

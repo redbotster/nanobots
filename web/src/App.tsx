@@ -7,7 +7,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { LandingPage } from "./pages/LandingPage";
 import { StatusDot } from "./components/StatusDot";
 import { Switch } from "./components/Switch";
-import { DockerBanner } from "./components/DockerBanner";
+import { PrereqBanners } from "./components/PrereqBanners";
 import { useUIMode } from "./lib/uiMode";
 import { useApprovalNotifications } from "./lib/useApprovalNotifications";
 import { useTheme } from "./lib/theme";
@@ -186,7 +186,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       </aside>
 
       <main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-        <DockerBanner status={status} />
+        <PrereqBanners status={status} />
         <div className="min-h-0 flex-1 overflow-hidden">
           {page === "swarm" && <SwarmsPage uiMode={uiMode} />}
           {page === "bots" && <BotLibrary />}

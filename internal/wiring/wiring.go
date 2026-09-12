@@ -70,6 +70,10 @@ func ResolvePaths() (Paths, error) {
 // zero value is entirely valid: it means "every service runs on demo
 // fixtures", which is exactly what an unconfigured machine should do.
 type ServiceConfigs struct {
+	// VaultID is the shared "nanobots-main" vault every provider's
+	// credential lives in. Exposed so the API can probe whether it's
+	// currently locked; empty when 1Claw isn't configured.
+	VaultID  string
 	Google   step.GoogleConfig
 	GitHub   step.GitHubConfig
 	Slack    step.SlackConfig
@@ -106,6 +110,7 @@ func BuildServiceConfigs(oc *oneclaw.Client, envFilePath string, logf Logf) (Ser
 	if err != nil {
 		return cfg, fmt.Errorf("ensure 1Claw vault for connected-service credentials: %w", err)
 	}
+	cfg.VaultID = vault.ID
 	cfg.GitHub = step.GitHubConfig{VaultID: vault.ID}
 	cfg.Slack = step.SlackConfig{VaultID: vault.ID}
 	cfg.Stripe = step.StripeConfig{VaultID: vault.ID}
