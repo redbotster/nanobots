@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { LoggableJob } from "../lib/types";
 import { api } from "../lib/api";
 import { Button } from "./Button";
@@ -17,12 +17,32 @@ export function RunLog({
   onDecide,
 }: {
   run: LoggableJob | null;
-  onDecide?: (approvalId: string, approved: boolean) => void;
+  onDecide?: (approvalId: string, approved: boolean) => void | Promise<void>;
 }) {
   const endRef = useRef<HTMLDivElement>(null);
-  const decide = onDecide ?? ((approvalId: string, approved: boolean) => {
-    if (run) api.decideApproval(run.id, approvalId, approved);
-  });
+  // This is the one control that authorises a real send, post or payment.
+  // It used to be fire-and-forget — no await, no catch, no disabled state,
+  // no confirmation — so a failed decide call was a completely silent
+  // no-op: the button looked clicked, nothing happened, and the run just
+  // sat there waiting.
+  const [deciding, setDeciding] = useState<string | null>(null);
+  const [decideError, setDecideError] = useState<string | null>(null);
+
+  const decide = async (approvalId: string, approved: boolean) => {
+    setDeciding(approvalId);
+    setDecideError(null);
+    try {
+      if (onDecide) {
+        await onDecide(approvalId, approved);
+      } else if (run) {
+        await api.decideApproval(run.id, approvalId, approved);
+      }
+    } catch (e) {
+      setDecideError(String(e));
+    } finally {
+      setDeciding(null);
+    }
+  };
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
@@ -79,14 +99,24 @@ export function RunLog({
             <Button
               variant="ghost"
               className="border-edge text-muted"
-              onClick={() => decide(pa.id, false)}
+              disabled={deciding === pa.id}
+              onClick={() => void decide(pa.id, false)}
             >
               Skip
             </Button>
-            <Button variant="primary" onClick={() => decide(pa.id, true)}>
-              Approve
+            <Button
+              variant="primary"
+              disabled={deciding === pa.id}
+              onClick={() => void decide(pa.id, true)}
+            >
+              {deciding === pa.id ? "Sending…" : "Approve"}
             </Button>
           </div>
+          {decideError && (
+            <p className="mt-2 w-full text-[12px] text-danger">
+              Couldn't record that decision: {decideError}
+            </p>
+          )}
         </div>
       ))}
     </div>

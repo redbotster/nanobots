@@ -165,7 +165,16 @@ export function BuilderCanvas({
     const originX = bot.x;
     const originY = bot.y;
     const onMove = (ev: MouseEvent) => {
-      onMoveBot(instanceId, originX + (ev.clientX - startX), originY + (ev.clientY - startY));
+      // Clamped at the origin: dragging a node up and left past 0,0 put it
+      // at negative coordinates inside an overflow-auto container, which
+      // clamps scrollLeft/scrollTop to 0 — so the node became permanently
+      // invisible and unreachable, while staying in the swarm, keeping its
+      // connections, and getting written into the saved YAML.
+      onMoveBot(
+        instanceId,
+        Math.max(0, originX + (ev.clientX - startX)),
+        Math.max(0, originY + (ev.clientY - startY)),
+      );
     };
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
@@ -225,7 +234,13 @@ export function BuilderCanvas({
       ref={canvasRef}
       className="relative h-full min-h-[420px] w-full overflow-auto bg-[radial-gradient(circle,theme(colors.edge)_1px,transparent_1px)] bg-[length:20px_20px]"
     >
-      <svg className="pointer-events-none absolute left-0 top-0 h-[2000px] w-[2000px] overflow-visible">
+      {/* z-20 puts the connector layer above the nodes (z-10). The layer
+          itself is pointer-events-none so it never steals a click meant for
+          a node; only the remove handles inside it opt back in. Without
+          this, a node dragged over a connection's midpoint covered its
+          remove handle completely and the connection became impossible to
+          delete — there is no other affordance for removing one. */}
+      <svg className="pointer-events-none absolute left-0 top-0 z-20 h-[2000px] w-[2000px] overflow-visible">
         {snaps.map((s, i) => {
           const fromEp = endpointPort(s.from);
           const toEp = endpointPort(s.to);
@@ -284,7 +299,7 @@ export function BuilderCanvas({
         return (
           <div
             key={bot.instanceId}
-            style={{ left: bot.x, top: bot.y, width: NODE_WIDTH }}
+            style={{ left: bot.x, top: bot.y, width: NODE_WIDTH, zIndex: 10 }}
             className={`absolute select-none rounded-lg border bg-panel shadow-glow-sm ${
               selectedInstanceId === bot.instanceId ? "border-tron" : "border-edge-strong"
             }`}

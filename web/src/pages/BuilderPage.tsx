@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { api } from "../lib/api";
 import type {
   BotSummary,
@@ -27,6 +27,21 @@ function uniqueInstanceId(base: string, existing: Set<string>): string {
 // port dots), so two nodes placed only a node-width apart visually collide.
 function defaultPosition(index: number) {
   return { x: 40 + (index % 3) * 360, y: 40 + Math.floor(index / 3) * 220 };
+}
+
+/** The first grid slot nothing already occupies.
+ *
+ * Placing by bots.length meant that after any delete the next bot landed
+ * exactly on top of an existing one — add A, add B, delete A, add C, and B
+ * and C sit at identical coordinates, fully stacked. The palette click looks
+ * like it did nothing, or like it replaced the node you could see, while the
+ * hidden bot is still in the swarm and still gets saved. */
+function freePosition(taken: { x: number; y: number }[]) {
+  for (let i = 0; i < 200; i++) {
+    const pos = defaultPosition(i);
+    if (!taken.some((b) => b.x === pos.x && b.y === pos.y)) return pos;
+  }
+  return defaultPosition(taken.length);
 }
 
 /** The visual swarm builder: place bots from the catalog onto a canvas,
@@ -69,6 +84,9 @@ export function BuilderPage({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [templates, setTemplates] = useState<SwarmSummary[]>([]);
+  // A ref, not state: it only ever gates the leave guard, and flipping it
+  // shouldn't cause a render in the middle of navigating away.
+  const savedRef = useRef(false);
 
   useEffect(() => {
     api.listBots().then((list) => {
@@ -156,7 +174,7 @@ export function BuilderPage({
 
   const addBot = (bot: BotSummary) => {
     const id = uniqueInstanceId(bot.id, new Set(bots.map((b) => b.instanceId)));
-    const pos = defaultPosition(bots.length);
+    const pos = freePosition(bots);
     setBots((prev) => [...prev, { instanceId: id, botId: bot.id, x: pos.x, y: pos.y }]);
   };
 
@@ -215,6 +233,7 @@ export function BuilderPage({
         })),
         snaps,
       });
+      savedRef.current = true; // a successful save is not unsaved work
       onDone(result.path);
     } catch (e) {
       setSaveError(String(e));
@@ -225,11 +244,33 @@ export function BuilderPage({
 
   const canSave = name.trim() !== "" && bots.length > 0 && !saving;
 
+  // Node layout isn't persisted and there's no draft storage, so leaving is
+  // genuinely destructive — a ten-minute build was one stray click from
+  // nothing, with no dialog and no undo. "Dirty" is deliberately generous:
+  // anything placed at all counts, since a swarm with bots on the canvas is
+  // work worth protecting whether or not it's been named yet.
+  const dirty = bots.length > 0 && !savedRef.current;
+
+  const leave = () => {
+    if (dirty && !window.confirm("Leave the builder? Your unsaved changes to this swarm will be lost.")) {
+      return;
+    }
+    onDone();
+  };
+
+  // Covers reload and tab-close, which the in-app guard can't see.
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
   return (
     <div className="grid h-full grid-rows-[auto_1fr]">
       <header className="flex flex-wrap items-center gap-3 border-b border-edge px-4 py-3 sm:px-6">
         <button
-          onClick={() => onDone()}
+          onClick={leave}
           className="font-display text-xs text-muted hover:text-ink"
         >
           ← Swarms

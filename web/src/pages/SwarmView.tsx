@@ -28,6 +28,7 @@ export function SwarmView({
   const [bots, setBots] = useState<Record<string, BotSummary>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("log");
@@ -50,10 +51,18 @@ export function SwarmView({
     setPlan(null);
     setSelected(null);
     setRunId(null);
-    api.plan(SWARM_PATH).then(setPlan).catch(() => {});
-    api.listBots().then((list) => {
-      setBots(Object.fromEntries(list.map((b) => [b.id, b])));
-    });
+    setLoadError(null);
+    // Both of these used to swallow their failures — plan into an empty
+    // catch, listBots into nothing at all — so a 500 from either left the
+    // page showing "Loading swarm…" forever with Run once still enabled.
+    api
+      .plan(SWARM_PATH)
+      .then(setPlan)
+      .catch((e) => setLoadError(String(e)));
+    api
+      .listBots()
+      .then((list) => setBots(Object.fromEntries(list.map((b) => [b.id, b]))))
+      .catch((e) => setLoadError(String(e)));
   }, [SWARM_PATH]);
 
   const order = plan?.order ?? [];
@@ -180,9 +189,14 @@ export function SwarmView({
               </div>
             );
           })}
-          {order.length === 0 && (
-            <div className="text-sm text-muted">Loading swarm…</div>
-          )}
+          {order.length === 0 &&
+            (loadError ? (
+              <div className="max-w-xl rounded border border-danger/40 bg-danger/5 px-4 py-3 text-sm text-danger">
+                Couldn't load this swarm: {loadError}
+              </div>
+            ) : (
+              <div className="text-sm text-muted">Loading swarm…</div>
+            ))}
         </div>
 
         {plan && !plan.ok && (
