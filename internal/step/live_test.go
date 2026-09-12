@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/schema"
 )
@@ -27,6 +28,10 @@ func newLiveDepsAgainst(t *testing.T, mux *http.ServeMux) *LiveDeps {
 		t.Fatal(err)
 	}
 	ld := NewLiveDeps(oc, oneclaw.NewShroudClient("agent-1", "ocv_x"), "agent-1", t.TempDir(), blobs)
+	// Memory is pluggable now (internal/memory); these tests are about the
+	// 1Claw backend specifically, so say so rather than relying on a
+	// default.
+	ld.Memory = &memory.OneClaw{Client: oc, AgentID: "agent-1"}
 	ld.ApprovalPoll = time.Millisecond
 	ld.ApprovalTimeout = time.Second
 	return ld

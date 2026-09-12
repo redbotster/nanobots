@@ -8,12 +8,17 @@ import (
 	"strings"
 	"testing"
 
+	"errors"
 	"github.com/redbotster/nanobots/internal/schema"
 )
 
 // fakeDeps is a minimal, fully-controllable Deps for unit testing the
 // interpreter's control flow without touching fixtures, Chrome, or a real
 // blob store.
+// ErrFakeNoRecall stands in for a key/value-only backend, so tests can
+// check that memory.recall fails loudly rather than answering nothing.
+var ErrFakeNoRecall = errors.New("fake: no recall configured")
+
 type fakeDeps struct {
 	serviceResult any
 	serviceErr    error
@@ -22,6 +27,8 @@ type fakeDeps struct {
 	approve       bool
 	approvedBy    string
 	memory        map[string]string
+	recall        func(namespace, question string) string
+	remembered    []string
 	notifyCalled  bool
 	renderResult  []byte
 	renderMime    string
@@ -43,6 +50,16 @@ func (f *fakeDeps) Now() string { return "2026-09-10T00:00:00Z" }
 func (f *fakeDeps) MemoryGet(namespace, key string) (string, bool, error) {
 	v, ok := f.memory[namespace+"/"+key]
 	return v, ok, nil
+}
+func (f *fakeDeps) MemoryRecall(namespace, question string) (string, error) {
+	if f.recall == nil {
+		return "", ErrFakeNoRecall
+	}
+	return f.recall(namespace, question), nil
+}
+func (f *fakeDeps) MemoryRemember(namespace, text string) error {
+	f.remembered = append(f.remembered, text)
+	return nil
 }
 func (f *fakeDeps) MemoryPut(namespace, key, value string) error {
 	if f.memory == nil {

@@ -72,12 +72,18 @@ func Run(opts Options) error {
 		return err
 	}
 
+	mem, err := wiring.BuildMemory(paths, opts.EnvFilePath, oc, func(f string, a ...any) { log.Printf(f, a...) })
+	if err != nil {
+		return err
+	}
+
 	callbacks := runner.NewCallbackRegistry()
 	orch := wiring.BuildOrchestrator(wiring.OrchestratorOpts{
 		RepoRoot:     opts.RepoRoot,
 		BotsDir:      opts.BotsDir,
 		CallbackPort: portOf(opts.Addr),
 	}, paths, oc, svc, callbacks)
+	orch.Memory = mem
 
 	foundryOrch := &foundry.Orchestrator{Config: foundry.Config{
 		RepoRoot:      opts.RepoRoot,

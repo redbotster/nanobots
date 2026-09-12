@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"context"
+	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/schema"
 )
@@ -16,9 +18,12 @@ import (
 // OAuth wiring). Rendering, the clock, and demo fallback all delegate to an
 // embedded DemoDeps rather than duplicating that logic.
 type LiveDeps struct {
-	OneClaw   *oneclaw.Client
-	Shroud    *oneclaw.ShroudClient
-	AgentID   string
+	OneClaw *oneclaw.Client
+	Shroud  *oneclaw.ShroudClient
+	AgentID string
+	// Memory is the backend behind memory.* steps — local files, 1Claw, a
+	// Honcho server, or a composite of two. See internal/memory.
+	Memory    memory.Store
 	Blobstore BlobStore
 	Demo      *DemoDeps
 
@@ -156,13 +161,43 @@ func (l *LiveDeps) Render(templatePath string, data any, to string) ([]byte, str
 
 func (l *LiveDeps) Now() string { return l.Demo.Now() }
 
+// Memory is where this bot remembers things. Never nil in practice —
+// internal/runner always supplies one, defaulting to local files — so
+// memory works whether or not 1Claw is configured, which it previously
+// did not.
+func (l *LiveDeps) memory() memory.Store {
+	if l.Memory != nil {
+		return l.Memory
+	}
+	// A LiveDeps built without one still shouldn't panic; behave as a bot
+	// with nothing remembered.
+	return &memory.Composite{KV: emptyMemory{}}
+}
+
 func (l *LiveDeps) MemoryGet(namespace, key string) (string, bool, error) {
-	return l.OneClaw.MemoryGet(l.AgentID, namespace, key)
+	return l.memory().Get(context.Background(), namespace, key)
 }
 
 func (l *LiveDeps) MemoryPut(namespace, key, value string) error {
-	return l.OneClaw.MemoryPut(l.AgentID, namespace, key, value)
+	return l.memory().Put(context.Background(), namespace, key, value)
 }
+
+func (l *LiveDeps) MemoryRecall(namespace, question string) (string, error) {
+	return memory.Recall(context.Background(), l.memory(), namespace, question)
+}
+
+func (l *LiveDeps) MemoryRemember(namespace, text string) error {
+	return memory.Remember(context.Background(), l.memory(), namespace, text)
+}
+
+// emptyMemory is the "no store configured" fallback: reads find nothing,
+// writes are dropped. Only reachable if a caller builds LiveDeps by hand.
+type emptyMemory struct{}
+
+func (emptyMemory) Get(context.Context, string, string) (string, bool, error) {
+	return "", false, nil
+}
+func (emptyMemory) Put(context.Context, string, string, string) error { return nil }
 
 // Approve opens a real 1Claw approval and blocks until a human decides in
 // the WebUI, dashboard, or 1Claw mobile app — unless Approver is set, in

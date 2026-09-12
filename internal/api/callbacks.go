@@ -172,3 +172,46 @@ func (s *Server) handleStepNotify(w http.ResponseWriter, r *http.Request) {
 	}
 	writeCallbackResult(w, nil)
 }
+
+// handleStepMemoryRecall answers a bot's natural-language question from
+// whatever memory backend this daemon is configured with. Unlike
+// memory.get, a backend that can't do this returns an error rather than an
+// empty answer — see internal/memory's ErrNoRecall.
+func (s *Server) handleStepMemoryRecall(w http.ResponseWriter, r *http.Request) {
+	deps, ok := s.depsFromRequest(r)
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	var req struct{ Namespace, Question string }
+	if err := decodeJSON(r, &req); err != nil {
+		writeCallbackError(w, err)
+		return
+	}
+	answer, err := deps.MemoryRecall(req.Namespace, req.Question)
+	if err != nil {
+		writeCallbackError(w, err)
+		return
+	}
+	writeCallbackResult(w, map[string]any{"answer": answer})
+}
+
+// handleStepMemoryRemember records an observation for a recall-capable
+// backend to derive from later.
+func (s *Server) handleStepMemoryRemember(w http.ResponseWriter, r *http.Request) {
+	deps, ok := s.depsFromRequest(r)
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	var req struct{ Namespace, Text string }
+	if err := decodeJSON(r, &req); err != nil {
+		writeCallbackError(w, err)
+		return
+	}
+	if err := deps.MemoryRemember(req.Namespace, req.Text); err != nil {
+		writeCallbackError(w, err)
+		return
+	}
+	writeCallbackResult(w, map[string]any{"ok": true})
+}

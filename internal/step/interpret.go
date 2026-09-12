@@ -131,6 +131,35 @@ func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, swarmVars map[
 				log(s.Name, "memory.put %s", s.Key)
 			}
 
+		case "memory.recall":
+			// Unlike memory.get, this is not best-effort. A bot asking a
+			// question is using the answer to decide something; quietly
+			// substituting "nothing known" for "your backend can't do
+			// this" would make it behave wrongly rather than visibly fail.
+			// A recall-capable backend returning an empty answer is fine —
+			// that genuinely is "nothing known yet".
+			question := fmt.Sprint(resolveValue(firstNonEmpty(s.Query, s.Value), ctx))
+			if strings.TrimSpace(question) == "" {
+				err = fmt.Errorf("memory.recall needs a `query`")
+				break
+			}
+			out, err = deps.MemoryRecall(nb.Metadata.Name, question)
+			if err == nil {
+				log(s.Name, "memory.recall %q -> %d chars", truncate(question, 48), len(fmt.Sprint(out)))
+			}
+
+		case "memory.remember":
+			// Best-effort, like memory.put: noting an observation must not
+			// fail a run, and on a key/value backend there is nowhere for
+			// it to go at all.
+			text := fmt.Sprint(resolveValue(firstNonEmpty(s.Value, s.Query), ctx))
+			out = text
+			if memErr := deps.MemoryRemember(nb.Metadata.Name, text); memErr != nil {
+				log(s.Name, "memory.remember failed, continuing without it: %v", memErr)
+			} else {
+				log(s.Name, "memory.remember (%d chars)", len(text))
+			}
+
 		case "approve":
 			summary := fmt.Sprint(resolveValue(s.Summary, ctx))
 			var approved bool
@@ -456,4 +485,11 @@ func checkType(val any, pt schema.ParsedType) error {
 		// events are opaque for now; anything goes.
 	}
 	return nil
+}
+
+func firstNonEmpty(a, b string) string {
+	if strings.TrimSpace(a) != "" {
+		return a
+	}
+	return b
 }

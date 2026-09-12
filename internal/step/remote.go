@@ -106,6 +106,20 @@ func (r *RemoteDeps) MemoryGet(namespace, key string) (string, bool, error) {
 	return out.Value, out.Found, err
 }
 
+func (r *RemoteDeps) MemoryRecall(namespace, question string) (string, error) {
+	var out struct {
+		Answer string `json:"answer"`
+	}
+	err := r.call("/internal/steps/memory_recall",
+		map[string]any{"namespace": namespace, "question": question}, &out)
+	return out.Answer, err
+}
+
+func (r *RemoteDeps) MemoryRemember(namespace, text string) error {
+	return r.call("/internal/steps/memory_remember",
+		map[string]any{"namespace": namespace, "text": text}, nil)
+}
+
 func (r *RemoteDeps) MemoryPut(namespace, key, value string) error {
 	return r.call("/internal/steps/memory_put", map[string]any{"namespace": namespace, "key": key, "value": value}, nil)
 }

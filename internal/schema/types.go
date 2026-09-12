@@ -101,7 +101,11 @@ type Step struct {
 	Template   string         `json:"template,omitempty" yaml:"template,omitempty"`
 	To         string         `json:"to,omitempty" yaml:"to,omitempty"`
 	Key        string         `json:"key,omitempty" yaml:"key,omitempty"`
-	Value      string         `json:"value,omitempty" yaml:"value,omitempty"`
+	// Query is memory.recall's question, in plain language — "what does
+	// this person usually escalate?" — as opposed to Key, which names one
+	// stored value.
+	Query string `json:"query,omitempty" yaml:"query,omitempty"`
+	Value string `json:"value,omitempty" yaml:"value,omitempty"`
 	// Data is transform.pick's payload — unlike Value (a plain string, used
 	// by memory.put), this can be any YAML shape (a string, a number, an
 	// object) so a step can build something like an event payload directly.

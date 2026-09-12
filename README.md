@@ -4,7 +4,7 @@
 
 Nanobots is a local-first system for composing single-job AI/deterministic containers ("nanobots") into typed, DAG-shaped workflows ("nanoswarms"), with secrets, OAuth, LLM routing, and guardrails delegated to [1Claw](https://docs.1claw.co).
 
-The full product spec lives in [`context/NANOBOTS-BLUEPRINT.md`](context/NANOBOTS-BLUEPRINT.md) and [`context/NANOBOTS-CATALOG.md`](context/NANOBOTS-CATALOG.md). Treat those as the source of truth for the YAML schemas and the launch catalog; this README covers what's actually built, and is kept in sync with it — if something here contradicts the code, the code wins. `docs/` has one page per concept — contract, connections, harnesses, approvals, the 1Claw bridge, Browser Bridge, the foundry, the scheduler, run history, fan-out — each ending in how to run it for real.
+The full product spec lives in [`context/NANOBOTS-BLUEPRINT.md`](context/NANOBOTS-BLUEPRINT.md) and [`context/NANOBOTS-CATALOG.md`](context/NANOBOTS-CATALOG.md). Treat those as the source of truth for the YAML schemas and the launch catalog; this README covers what's actually built, and is kept in sync with it — if something here contradicts the code, the code wins. `docs/` has one page per concept — contract, connections, harnesses, approvals, the 1Claw bridge, Browser Bridge, the foundry, the scheduler, run history, fan-out, memory — each ending in how to run it for real.
 
 ## Why nanobots, not one big agent
 
@@ -247,7 +247,7 @@ Per the project's own working style, expensive verification is a single consolid
 go build ./... && go vet ./... && go test ./...
 ```
 
-323 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
+332 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
 - `internal/contract`'s `TestRunConformanceOnLaunchBots` — auto-discovers and conformance-tests all 30 bots under `bots/` against their own fixtures, no Docker or network.
 - `internal/planner`'s `TestPlanAllExampleSwarms` — auto-discovers and type-checks all 14 swarms under `examples/swarms/`.
 - httptest-mocked 1Claw/Google/Slack/GitHub/Stripe/HubSpot/X/LinkedIn API clients, built against each provider's real, documented endpoint shapes (verified against `@1claw/openapi-spec` and each provider's own docs, not guessed).

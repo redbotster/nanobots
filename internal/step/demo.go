@@ -122,6 +122,34 @@ func (d *DemoDeps) MemoryGet(namespace, key string) (string, bool, error) {
 	return v, ok, nil
 }
 
+// MemoryRecall answers from a fixture, so a bot that uses recall can be
+// conformance-tested offline like every other step. `fixtures/memory.recall.json`
+// holds either a plain string or {"<question>": "<answer>"}; anything not
+// covered answers empty, which is a legitimate "nothing known".
+func (d *DemoDeps) MemoryRecall(namespace, question string) (string, error) {
+	raw, err := os.ReadFile(filepath.Join(d.FixturesDir, "memory.recall.json"))
+	if err != nil {
+		return "", nil
+	}
+	var byQuestion map[string]string
+	if err := json.Unmarshal(raw, &byQuestion); err == nil {
+		if a, ok := byQuestion[question]; ok {
+			return a, nil
+		}
+		return "", nil
+	}
+	var single string
+	if err := json.Unmarshal(raw, &single); err == nil {
+		return single, nil
+	}
+	return "", nil
+}
+
+// MemoryRemember is a no-op in demo mode: there is nothing deriving from
+// observations, and failing here would make an offline conformance run
+// depend on a server.
+func (d *DemoDeps) MemoryRemember(namespace, text string) error { return nil }
+
 func (d *DemoDeps) MemoryPut(namespace, key, value string) error {
 	if d.memory[namespace] == nil {
 		d.memory[namespace] = map[string]string{}

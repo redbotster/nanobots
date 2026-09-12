@@ -1,0 +1,65 @@
+# Memory
+
+What a bot remembers between runs.
+
+Until now there was one option and it wasn't really memory: a flat key/value store on a 1Claw agent, reachable only if 1Claw was configured. Two bots used it, for `last_run_at` and `last_summary`. Worse, without a 1Claw key those bots quietly behaved differently — `competitor-watch` reported everything as new on every run, because of a credential that has nothing to do with what it was remembering.
+
+## Two capabilities, not one
+
+`internal/memory` has two interfaces on purpose, because they are genuinely different things and one interface would force every backend to fake whichever half it lacks:
+
+| | what it does | who has it |
+|---|---|---|
+| `Store` | durable key/value, namespaced per bot | every backend |
+| `Recaller` | accumulate observations, then ask questions in plain language | only backends that derive something |
+
+A backend advertises `Recaller` by implementing it. Callers discover that with a type assertion and get a clear error otherwise — **not** an empty answer, because a bot behaving as though it remembered nothing is a silent wrong answer, and `memory.recall` is used to decide things.
+
+`Composite` lets the halves come from different places, which is the arrangement most people want: key/value on local disk, recall somewhere that can reason over it.
+
+## Backends
+
+```
+NANOBOTS_MEMORY      local (default) | 1claw | honcho
+HONCHO_URL           e.g. http://localhost:8000
+HONCHO_WORKSPACE     defaults to "nanobots"
+HONCHO_API_KEY       omit for a self-hosted server (AUTH_USE_AUTH=false by default)
+```
+
+**`local`** — one JSON file per namespace under `~/.nanobots/memory/`, written temp-then-rename so a torn write can't lose every key in a namespace. It's the default so memory works out of the box. A namespace is a bot-supplied string, so an unsafe one (`../../escaped`) is hashed rather than joined, and a test asserts nothing lands outside the directory.
+
+**`1claw`** — the previous behaviour, now one option among several. Key/value only: 1Claw's memory API derives nothing, so it does not implement `Recaller` and `memory.recall` against it fails with a clear message rather than returning nothing. Its namespace is the agent id, which only exists once a run reaches that bot, so startup leaves a `DeferredOneClaw` marker that the runner swaps for a real store per bot.
+
+**`honcho`** — [Honcho](https://github.com/plastic-labs/honcho) is Workspace → Peer → Session, with a background deriver building a representation you can question. It is deliberately **not** a `Store`: it has no key/value semantics, and bolting `Get`/`Put` onto messages-and-representations would misrepresent it. Selecting it composes local key/value with Honcho recall.
+
+## Steps
+
+```yaml
+- name: recall_prior
+  type: memory.get          # one stored value, by key
+  key: last_summary
+
+- name: remember
+  type: memory.put
+  key: last_summary
+  value: "{{steps.summarise.output}}"
+
+- name: what_matters
+  type: memory.recall       # a question, in plain language
+  query: "what does this person usually escalate first?"
+
+- name: note
+  type: memory.remember     # an observation, for the backend to derive from
+  value: "they escalated a refund again"
+```
+
+`memory.get`, `memory.put` and `memory.remember` are best-effort: a backend that can't do them logs and continues, because bookkeeping should not fail a run. **`memory.recall` is not.** A bot asking a question uses the answer to decide something, so a backend that can't answer errors rather than substituting silence. A recall-capable backend returning an empty answer is fine — that genuinely is "nothing known yet".
+
+In demo mode `memory.recall` reads `fixtures/memory.recall.json` (a plain string, or `{"<question>": "<answer>"}`), so a recall-using bot stays conformance-testable offline like everything else.
+
+## Verified
+
+- **Local**, end to end and twice: `competitor-watch` logged `memory.get last_summary (found=false)` on its first run and `found=true` on its second, with the summary on disk between them — and no 1Claw involved in either.
+- **Honcho**, against a fake server asserting the exact routes and bodies read out of its source: `POST /v3/workspaces/{ws}/sessions/{ns}-runs/messages` with `MessageBatchCreate` (`peer_name` is aliased `peer_id` on the wire), and `POST /v3/workspaces/{ws}/peers/{ns}/chat` with `DialecticOptions{query}` returning `DialecticResponse{content}`. Nullable content is treated as "nothing known", not an error, and no `Authorization` header is sent when no key is configured.
+
+**Not verified against a real Honcho server.** Nothing in this repo can reach one, so the client is built and tested against shapes read from Honcho's own routers and schemas — the same standard `internal/oneclaw` holds itself to — but the first run against a live deployment is still the first run.

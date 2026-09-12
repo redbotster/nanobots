@@ -26,10 +26,12 @@ import (
 
 	"github.com/redbotster/nanobots/internal/google"
 	"github.com/redbotster/nanobots/internal/linkedin"
+	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/runner"
 	"github.com/redbotster/nanobots/internal/step"
 	"github.com/redbotster/nanobots/internal/x"
+	"strings"
 )
 
 // Paths are the directories nanobots owns under the user's home.
@@ -39,6 +41,7 @@ type Paths struct {
 	RunWorkDir     string // per-run container workspaces
 	FoundryWorkDir string // foundry job worktrees
 	HistoryDir     string // persisted run history
+	MemoryDir      string // what bots remember between runs
 }
 
 // ResolvePaths locates (and creates where needed) everything under
@@ -59,6 +62,7 @@ func ResolvePaths() (Paths, error) {
 		RunWorkDir:     filepath.Join(base, "runs"),
 		FoundryWorkDir: filepath.Join(base, "foundry"),
 		HistoryDir:     filepath.Join(base, "history"),
+		MemoryDir:      filepath.Join(base, "memory"),
 	}
 	if err := os.MkdirAll(p.RunWorkDir, 0o755); err != nil {
 		return Paths{}, err
@@ -196,4 +200,72 @@ func BuildRunStore(paths Paths, logf Logf) *runner.RunStore {
 		logf("some run history could not be read from %s: %v", paths.HistoryDir, err)
 	}
 	return store
+}
+
+// BuildMemory chooses the backend behind every memory.* step.
+//
+// Configured through the same dotenv file as everything else:
+//
+//	NANOBOTS_MEMORY      local (default) | 1claw | honcho
+//	HONCHO_URL           e.g. http://localhost:8000 for a self-hosted server
+//	HONCHO_WORKSPACE     defaults to "nanobots"
+//	HONCHO_API_KEY       omit entirely for a self-hosted server, which runs
+//	                     with AUTH_USE_AUTH=false by default
+//
+// local is the default deliberately. Memory used to require 1Claw, so the
+// two bots that use it behaved differently depending on a credential
+// unrelated to what they were remembering — competitor-watch reported
+// everything as new on every run without a key. Local files make memory
+// work out of the box.
+//
+// honcho composes rather than replaces: key/value stays on local disk,
+// because Honcho has no key/value semantics and pretending otherwise would
+// be a lie about what it does. What Honcho adds is recall — accumulate
+// observations, ask questions in plain language.
+func BuildMemory(paths Paths, envFilePath string, oc *oneclaw.Client, logf Logf) (memory.Store, error) {
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
+	kind, err := oneclaw.LoadEnvValue(envFilePath, "NANOBOTS_MEMORY")
+	if err != nil {
+		return nil, fmt.Errorf("read NANOBOTS_MEMORY: %w", err)
+	}
+	local, err := memory.NewLocal(paths.MemoryDir)
+	if err != nil {
+		return nil, err
+	}
+
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "", "local":
+		logf("memory: local files under %s", paths.MemoryDir)
+		return local, nil
+
+	case "1claw", "oneclaw":
+		if oc == nil || !oc.Configured() {
+			logf("memory: NANOBOTS_MEMORY=1claw but no 1Claw key is configured — falling back to local files")
+			return local, nil
+		}
+		// The agent id is per-bot and only known at run time, so the 1Claw
+		// backend is built per bot in internal/runner. Local is the
+		// placeholder for anything that needs a store before then.
+		logf("memory: 1Claw agent memory (key/value only; recall is unavailable)")
+		return &memory.DeferredOneClaw{Fallback: local}, nil
+
+	case "honcho":
+		url, err := oneclaw.LoadEnvValue(envFilePath, "HONCHO_URL")
+		if err != nil {
+			return nil, err
+		}
+		if url == "" {
+			return nil, fmt.Errorf("NANOBOTS_MEMORY=honcho needs HONCHO_URL (e.g. http://localhost:8000)")
+		}
+		workspace, _ := oneclaw.LoadEnvValue(envFilePath, "HONCHO_WORKSPACE")
+		if workspace == "" {
+			workspace = "nanobots"
+		}
+		apiKey, _ := oneclaw.LoadEnvValue(envFilePath, "HONCHO_API_KEY")
+		logf("memory: local files for key/value, Honcho at %s (workspace %q) for recall", url, workspace)
+		return &memory.Composite{KV: local, Rich: memory.NewHoncho(url, workspace, apiKey)}, nil
+	}
+	return nil, fmt.Errorf("NANOBOTS_MEMORY=%q is not a backend this build has (local, 1claw, honcho)", kind)
 }

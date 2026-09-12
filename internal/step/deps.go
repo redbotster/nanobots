@@ -87,6 +87,16 @@ type Deps interface {
 	Now() string                                                             // RFC3339, injectable for tests
 	MemoryGet(namespace, key string) (string, bool, error)
 	MemoryPut(namespace, key, value string) error
+	// MemoryRecall answers a question from what a bot has accumulated,
+	// rather than looking up a key. Only a recall-capable backend can do
+	// this (see internal/memory); the others return a clear error saying
+	// so, which is why this is a distinct method rather than MemoryGet
+	// with a special key.
+	MemoryRecall(namespace, question string) (string, error)
+	// MemoryRemember records one observation for a recall-capable backend
+	// to derive from later. A no-op on key/value backends: noting
+	// something down should not fail a run.
+	MemoryRemember(namespace, text string) error
 	// Approve blocks until a human decides. DemoDeps auto-approves so
 	// conformance tests don't hang; the real runner surfaces this to the
 	// WebUI/run log and actually waits.

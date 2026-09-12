@@ -292,12 +292,18 @@ func runRun(args []string) error {
 	defer listener.Close()
 	_, port, _ := net.SplitHostPort(listener.Addr().String())
 
+	mem, err := wiring.BuildMemory(paths, "", oc, func(f string, a ...any) { fmt.Printf(f+"\n", a...) })
+	if err != nil {
+		return err
+	}
+
 	callbacks := runner.NewCallbackRegistry()
 	orch := wiring.BuildOrchestrator(wiring.OrchestratorOpts{
 		RepoRoot:     root,
 		BotsDir:      filepath.Join(root, botsDir),
 		CallbackPort: port,
 	}, paths, oc, svc, callbacks)
+	orch.Memory = mem
 	// The same persistent store the daemon uses, so a run started here shows
 	// up in the WebUI's Runs page and survives this command exiting.
 	runs := wiring.BuildRunStore(paths, func(f string, a ...any) { fmt.Printf(f+"\n", a...) })

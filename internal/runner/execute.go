@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/planner"
 	"github.com/redbotster/nanobots/internal/schema"
@@ -34,6 +35,8 @@ type Orchestrator struct {
 	HubSpot       step.HubSpotConfig
 	X             step.XConfig
 	LinkedIn      step.LinkedInConfig
+	// Memory backs every memory.* step. See internal/memory.
+	Memory memory.Store
 }
 
 // ExecuteSwarm plans swarmPath, then runs it in the background, returning
@@ -238,7 +241,7 @@ func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID str
 	if err != nil {
 		return err
 	}
-	deps := BuildDeps(run, botID, nb, o.OneClaw, agentID, agentAPIKey, blobs, o.Google, o.GitHub, o.Slack, o.Stripe, o.HubSpot, o.X, o.LinkedIn, batch)
+	deps := BuildDeps(run, botID, nb, o.OneClaw, agentID, agentAPIKey, blobs, o.Google, o.GitHub, o.Slack, o.Stripe, o.HubSpot, o.X, o.LinkedIn, batch, o.memoryFor(agentID))
 
 	token := uuid.NewString()
 	o.Callbacks.Register(token, deps)
@@ -276,6 +279,21 @@ func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID str
 	run.SetBotOutputs(botID, outputs)
 	run.Log(botID, "", "done")
 	return nil
+}
+
+// memoryFor resolves this bot's memory store. Everything is decided at
+// startup except the 1Claw backend, which needs an agent id that only
+// exists once the bot has one — so wiring leaves a marker and this fills it
+// in. A bot with no agent (most of them, since only LLM bots get one) keeps
+// whatever the marker was standing in for.
+func (o *Orchestrator) memoryFor(agentID string) memory.Store {
+	if o.Memory == nil {
+		return nil
+	}
+	if agentID != "" && memory.IsDeferredOneClaw(o.Memory) && o.OneClaw != nil {
+		return &memory.OneClaw{Client: o.OneClaw, AgentID: agentID}
+	}
+	return o.Memory
 }
 
 // agentRequestFor derives a 1Claw agent creation request from a bot's
