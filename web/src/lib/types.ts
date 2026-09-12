@@ -46,8 +46,16 @@ export interface BotSummary {
 export interface SnapCheck {
   From: string;
   To: string;
+  /** What arrives at the target — after any join. */
   FromType?: string;
   ToType?: string;
+  /** How a fanned-out list collapses on the way through, if it does:
+   * lines | json | count | flatten | first. See docs/fan-out.md. */
+  join?: string;
+  /** What the source port produced, before the join. Only set when one
+   * happened — without it a joined snap reads as though twenty values had
+   * always been one. */
+  raw_from_type?: string;
   OK: boolean;
   error?: string;
 }
@@ -222,6 +230,10 @@ export interface DraftBot {
 export interface DraftSnap {
   from: string;
   to: string;
+  /** Carried through the builder even though nothing in the UI sets it
+   * yet: the builder round-trips a swarm on every save, so a field it
+   * doesn't know about is a field it deletes. */
+  join?: string;
 }
 
 export interface ValidateSwarmRequest {

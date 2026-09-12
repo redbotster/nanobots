@@ -10,8 +10,14 @@ import (
 type snapCheckJSON struct {
 	From, To         string
 	FromType, ToType string `json:",omitempty"`
-	OK               bool
-	Error            string `json:"error,omitempty"`
+	// Join, when set, is how a fanned-out list collapses on the way
+	// through — and FromType is then what *arrives*, not what the source
+	// port produced. The UI needs both or a joined snap reads as though
+	// twenty values were always one.
+	Join    string `json:"join,omitempty"`
+	RawFrom string `json:"raw_from_type,omitempty"`
+	OK      bool
+	Error   string `json:"error,omitempty"`
 }
 
 // botInstanceJSON tells the WebUI which bots/<dir> a swarm's instance id
@@ -26,12 +32,22 @@ type botInstanceJSON struct {
 	Version    string `json:"version"`
 }
 
+// unfedInputJSON is a required input port with nothing to fill it — the
+// builder needs it to say "mailer needs a `to`" while you are still wiring,
+// instead of letting you save something that dies several containers in.
+type unfedInputJSON struct {
+	Bot    string `json:"bot"`
+	Port   string `json:"port"`
+	Reason string `json:"reason"`
+}
+
 type planResponse struct {
 	Swarm string            `json:"swarm"`
 	Order []string          `json:"order,omitempty"`
 	Bots  []botInstanceJSON `json:"bots"`
 	Error string            `json:"error,omitempty"`
 	Snaps []snapCheckJSON   `json:"snaps"`
+	Unfed []unfedInputJSON  `json:"unfed,omitempty"`
 	OK    bool              `json:"ok"`
 }
 

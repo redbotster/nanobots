@@ -195,11 +195,15 @@ func composeRetryPrompt(bots []BotSummary, message string, draft *saveSwarmReque
 			fmt.Fprintf(&b, "- snap %s -> %s: %s\n", sc.From, sc.To, sc.Error)
 		}
 	}
+	for _, u := range plan.Unfed {
+		fmt.Fprintf(&b, "- bot %q has a required input %q that nothing fills: %s\n", u.Bot, u.Port, u.Reason)
+	}
 	b.WriteString(`
 Fix these specific problems and return the corrected JSON in the same shape, and nothing else.
 
 - A snap is only legal when the output port's type is assignable to the input port's type. Re-read the catalog types above before connecting anything.
-- If no legal snap can carry the data between two bots you wanted to connect, drop that snap. A bot with an unconnected input is fine — the human fills it in — but a snap that doesn't type-check is not.
+- If no legal snap can carry the data between two bots you wanted to connect, drop that snap. An *optional* input left unconnected is fine — the human fills it in — but a snap that doesn't type-check is not.
+- A *required* input must be filled, by a snap or by an "inputs" value on the bot. A draft that leaves one empty cannot run at all. When no upstream bot produces it, put a sensible literal in "inputs" — an email address, a channel, a label — rather than leaving it out.
 - Do not add bots that weren't needed. Do not answer with a gap; you already committed to a draft.
 `)
 	return b.String()
@@ -254,7 +258,7 @@ Rules:
 - Pick the smallest set of bots that actually accomplishes the request — usually 1-4.
 - Every "use" must be exactly "<catalog-id>@<version>" from the list above, verbatim.
 - Every snap's port names and types must genuinely match what's declared above for that bot.
-- If a bot's required input isn't fed by a snap, either give it a literal value in that bot's own "inputs" map, or leave it for the human to fill in — never invent a snap from a port that doesn't exist to satisfy it.
+- Every *required* input must end up filled — by a snap, or by a literal in that bot's own "inputs" map. Leaving one empty produces a swarm that cannot run at all, and the planner will reject it. Never invent a snap from a port that doesn't exist to satisfy one; use a sensible literal instead (an email address, a Slack channel, a label).
 - Prefer bots whose job already includes an approval gate (their bot.md/description says so) for anything that sends, posts, pays, or deletes.
 - Output raw JSON only, no prose, no markdown fences.
 

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/redbotster/nanobots/internal/schema"
@@ -39,7 +40,7 @@ func TestHandleValidateSwarmGoodSnapTypeChecks(t *testing.T) {
 	rec := postJSON(t, srv, "/api/swarms/validate", validateSwarmRequest{
 		Bots: []builderBotRef{
 			{ID: "recap", Use: "recap-emails-to-pdf@0.3.0"},
-			{ID: "mailer", Use: "email-drive-file@1.1.0"},
+			{ID: "mailer", Use: "email-drive-file@1.1.0", Inputs: map[string]any{"to": "me@example.com"}},
 		},
 		Snaps: []builderSnap{
 			{From: "recap.drive_file_id", To: "mailer.file_id"},
@@ -65,7 +66,7 @@ func TestHandleValidateSwarmTypeMismatchReportsPerSnapErrorNot500(t *testing.T) 
 	rec := postJSON(t, srv, "/api/swarms/validate", validateSwarmRequest{
 		Bots: []builderBotRef{
 			{ID: "recap", Use: "recap-emails-to-pdf@0.3.0"},
-			{ID: "mailer", Use: "email-drive-file@1.1.0"},
+			{ID: "mailer", Use: "email-drive-file@1.1.0", Inputs: map[string]any{"to": "me@example.com"}},
 		},
 		// recap_json is json, not a valid string port — a real mismatch.
 		Snaps: []builderSnap{
@@ -111,7 +112,7 @@ func TestHandleSaveSwarmWritesLoadableYAML(t *testing.T) {
 		Description: "built by the visual builder",
 		Bots: []builderBotRef{
 			{ID: "recap", Use: "recap-emails-to-pdf@0.3.0"},
-			{ID: "mailer", Use: "email-drive-file@1.1.0"},
+			{ID: "mailer", Use: "email-drive-file@1.1.0", Inputs: map[string]any{"to": "me@example.com"}},
 		},
 		Snaps: []builderSnap{
 			{From: "recap.drive_file_id", To: "mailer.file_id"},
@@ -185,7 +186,7 @@ func TestHandleSaveSwarmAllowsATypeMismatchAsAWorkInProgress(t *testing.T) {
 		Name: "WIP",
 		Bots: []builderBotRef{
 			{ID: "recap", Use: "recap-emails-to-pdf@0.3.0"},
-			{ID: "mailer", Use: "email-drive-file@1.1.0"},
+			{ID: "mailer", Use: "email-drive-file@1.1.0", Inputs: map[string]any{"to": "me@example.com"}},
 		},
 		Snaps: []builderSnap{{From: "recap.recap_json", To: "mailer.file_id"}},
 	})
@@ -246,7 +247,7 @@ func TestHandleGetSwarmFullRoundTripsWhatWasSaved(t *testing.T) {
 	var created saveSwarmResponse
 	json.Unmarshal(postJSON(t, srv, "/api/swarms", saveSwarmRequest{
 		Name: "Round Trip", Description: "d",
-		Bots:  []builderBotRef{{ID: "recap", Use: "recap-emails-to-pdf@0.3.0"}, {ID: "mailer", Use: "email-drive-file@1.1.0"}},
+		Bots:  []builderBotRef{{ID: "recap", Use: "recap-emails-to-pdf@0.3.0"}, {ID: "mailer", Use: "email-drive-file@1.1.0", Inputs: map[string]any{"to": "me@example.com"}}},
 		Snaps: []builderSnap{{From: "recap.drive_file_id", To: "mailer.file_id"}},
 	}).Body.Bytes(), &created)
 
@@ -285,5 +286,55 @@ func TestSlugify(t *testing.T) {
 		if got := slugify(in); got != want {
 			t.Errorf("slugify(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// The builder round-trips a whole swarm on every save, so a field it does
+// not know about is a field it deletes. That is not hypothetical: "Save
+// changes" once removed a swarm's cron trigger and its guardrails, which
+// is why mergeIntoExistingSwarm exists.
+//
+// `join:` is the newest such field, and losing it would silently turn
+// get-paid back into chasing one overdue invoice out of many — no warning,
+// no undo, and a swarm that still type-checks afterwards.
+func TestASnapsJoinSurvivesTheBuilderRoundTrip(t *testing.T) {
+	snap := builderSnap{From: "sender.acted_on", To: "notifier.message", Join: "lines"}
+
+	if got := snap.toSchema().Join; got != "lines" {
+		t.Errorf("toSchema dropped the join: %q", got)
+	}
+
+	// And back out again, the way the builder loads a swarm for editing.
+	sw := draftToNanoswarm("probe", "", "", nil, []builderSnap{snap})
+	if len(sw.Spec.Snaps) != 1 || sw.Spec.Snaps[0].Join != "lines" {
+		t.Fatalf("join lost building the swarm: %+v", sw.Spec.Snaps)
+	}
+
+	// The merge path is the one that actually writes the file.
+	existing := []byte(`apiVersion: nanobots.dev/v1alpha1
+kind: Nanoswarm
+metadata:
+  name: probe
+  description: probe
+spec:
+  trigger:
+    type: cron
+    expr: "0 8 * * 1"
+  bots:
+    - id: notifier
+      use: notify@0.1.0
+  snaps: []
+`)
+	merged, err := mergeIntoExistingSwarm(existing, "probe", "probe",
+		[]builderBotRef{{ID: "notifier", Use: "notify@0.1.0"}}, []builderSnap{snap})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(merged), "join: lines") {
+		t.Errorf("the merged YAML has no join:\n%s", merged)
+	}
+	// The reason merge exists at all — the trigger must still be there.
+	if !strings.Contains(string(merged), "0 8 * * 1") {
+		t.Errorf("the merge dropped the swarm's trigger:\n%s", merged)
 	}
 }

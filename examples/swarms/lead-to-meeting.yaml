@@ -42,6 +42,15 @@ spec:
       use: form-to-sheet@0.1.0
       inputs:
         sheet: "Leads-2026"
+        # A real website form would carry this in the webhook body. This
+        # build doesn't deliver webhook triggers (docs/scheduler.md), so an
+        # example payload is what makes the swarm runnable by hand — and
+        # without one it planned OK and then died several containers in.
+        payload:
+          name: "Dana Whitfield"
+          email: "dana@northwind.example"
+          company: "Northwind Logistics"
+          message: "We're comparing tools for a 40-person ops team. Can we talk this week?"
     - id: enricher
       use: lead-enricher@0.1.0
       inputs:

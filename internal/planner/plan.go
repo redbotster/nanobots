@@ -15,12 +15,16 @@ type PlanResult struct {
 	Snaps    []SnapCheck
 	DAG      *DAG
 	DAGErr   error
+	// Unfed are required input ports with no value source. A plan-time
+	// property that used to surface only at run time, several containers
+	// in. See CheckRequiredInputs.
+	Unfed []UnfedInput
 }
 
 // OK reports whether the swarm is runnable: every snap type-checked and the
 // DAG has no cycles.
 func (p *PlanResult) OK() bool {
-	if p.DAGErr != nil {
+	if p.DAGErr != nil || len(p.Unfed) > 0 {
 		return false
 	}
 	for _, s := range p.Snaps {
@@ -55,6 +59,7 @@ func PlanSwarm(sw *schema.Nanoswarm, botsDir string) (*PlanResult, error) {
 	}
 	result := &PlanResult{Resolved: resolved}
 	result.Snaps = TypeCheckSnaps(resolved)
+	result.Unfed = CheckRequiredInputs(resolved)
 	dag, err := BuildDAG(resolved)
 	result.DAG = dag
 	result.DAGErr = err
@@ -73,6 +78,13 @@ func (p *PlanResult) Report() string {
 	} else {
 		for _, line := range strings.Split(strings.TrimRight(p.DAG.Print(), "\n"), "\n") {
 			fmt.Fprintf(&b, "  %s\n", line)
+		}
+	}
+
+	if len(p.Unfed) > 0 {
+		b.WriteString("\ninputs with nothing to fill them:\n")
+		for _, u := range p.Unfed {
+			fmt.Fprintf(&b, "  FAIL %v\n", u)
 		}
 	}
 

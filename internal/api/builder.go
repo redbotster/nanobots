@@ -30,6 +30,15 @@ type builderBotRef struct {
 type builderSnap struct {
 	From string `json:"from"`
 	To   string `json:"to"`
+	// Join collapses a fanned-out list into one value (docs/fan-out.md).
+	//
+	// Carried through the builder even though nothing in the UI sets it
+	// yet, because the builder round-trips a swarm on every save: a field
+	// it doesn't know about is a field it deletes. That is how "Save
+	// changes" once removed a swarm's cron trigger and its guardrails, and
+	// dropping a join would silently turn get-paid back into chasing one
+	// invoice with no warning and no undo.
+	Join string `json:"join,omitempty"`
 }
 
 func (b builderBotRef) toSchema() schema.BotRef {
@@ -37,7 +46,7 @@ func (b builderBotRef) toSchema() schema.BotRef {
 }
 
 func (s builderSnap) toSchema() schema.Snap {
-	return schema.Snap{From: s.From, To: s.To}
+	return schema.Snap{From: s.From, To: s.To, Join: s.Join}
 }
 
 func draftToNanoswarm(name, description, owner string, bots []builderBotRef, snaps []builderSnap) *schema.Nanoswarm {
@@ -83,8 +92,14 @@ func buildPlanResponse(swarmName string, result *planner.PlanResult, resolveErr 
 	} else if order, err := result.DAG.TopoSort(); err == nil {
 		resp.Order = order
 	}
+	for _, u := range result.Unfed {
+		resp.Unfed = append(resp.Unfed, unfedInputJSON{Bot: u.BotID, Port: u.Port, Reason: u.Why})
+	}
 	for _, c := range result.Snaps {
-		sc := snapCheckJSON{From: c.Snap.From, To: c.Snap.To, OK: c.OK}
+		sc := snapCheckJSON{From: c.Snap.From, To: c.Snap.To, OK: c.OK, Join: c.Snap.Join}
+		if c.Joined() {
+			sc.RawFrom = c.RawFromType.String()
+		}
 		if c.OK {
 			sc.FromType, sc.ToType = c.FromType.String(), c.ToType.String()
 		} else {
@@ -93,6 +108,9 @@ func buildPlanResponse(swarmName string, result *planner.PlanResult, resolveErr 
 		resp.Snaps = append(resp.Snaps, sc)
 	}
 	resp.Bots = nonNil(resp.Bots)
+	for _, u := range result.Unfed {
+		resp.Unfed = append(resp.Unfed, unfedInputJSON{Bot: u.BotID, Port: u.Port, Reason: u.Why})
+	}
 	resp.Snaps = nonNil(resp.Snaps)
 	return resp
 }
@@ -292,7 +310,7 @@ func (s *Server) handleGetSwarmFull(w http.ResponseWriter, r *http.Request) {
 		resp.Bots = append(resp.Bots, builderBotRef{ID: b.ID, Use: b.Use, Inputs: b.Inputs})
 	}
 	for _, sn := range sw.Spec.Snaps {
-		resp.Snaps = append(resp.Snaps, builderSnap{From: sn.From, To: sn.To})
+		resp.Snaps = append(resp.Snaps, builderSnap{From: sn.From, To: sn.To, Join: sn.Join})
 	}
 	resp.Bots = nonNil(resp.Bots)
 	resp.Snaps = nonNil(resp.Snaps)

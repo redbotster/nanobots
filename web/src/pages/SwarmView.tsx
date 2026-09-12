@@ -183,6 +183,7 @@ export function SwarmView({
                     from={snaps[0] ? snaps[0].From.split(".").slice(1).join(".") : "output"}
                     to={snaps[0] ? snaps[0].To.split(".").slice(1).join(".") : "input"}
                     extra={Math.max(0, snaps.length - 1)}
+                    join={snaps[0]?.join}
                     live={run?.status === "running"}
                   />
                 )}

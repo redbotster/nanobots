@@ -96,16 +96,16 @@ Once the WebUI is running, in **basic mode** (the default): type what you want a
 
 ## The catalog
 
-**30 bots** (`bots/`) — 24 job bricks plus 6 utility bricks (`approve`, `notify`, `render-pdf`, `drive-save`, `drive-watch`, `form-to-sheet`), all at `0.1.0`:
+**33 bots** (`bots/`) — 27 job bricks plus 6 utility bricks (`approve`, `notify`, `render-pdf`, `drive-save`, `drive-watch`, `form-to-sheet`), all at `0.1.0`:
 
 | Busy-person / solo-founder story (hero path) | SMB ops story (advanced) |
 |---|---|
 | `inbox-triage`, `draft-replies`, `follow-up-chaser`, `email-send-approved` | `lead-enricher`, `lead-router`, `quote-builder` |
 | `meeting-prep`, `calendar-scheduler`, `meeting-notes-filer` | `invoice-chaser`, `receipt-filer`, `sheet-reporter` |
 | `content-ideas`, `post-writer`, `post-publisher`, `repurposer`, `newsletter-drafter` | `support-triage`, `review-responder`, `competitor-watch` |
-| `recap-emails-to-pdf`, `email-drive-file`, `github-issues-digest` | |
+| `recap-emails-to-pdf`, `email-drive-file`, `github-issues-digest` | `review-board`, `reviewer`, `review-synthesis` (a supervisor team — `docs/supervisors.md`) |
 
-**14 swarms** (`examples/swarms/`), each with a header comment documenting any place it simplifies the catalog's own aspirational diagram (usually: a downstream bot acts on the first item where fanning out would multiply container starts — see `docs/fan-out.md`):
+**15 swarms** (`examples/swarms/`), each with a header comment documenting any place it simplifies the catalog's own aspirational diagram (usually: a downstream bot acts on the first item where fanning out would multiply container starts — see `docs/fan-out.md`):
 
 | Swarm | What it does |
 |---|---|
@@ -119,9 +119,10 @@ Once the WebUI is running, in **basic mode** (the default): type what you want a
 | `lead-to-meeting` | Log, enrich, and route a new lead; draft a scheduling reply once approved. |
 | `support-desk-lite` | Triage support mail, flag anything urgent to Slack, send every drafted reply once approved. |
 | `bookkeeping-assistant` | File today's receipts and produce a spend report with a chart. |
-| `get-paid` | Find overdue invoices, send the first reminder once approved, confirm it went out. |
+| `get-paid` | Find every overdue invoice, send each reminder once approved, post one summary of what went out. |
 | `meeting-to-action` | File a new transcript's notes, flag action items, draft follow-ups. |
 | `weekly-client-report` | Build a client's spend report and email them the link once approved. |
+| `supervisor-review` | A review board picks reviewers, each reviews the work in parallel, one synthesis reconciles them (`docs/supervisors.md`). |
 
 ## Architecture
 
@@ -249,7 +250,7 @@ Per the project's own working style, expensive verification is a single consolid
 go build ./... && go vet ./... && go test ./...
 ```
 
-416 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
+425 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
 - `internal/contract`'s `TestRunConformanceOnLaunchBots` — auto-discovers and conformance-tests all 30 bots under `bots/` against their own fixtures, no Docker or network.
 - `internal/planner`'s `TestPlanAllExampleSwarms` — auto-discovers and type-checks all 14 swarms under `examples/swarms/`.
 - httptest-mocked 1Claw/Google/Slack/GitHub/Stripe/HubSpot/X/LinkedIn API clients, built against each provider's real, documented endpoint shapes (verified against `@1claw/openapi-spec` and each provider's own docs, not guessed).

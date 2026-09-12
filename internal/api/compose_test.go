@@ -69,7 +69,7 @@ func TestHandleComposeProducesAValidatedDraft(t *testing.T) {
 		"description": "Recap my inbox and email me the link",
 		"bots": [
 			{"id": "recap", "use": "recap-emails-to-pdf@0.3.0"},
-			{"id": "mailer", "use": "email-drive-file@1.1.0"}
+			{"id": "mailer", "use": "email-drive-file@1.1.0", "inputs": {"to": "me@example.com"}}
 		],
 		"snaps": [
 			{"from": "recap.drive_file_id", "to": "mailer.file_id"}
@@ -101,7 +101,7 @@ func TestHandleComposeSurfacesATypeMismatchRatherThanFailing(t *testing.T) {
 		"name": "Bad draft",
 		"bots": [
 			{"id": "recap", "use": "recap-emails-to-pdf@0.3.0"},
-			{"id": "mailer", "use": "email-drive-file@1.1.0"}
+			{"id": "mailer", "use": "email-drive-file@1.1.0", "inputs": {"to": "me@example.com"}}
 		],
 		"snaps": [
 			{"from": "recap.recap_json", "to": "mailer.file_id"}
@@ -234,7 +234,7 @@ func TestComposeWorksWithADirectProviderAndNoOneClawAtAll(t *testing.T) {
 		"description": "Recap my inbox and email me the link",
 		"bots": [
 			{"id": "recap", "use": "recap-emails-to-pdf@0.3.0"},
-			{"id": "mailer", "use": "email-drive-file@1.1.0"}
+			{"id": "mailer", "use": "email-drive-file@1.1.0", "inputs": {"to": "me@example.com"}}
 		],
 		"snaps": [{"from": "recap.drive_file_id", "to": "mailer.file_id"}]
 	}`}}

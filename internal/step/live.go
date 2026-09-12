@@ -13,12 +13,22 @@ import (
 	"github.com/redbotster/nanobots/internal/schema"
 )
 
-// LiveDeps runs a bot against the real 1Claw Human API + Shroud, falling
-// back to fixture data for any service explicitly marked
-// `connection: demo` in its nanobot.yaml (see bots/*/nanobot.yaml — that's
-// exactly the two example bots' Gmail/Drive services right now, pending real
-// OAuth wiring). Rendering, the clock, and demo fallback all delegate to an
-// embedded DemoDeps rather than duplicating that logic.
+// LiveDeps runs a bot against real services and a real model, falling back
+// to fixture data for any service explicitly marked `connection: demo` —
+// which is most of the catalog until someone deliberately connects an
+// account (docs/connections.md).
+//
+// "Real" is now two independent things, and either can be absent. Services
+// go to a provider client resolved through serviceDispatchers, or to a
+// generic 1Claw execution-intent binding when no direct integration
+// exists. ai.generate goes to whatever llm.Generator this deployment
+// configured — 1Claw Shroud, or a direct provider key, or nothing, in
+// which case it too falls back to fixtures. A machine with only an
+// ANTHROPIC_API_KEY gets a LiveDeps with a real model and no live
+// services, which is a perfectly good way to run this.
+//
+// Rendering, the clock, and every demo fallback delegate to an embedded
+// DemoDeps rather than duplicating that logic.
 type LiveDeps struct {
 	OneClaw *oneclaw.Client
 	Shroud  *oneclaw.ShroudClient
