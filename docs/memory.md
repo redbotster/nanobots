@@ -61,7 +61,9 @@ A recall step's output is self-describing or absent: `internal/step.optionalText
 
 `memory.get`, `memory.put` and `memory.remember` are best-effort: a backend that can't do them logs and continues, because bookkeeping should not fail a run. **`memory.recall` is not.** A bot asking a question uses the answer to decide something, so a backend that can't answer errors rather than substituting silence. A recall-capable backend returning an empty answer is fine — that genuinely is "nothing known yet".
 
-In demo mode `memory.recall` reads `fixtures/memory.recall.json` (a plain string, or `{"<question>": "<answer>"}`), so a recall-using bot stays conformance-testable offline like everything else.
+In demo mode `memory.recall` reads `fixtures/memory.recall.json` — a plain string, or `{"<question>": "<answer>"}` — so a recall-using bot stays conformance-testable offline like everything else.
+
+A bot with **no** such fixture is treated as having no recall available, not as having an empty answer. That holds demo mode to the same contract as runtime: a bot whose recall step is required fails conformance without a fixture, exactly as it would fail at runtime on a key/value backend, while one marked `optional: true` degrades and still conforms. Verified by removing `optional: true` from `inbox-triage` and watching conformance fail, then putting it back.
 
 ## Verified
 

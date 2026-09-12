@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/schema"
 )
 
@@ -129,7 +130,13 @@ func (d *DemoDeps) MemoryGet(namespace, key string) (string, bool, error) {
 func (d *DemoDeps) MemoryRecall(namespace, question string) (string, error) {
 	raw, err := os.ReadFile(filepath.Join(d.FixturesDir, "memory.recall.json"))
 	if err != nil {
-		return "", nil
+		// No fixture means this bot has nothing to answer with offline.
+		// Report it as "no recall here" rather than as an empty answer, so
+		// a bot with a *required* recall step fails conformance instead of
+		// passing on silence — the same contract it would meet at runtime
+		// on a key/value backend. A bot with `optional: true` degrades and
+		// still conforms.
+		return "", memory.ErrNoRecall
 	}
 	var byQuestion map[string]string
 	if err := json.Unmarshal(raw, &byQuestion); err == nil {
