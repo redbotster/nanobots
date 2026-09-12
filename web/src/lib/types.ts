@@ -183,6 +183,13 @@ export interface SwarmSummary {
   /** Set when the cron expression can't be parsed — such a swarm never
    * fires, and used to say so only in a daemon log line nobody reads. */
   schedule_error?: string;
+  /** "cron" | "event" | "webhook" | "manual" — the declared trigger. */
+  trigger_type?: string;
+  /** The event/webhook this swarm declares but that nothing in this build
+   * fires. Only cron is wired up (internal/scheduler), so such a swarm runs
+   * only when someone clicks Run — which looked identical to a swarm with
+   * no trigger at all. */
+  inert_trigger?: string;
 }
 
 /** One bot instance in a swarm draft, as the visual builder edits it — the

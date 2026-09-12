@@ -47,13 +47,35 @@ type SwarmSummary struct {
 	// Such a swarm never fires, and previously said so only in a daemon log
 	// line nobody reads.
 	ScheduleError string `json:"schedule_error,omitempty"`
+	// TriggerType is the swarm's declared trigger ("cron", "event",
+	// "webhook", "manual"). Reported even when nothing in this build fires
+	// it, so the UI can say so — see InertTrigger.
+	TriggerType string `json:"trigger_type,omitempty"`
+	// InertTrigger is set when a swarm declares automation this build
+	// doesn't implement. internal/scheduler only handles cron, so an
+	// `event: drive.file.created` or `webhook: website.form.submitted`
+	// swarm never fires on its own — and looked identical to an unscheduled
+	// one in the UI, which reads as "manual by design" rather than "its
+	// automation isn't built yet".
+	InertTrigger string `json:"inert_trigger,omitempty"`
 }
 
 // describeSchedule fills in the schedule fields from a swarm's trigger,
 // using the same parser the scheduler itself runs on — so what the UI shows
 // and what actually fires can't disagree.
 func describeSchedule(sum *SwarmSummary, t schema.Trigger, now time.Time) {
-	if t.Type != "cron" || t.Expr == "" {
+	sum.TriggerType = t.Type
+	if t.Type != "cron" {
+		// Only cron is wired to anything (internal/scheduler). Say so
+		// rather than rendering these identically to a swarm that has no
+		// trigger at all.
+		if t.Type == "event" || t.Type == "webhook" {
+			sum.InertTrigger = t.Expr
+		}
+		return
+	}
+	if t.Expr == "" {
+		sum.ScheduleError = "trigger type is cron but no expression is set"
 		return
 	}
 	sum.ScheduleExpr = t.Expr

@@ -151,6 +151,16 @@ function ScheduleLine({ swarm }: { swarm: SwarmSummary }) {
       </div>
     );
   }
+  if (swarm.inert_trigger) {
+    return (
+      <div
+        className="mt-2.5 truncate text-[11px] text-muted/70"
+        title={`This swarm declares a ${swarm.trigger_type} trigger (${swarm.inert_trigger}), but only cron triggers are wired up in this build — so it runs only when you click Run.`}
+      >
+        ⚡ {swarm.inert_trigger} — not wired up yet, so runs on demand
+      </div>
+    );
+  }
   if (!swarm.schedule) return null;
   return (
     <div
