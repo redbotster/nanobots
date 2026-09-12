@@ -208,7 +208,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       <main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
         <PrereqBanners status={status} onOpenSettings={() => setPage("settings")} />
         <div className="min-h-0 flex-1 overflow-hidden">
-          {page === "swarm" && <SwarmsPage uiMode={uiMode} />}
+          {page === "swarm" && <SwarmsPage uiMode={uiMode} status={status} onOpenSettings={() => setPage("settings")} />}
           {page === "bots" && <BotLibrary />}
           {page === "fleet" && <FleetPage />}
           {page === "runs" && <RunsPage onOpenSettings={() => setPage("settings")} />}

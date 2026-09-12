@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { api } from "../lib/api";
-import type { ComposeGap, SaveSwarmRequest, SwarmSummary } from "../lib/types";
+import { GettingStarted } from "../components/GettingStarted";
+import type { StatusResponse, ComposeGap, SaveSwarmRequest, SwarmSummary } from "../lib/types";
 import type { UIMode } from "../lib/uiMode";
 import { SwarmView } from "./SwarmView";
 import { Button } from "../components/Button";
@@ -175,7 +176,15 @@ function ScheduleLine({ swarm }: { swarm: SwarmSummary }) {
   );
 }
 
-export function SwarmsPage({ uiMode }: { uiMode: UIMode }) {
+export function SwarmsPage({
+  uiMode,
+  status,
+  onOpenSettings,
+}: {
+  uiMode: UIMode;
+  status: StatusResponse | null;
+  onOpenSettings: () => void;
+}) {
   const [swarms, setSwarms] = useState<SwarmSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>({ kind: "list" });
@@ -239,6 +248,7 @@ export function SwarmsPage({ uiMode }: { uiMode: UIMode }) {
 
   return (
     <div className="h-full overflow-auto p-5 sm:p-6">
+      <GettingStarted status={status} onOpenSettings={onOpenSettings} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-display text-xl font-medium text-ink">Swarms</h1>
