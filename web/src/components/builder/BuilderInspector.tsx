@@ -68,7 +68,7 @@ export function BuilderInspector({
   onClose: () => void;
 }) {
   return (
-    <div className="flex h-full w-64 shrink-0 flex-col overflow-auto border-l border-edge">
+    <div className="flex h-full w-full shrink-0 flex-col overflow-auto border-edge sm:w-64 sm:border-l">
       <div className="flex items-start justify-between gap-2 border-b border-edge p-4">
         <div className="min-w-0">
           <h3 className="truncate font-display text-sm font-semibold text-ink">{def.name}</h3>

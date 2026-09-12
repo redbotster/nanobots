@@ -81,6 +81,11 @@ export function BuilderCanvas({
   const portEls = useRef(new Map<string, HTMLElement>());
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [connecting, setConnecting] = useState<{ instanceId: string; port: string } | null>(null);
+  // The discrete, two-activation form of a connection drag: pick an output,
+  // then pick an input. The canvas was previously mouse-only — ports were
+  // bare spans with onMouseDown, so a keyboard user could add bots but
+  // never wire them, which is the builder's entire purpose.
+  const [pending, setPending] = useState<{ instanceId: string; port: string } | null>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
 
   const registerPort = (key: string) => (el: HTMLElement | null) => {
@@ -144,10 +149,13 @@ export function BuilderCanvas({
         e.preventDefault();
         onRemoveBot(selectedInstanceId);
       }
-      if (e.key === "Escape" && connecting) {
-        cancelConnectionRef.current?.();
-        setConnecting(null);
-        setCursor(null);
+      if (e.key === "Escape") {
+        if (connecting) {
+          cancelConnectionRef.current?.();
+          setConnecting(null);
+          setCursor(null);
+        }
+        setPending(null);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -272,8 +280,17 @@ export function BuilderCanvas({
                 fill="rgb(var(--c-panel))"
                 stroke={stroke}
                 strokeWidth={1.5}
-                className="cursor-pointer"
+                className="cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-tron"
+                role="button"
+                tabIndex={0}
+                aria-label={`Remove the connection from ${s.from} to ${s.to}`}
                 onClick={() => onRemoveSnap(i)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onRemoveSnap(i);
+                  }
+                }}
               >
                 <title>Remove connection</title>
               </circle>
@@ -300,6 +317,24 @@ export function BuilderCanvas({
           <div
             key={bot.instanceId}
             style={{ left: bot.x, top: bot.y, width: NODE_WIDTH, zIndex: 10 }}
+            tabIndex={0}
+            role="group"
+            aria-label={`${bot.instanceId} (${bot.botId})${selectedInstanceId === bot.instanceId ? ", selected" : ""}`}
+            onFocus={() => onSelectBot(bot.instanceId)}
+            onKeyDown={(e) => {
+              // Arrow keys move a node without a mouse. Shift for a coarse
+              // step, since nudging 240px one press at a time is not a
+              // usable way to lay out a graph.
+              const step = e.shiftKey ? 40 : 8;
+              const deltas: Record<string, [number, number]> = {
+                ArrowLeft: [-step, 0], ArrowRight: [step, 0],
+                ArrowUp: [0, -step], ArrowDown: [0, step],
+              };
+              const d = deltas[e.key];
+              if (!d) return;
+              e.preventDefault();
+              onMoveBot(bot.instanceId, Math.max(0, bot.x + d[0]), Math.max(0, bot.y + d[1]));
+            }}
             className={`absolute select-none rounded-lg border bg-panel shadow-glow-sm ${
               selectedInstanceId === bot.instanceId ? "border-tron" : "border-edge-strong"
             }`}
@@ -334,11 +369,29 @@ export function BuilderCanvas({
                   className="absolute left-0 flex -translate-x-1/2 items-center gap-1.5"
                   style={{ top: i * ROW_HEIGHT + ROW_HEIGHT / 2 - 7 }}
                 >
-                  <span
+                  <button
+                    type="button"
                     data-port={portKey(bot.instanceId, "in", p.name)}
                     ref={registerPort(portKey(bot.instanceId, "in", p.name))}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!pending) return;
+                      onAddSnap({
+                        from: `${pending.instanceId}.${pending.port}`,
+                        to: `${bot.instanceId}.${p.name}`,
+                      });
+                      setPending(null);
+                    }}
+                    disabled={!pending}
+                    aria-label={
+                      pending
+                        ? `Connect ${pending.instanceId}.${pending.port} to input ${p.name} of ${bot.instanceId}`
+                        : `Input ${p.name} of ${bot.instanceId}, type ${p.type}. Activate an output port first.`
+                    }
                     title={`${p.name}: ${p.type}`}
-                    className="h-3.5 w-3.5 cursor-crosshair rounded-full border-2 border-muted bg-void hover:border-tron"
+                    className={`h-3.5 w-3.5 rounded-full border-2 bg-void focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tron ${
+                      pending ? "cursor-crosshair border-tron hover:bg-tron/30" : "cursor-default border-muted"
+                    }`}
                   />
                   <span className="max-w-[110px] truncate pl-1 text-[10px] text-muted">{p.name}</span>
                 </div>
@@ -352,12 +405,24 @@ export function BuilderCanvas({
                   <span className="max-w-[110px] truncate pr-1 text-right text-[10px] text-muted">
                     {p.name}
                   </span>
-                  <span
+                  <button
+                    type="button"
                     data-port={portKey(bot.instanceId, "out", p.name)}
                     ref={registerPort(portKey(bot.instanceId, "out", p.name))}
                     onMouseDown={(e) => startConnection(bot.instanceId, p.name, e)}
+                    onClick={(e) => {
+                      // Keyboard and plain-click path: arm this output, then
+                      // activate an input port to complete the connection.
+                      // The mouse drag above is the same operation done
+                      // continuously; this is the discrete version.
+                      e.stopPropagation();
+                      setPending({ instanceId: bot.instanceId, port: p.name });
+                    }}
+                    aria-label={`Output ${p.name} of ${bot.instanceId}, type ${p.type}. Activate, then choose an input to connect it to.`}
                     title={`${p.name}: ${p.type}`}
-                    className="h-3.5 w-3.5 cursor-crosshair rounded-full border-2 border-tron bg-void shadow-[0_0_6px_theme(colors.tron)] hover:bg-tron/30"
+                    className={`h-3.5 w-3.5 cursor-crosshair rounded-full border-2 border-tron bg-void shadow-[0_0_6px_theme(colors.tron)] hover:bg-tron/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tron ${
+                      pending?.instanceId === bot.instanceId && pending?.port === p.name ? "bg-tron" : ""
+                    }`}
                   />
                 </div>
               ))}

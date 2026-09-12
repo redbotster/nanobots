@@ -87,6 +87,7 @@ export function BuilderPage({
   // A ref, not state: it only ever gates the leave guard, and flipping it
   // shouldn't cause a render in the middle of navigating away.
   const savedRef = useRef(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {
     api.listBots().then((list) => {
@@ -312,8 +313,48 @@ export function BuilderPage({
         </div>
       )}
 
-      <div className="grid min-h-0 grid-rows-[minmax(0,1fr)] grid-cols-[220px_1fr] sm:grid-cols-[240px_1fr]">
-        <BuilderPalette bots={Object.values(botDefs)} connections={connections} onAdd={addBot} />
+      {/* Below sm the palette (220px) and inspector (256px) together
+          exceed a 390px viewport, which collapsed the canvas to zero width
+          and pushed the inspector's close button off-screen with no
+          horizontal scroll to reach it — selecting a bot was a dead end.
+          Both become overlays there; the canvas keeps the full width. */}
+      <div className="relative grid min-h-0 grid-rows-[minmax(0,1fr)] grid-cols-1 sm:grid-cols-[240px_1fr]">
+        <div className="hidden min-h-0 sm:block">
+          <BuilderPalette bots={Object.values(botDefs)} connections={connections} onAdd={addBot} />
+        </div>
+
+        {paletteOpen && (
+          <div className="absolute inset-0 z-30 flex sm:hidden">
+            <div className="flex min-h-0 w-[85%] max-w-xs flex-col bg-void shadow-glow">
+              <div className="flex items-center justify-between border-b border-edge px-3 py-2">
+                <span className="font-display text-xs font-semibold text-ink">Add a bot</span>
+                <button
+                  onClick={() => setPaletteOpen(false)}
+                  className="rounded p-1 text-muted hover:text-ink"
+                  aria-label="Close the bot palette"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="min-h-0 flex-1">
+                <BuilderPalette
+                  bots={Object.values(botDefs)}
+                  connections={connections}
+                  onAdd={(b) => {
+                    addBot(b);
+                    setPaletteOpen(false);
+                  }}
+                />
+              </div>
+            </div>
+            <button
+              className="flex-1 bg-void/60"
+              onClick={() => setPaletteOpen(false)}
+              aria-label="Close the bot palette"
+            />
+          </div>
+        )}
+
         <div className="flex min-h-0 min-w-0">
           <div className="relative min-w-0 flex-1">
             {bots.length === 0 && !existing && templates.length > 0 && (
@@ -347,7 +388,10 @@ export function BuilderPage({
               onSelectBot={setSelected}
             />
           </div>
+          {/* A phone gets the inspector as a bottom sheet — full width, its
+              close button always on screen. */}
           {selectedBot && selectedDef && (
+            <div className="absolute inset-x-0 bottom-0 z-30 max-h-[70%] border-t border-edge-strong bg-void shadow-glow sm:static sm:z-auto sm:max-h-none sm:border-t-0 sm:shadow-none">
             <BuilderInspector
               bot={selectedBot}
               def={selectedDef}
@@ -362,7 +406,16 @@ export function BuilderPage({
               onEditSnapFrom={editSnapFrom}
               onClose={() => setSelected(null)}
             />
+            </div>
           )}
+
+          {/* The only way to reach the palette on a phone. */}
+          <button
+            onClick={() => setPaletteOpen(true)}
+            className="absolute bottom-4 right-4 z-20 rounded-full border border-edge-strong bg-panel px-4 py-2.5 font-display text-sm text-ink shadow-glow-sm sm:hidden"
+          >
+            + Add a bot
+          </button>
         </div>
       </div>
     </div>

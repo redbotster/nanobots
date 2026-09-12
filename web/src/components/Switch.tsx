@@ -19,6 +19,10 @@ export function Switch({
       <RadixSwitch.Root
         checked={checked}
         onCheckedChange={onCheckedChange}
+        // A <label> wrapping a button doesn't associate the two, and below
+        // sm the text is display:none — so the one control that reveals the
+        // Bot library announced as an unnamed switch.
+        aria-label={label}
         className="relative h-5 w-9 shrink-0 rounded-full bg-panel-2 outline-none transition-colors data-[state=checked]:bg-tron/60"
       >
         <RadixSwitch.Thumb className="block h-3.5 w-3.5 translate-x-1 rounded-full bg-ink transition-transform data-[state=checked]:translate-x-[18px]" />
