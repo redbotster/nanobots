@@ -6,6 +6,8 @@ import (
 	"github.com/redbotster/nanobots/internal/schema"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 )
 
 func TestNeedsRealPDFRender(t *testing.T) {
@@ -91,5 +93,93 @@ func TestMostCatalogBotsDoNotNeedABrowser(t *testing.T) {
 		len(lean), len(lean)+len(browser), len(browser), browser)
 	if len(browser) > 8 {
 		t.Errorf("%d bots need a browser — that's more than expected; has a render step crept in?", len(browser))
+	}
+}
+
+func TestAggregateOutputsBuildsOneListPerPort(t *testing.T) {
+	nb := &schema.Nanobot{Spec: schema.NanobotSpec{Ports: schema.Ports{Outputs: []schema.OutputPort{
+		{Name: "posts", Type: "json"},
+		{Name: "sent_at", Type: "datetime"},
+	}}}}
+
+	got := aggregateOutputs(nb, []map[string]any{
+		{"posts": "a", "sent_at": "t1"},
+		{"posts": "b", "sent_at": "t2"},
+	})
+	// Every port becomes a list, because the bot ran twice — that's what
+	// the planner promised anything downstream (resolveEndpointType).
+	if posts, ok := got["posts"].([]any); !ok || len(posts) != 2 || posts[0] != "a" || posts[1] != "b" {
+		t.Errorf("posts = %#v, want the two values in order", got["posts"])
+	}
+	if sent, ok := got["sent_at"].([]any); !ok || len(sent) != 2 {
+		t.Errorf("sent_at = %#v, want two values", got["sent_at"])
+	}
+}
+
+// "For each overdue invoice" over no overdue invoices is a successful
+// no-op, not a failure — a quiet week shouldn't be a red run. Downstream
+// still needs to see an output, so it's an empty list rather than nothing.
+func TestEmptyFanOutProducesEmptyListsNotMissingOutputs(t *testing.T) {
+	nb := &schema.Nanobot{Spec: schema.NanobotSpec{Ports: schema.Ports{Outputs: []schema.OutputPort{
+		{Name: "message_id", Type: "string"},
+	}}}}
+	got := emptyListOutputs(nb)
+	v, ok := got["message_id"].([]any)
+	if !ok {
+		t.Fatalf("message_id = %#v, want an empty list", got["message_id"])
+	}
+	if len(v) != 0 {
+		t.Errorf("message_id = %#v, want it empty", v)
+	}
+}
+
+// One approval covers the whole batch (the alternative — twenty prompts —
+// means nobody reads them), so the summary has to make the scale
+// unmissable: it's one click authorising twenty real sends.
+func TestBatchApproverAsksOnceAndSaysHowMany(t *testing.T) {
+	run := NewRun("get-paid")
+	batch := &BatchApprover{Inner: &RunQueueApprover{Run: run, Bot: "sender", Step: "approve"}, Total: 20}
+
+	results := make(chan bool, 3)
+	for i := 0; i < 3; i++ {
+		go func() {
+			ok, _, _ := batch.Approve("Send a reminder to client@example.com?", "high")
+			results <- ok
+		}()
+	}
+
+	waitFor(t, func() bool { return len(run.PendingApprovals()) == 1 })
+	pending := run.PendingApprovals()
+	if n := len(pending); n != 1 {
+		t.Fatalf("%d approvals opened, want exactly 1 for the batch", n)
+	}
+	if !strings.Contains(pending[0].Summary, "20 in total") {
+		t.Errorf("summary = %q, want it to name the batch size", pending[0].Summary)
+	}
+	if !strings.Contains(pending[0].Summary, "client@example.com") {
+		t.Errorf("summary = %q, want it to keep the bot's own wording", pending[0].Summary)
+	}
+
+	if err := run.Decide(pending[0].ID, true, "you"); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		select {
+		case ok := <-results:
+			if !ok {
+				t.Error("an item did not inherit the batch decision")
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("an item never got the batch decision")
+		}
+	}
+	if n := len(run.PendingApprovals()); n != 0 {
+		t.Errorf("%d approvals still open after deciding the batch", n)
+	}
+}
+
+func TestBatchSummaryLeavesASingleItemAlone(t *testing.T) {
+	if got := batchSummary("Send this?", 1); got != "Send this?" {
+		t.Errorf("batchSummary(_, 1) = %q, want it unchanged", got)
 	}
 }

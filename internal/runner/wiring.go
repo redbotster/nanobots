@@ -16,7 +16,18 @@ import (
 // explicit swarm-level value wins, then an upstream snap, then the port's
 // own default, in that order — matching how the planner already validated
 // these same three sources type-check.
+// fanIndex is the element a fanned-out iteration is working on, or -1 when
+// the bot runs once. Threaded through input resolution so a "*" in a snap
+// path resolves to that one element.
+type fanIndex int
+
+const noFan fanIndex = -1
+
 func (o *Orchestrator) resolveInputs(run *Run, rs *planner.ResolvedSwarm, botID string, rb *planner.ResolvedBot) (map[string]any, error) {
+	return o.resolveInputsAt(run, rs, botID, rb, noFan)
+}
+
+func (o *Orchestrator) resolveInputsAt(run *Run, rs *planner.ResolvedSwarm, botID string, rb *planner.ResolvedBot, at fanIndex) (map[string]any, error) {
 	snapsTo := map[string]schema.Snap{}
 	for _, snap := range rs.Swarm.Spec.Snaps {
 		to, err := planner.ParseEndpoint(snap.To)
@@ -41,7 +52,7 @@ func (o *Orchestrator) resolveInputs(run *Run, rs *planner.ResolvedSwarm, botID 
 			continue
 		}
 		if snap, ok := snapsTo[port.Name]; ok {
-			val, err := o.resolveSnapValue(run, snap)
+			val, err := o.resolveSnapValueAt(run, snap, at)
 			if err != nil {
 				return nil, fmt.Errorf("input %q: %w", port.Name, err)
 			}
@@ -65,6 +76,10 @@ func (o *Orchestrator) resolveInputs(run *Run, rs *planner.ResolvedSwarm, botID 
 // planner.TypeCheckSnaps — so this only has to do the lookup, not validate
 // it's legal).
 func (o *Orchestrator) resolveSnapValue(run *Run, snap schema.Snap) (any, error) {
+	return o.resolveSnapValueAt(run, snap, noFan)
+}
+
+func (o *Orchestrator) resolveSnapValueAt(run *Run, snap schema.Snap, at fanIndex) (any, error) {
 	from, err := planner.ParseEndpoint(snap.From)
 	if err != nil {
 		return nil, err
@@ -78,6 +93,21 @@ func (o *Orchestrator) resolveSnapValue(run *Run, snap schema.Snap) (any, error)
 		return nil, fmt.Errorf("upstream bot %q produced no output %q", from.BotID, from.Port)
 	}
 	for _, field := range from.Fields {
+		if field == planner.FanOutMarker {
+			arr, ok := val.([]any)
+			if !ok {
+				return nil, fmt.Errorf("%s is not a list, so there is nothing for %s to iterate over",
+					snap.From, planner.FanOutMarker)
+			}
+			if at == noFan {
+				return nil, fmt.Errorf("internal: %s resolved without a fan-out index", snap.From)
+			}
+			if int(at) >= len(arr) {
+				return nil, fmt.Errorf("%s has %d item(s), no element %d", snap.From, len(arr), at)
+			}
+			val = arr[at]
+			continue
+		}
 		if idx, isIndex := step.ListIndex(field); isIndex {
 			arr, ok := val.([]any)
 			if !ok {
@@ -133,4 +163,47 @@ func collectOutputs(nb *schema.Nanobot, blobs step.BlobStore, outDir string) (ma
 		out[port.Name] = map[string]any{"uri": fv.URI, "mime": fv.Mime}
 	}
 	return out, nil
+}
+
+// fanOutLength counts the items a marker-carrying snap will iterate over,
+// by resolving its path up to the marker and measuring the list there.
+func (o *Orchestrator) fanOutLength(run *Run, snap schema.Snap) (int, error) {
+	from, err := planner.ParseEndpoint(snap.From)
+	if err != nil {
+		return 0, err
+	}
+	upstream, ok := run.BotOutputs(from.BotID)
+	if !ok {
+		return 0, fmt.Errorf("upstream bot %q has no recorded outputs yet (snap %s -> %s)", from.BotID, snap.From, snap.To)
+	}
+	val, ok := upstream[from.Port]
+	if !ok {
+		return 0, fmt.Errorf("upstream bot %q produced no output %q", from.BotID, from.Port)
+	}
+	for _, field := range from.Fields {
+		if field == planner.FanOutMarker {
+			arr, ok := val.([]any)
+			if !ok {
+				return 0, fmt.Errorf("%s is not a list, so there is nothing for %s to iterate over",
+					snap.From, planner.FanOutMarker)
+			}
+			return len(arr), nil
+		}
+		if idx, isIndex := step.ListIndex(field); isIndex {
+			arr, ok := val.([]any)
+			if !ok || idx < 0 || idx >= len(arr) {
+				return 0, fmt.Errorf("%s: cannot index [%d]", snap.From, idx)
+			}
+			val = arr[idx]
+			continue
+		}
+		m, ok := val.(map[string]any)
+		if !ok {
+			return 0, fmt.Errorf("%s is not an object, cannot read field %q", snap.From, field)
+		}
+		if val, ok = m[field]; !ok {
+			return 0, fmt.Errorf("%s has no field %q", snap.From, field)
+		}
+	}
+	return 0, fmt.Errorf("%s carries no %s marker", snap.From, planner.FanOutMarker)
 }

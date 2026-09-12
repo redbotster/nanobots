@@ -74,7 +74,33 @@ func TypeCheckSnaps(rs *ResolvedSwarm) []SnapCheck {
 	return results
 }
 
+// resolveEndpointType resolves a snap endpoint's type. For an output
+// endpoint on a bot that fans out, the result is wrapped in list<> —
+// running a bot twenty times produces twenty of each of its outputs, and
+// the swarm's type checking has to see that or a downstream bot would be
+// promised a single value it will never get.
 func resolveEndpointType(rs *ResolvedSwarm, ref string, isOutput bool) (schema.ParsedType, error) {
+	t, err := resolveDeclaredEndpointType(rs, ref, isOutput)
+	if err != nil {
+		return t, err
+	}
+	if !isOutput {
+		return t, nil
+	}
+	ep, err := ParseEndpoint(ref)
+	if err != nil {
+		return t, err
+	}
+	// Reading one element back out (`sender.message_id.0`) or fanning over
+	// it again already consumed the extra level, so only wrap when the
+	// reference names the whole port.
+	if len(ep.Fields) == 0 && IsFannedOut(rs.Swarm, ep.BotID) {
+		return schema.ParsedType{Base: "list", List: &t}, nil
+	}
+	return t, nil
+}
+
+func resolveDeclaredEndpointType(rs *ResolvedSwarm, ref string, isOutput bool) (schema.ParsedType, error) {
 	ep, err := ParseEndpoint(ref)
 	if err != nil {
 		return schema.ParsedType{}, err
@@ -121,12 +147,24 @@ func resolveEndpointType(rs *ResolvedSwarm, ref string, isOutput bool) (schema.P
 	// look up: the element type is already known from the port declaration
 	// itself). See internal/step.ListIndex for the matching runtime rule.
 	for base.Base == "list" && len(fields) > 0 {
+		// "*" peels a list level exactly as an index does, but means every
+		// element rather than one — the bot downstream runs once per item.
+		// See planner/fanout.go.
+		if fields[0] == FanOutMarker {
+			base = *base.List
+			fields = fields[1:]
+			continue
+		}
 		if _, isIndex := step.ListIndex(fields[0]); !isIndex {
-			return schema.ParsedType{}, fmt.Errorf("port %q is a list — %q must be a numeric index, not a field name",
-				ep.Port, fields[0])
+			return schema.ParsedType{}, fmt.Errorf("port %q is a list — %q must be a numeric index or %s, not a field name",
+				ep.Port, fields[0], FanOutMarker)
 		}
 		base = *base.List
 		fields = fields[1:]
+	}
+	if len(fields) > 0 && fields[0] == FanOutMarker {
+		return schema.ParsedType{}, fmt.Errorf("port %q is %s, not a list — there is nothing for %s to iterate over",
+			ep.Port, base, FanOutMarker)
 	}
 	if len(fields) == 0 {
 		return base, nil

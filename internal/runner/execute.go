@@ -77,9 +77,110 @@ func (o *Orchestrator) ExecuteSwarm(swarmPath string) (*Run, error) {
 	return run, nil
 }
 
+// runBot runs one bot instance — once, or once per item when a snap into it
+// carries the fan-out marker (see planner/fanout.go).
+//
+// Fanning out is what "for each overdue invoice, send a reminder" has
+// always meant and never done: six catalog swarms write `chaser.overdue.0`
+// and carry a comment saying only the first item is handled.
 func (o *Orchestrator) runBot(run *Run, rs *planner.ResolvedSwarm, botID string, rb *planner.ResolvedBot) error {
+	fo, err := planner.FanOutFor(rs.Swarm, botID)
+	if err != nil {
+		return err
+	}
+	if fo == nil {
+		return o.runBotOnce(run, rs, botID, rb, noFan, 1, nil)
+	}
+
+	n, err := o.fanOutWidth(run, fo)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		// Not an error: "for each overdue invoice" over no overdue invoices
+		// is a successful no-op, and failing here would turn a quiet week
+		// into a red run. Downstream still gets an empty list.
+		run.Log(botID, "", "nothing to do — %s is empty", fo.Over)
+		run.SetBotOutputs(botID, emptyListOutputs(rb.Nanobot))
+		return nil
+	}
+	run.Log(botID, "", "running once per item — %d from %s", n, fo.Over)
+
+	// One approval for the whole batch, not one per item (that decision is
+	// the user's: twenty prompts means nobody reads them). BatchApprover
+	// asks on the first iteration, naming the count, and reuses the answer
+	// for the rest.
+	batch := &BatchApprover{
+		Inner: &RunQueueApprover{Run: run, Bot: botID, Step: "approve"},
+		Total: n,
+	}
+	perItem := make([]map[string]any, 0, n)
+	for i := 0; i < n; i++ {
+		if err := o.runBotOnce(run, rs, botID, rb, fanIndex(i), n, batch); err != nil {
+			return fmt.Errorf("item %d of %d: %w", i+1, n, err)
+		}
+		out, _ := run.BotOutputs(botID)
+		perItem = append(perItem, out)
+	}
+	run.SetBotOutputs(botID, aggregateOutputs(rb.Nanobot, perItem))
+	run.Log(botID, "", "done — %d item(s)", n)
+	return nil
+}
+
+// fanOutWidth is how many items this bot will run for, and insists every
+// marker-carrying snap agrees. Two lists of different lengths feeding one
+// bot is a cross product, which is never what "for each" means.
+func (o *Orchestrator) fanOutWidth(run *Run, fo *planner.FanOut) (int, error) {
+	width := -1
+	for _, snap := range fo.Snaps {
+		n, err := o.fanOutLength(run, snap)
+		if err != nil {
+			return 0, err
+		}
+		if width >= 0 && n != width {
+			return 0, fmt.Errorf(
+				"fan-out inputs disagree: %s has %d item(s) but an earlier one has %d — they iterate together, so they must be the same length",
+				snap.From, n, width)
+		}
+		width = n
+	}
+	return width, nil
+}
+
+// emptyListOutputs is what a bot that ran zero times produced: an empty list
+// per declared output port, so a downstream bot sees "none" rather than a
+// missing output it would fail on.
+func emptyListOutputs(nb *schema.Nanobot) map[string]any {
+	out := map[string]any{}
+	for _, port := range nb.Spec.Ports.Outputs {
+		out[port.Name] = []any{}
+	}
+	return out
+}
+
+// aggregateOutputs turns N runs' outputs into one list per port, matching
+// what the planner promised downstream (see resolveEndpointType).
+func aggregateOutputs(nb *schema.Nanobot, perItem []map[string]any) map[string]any {
+	out := map[string]any{}
+	for _, port := range nb.Spec.Ports.Outputs {
+		vals := make([]any, 0, len(perItem))
+		for _, item := range perItem {
+			if v, ok := item[port.Name]; ok {
+				vals = append(vals, v)
+			}
+		}
+		out[port.Name] = vals
+	}
+	return out
+}
+
+func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID string, rb *planner.ResolvedBot, at fanIndex, total int, batch step.Approver) error {
 	nb := rb.Nanobot
-	run.Log(botID, "", "starting (%s harness)", nb.Spec.Harness.Type)
+	if at == noFan {
+		run.Log(botID, "", "starting (%s harness)", nb.Spec.Harness.Type)
+	} else {
+		run.Log(botID, "", "item %d of %d", int(at)+1, total)
+	}
 
 	harnessType := imageFor(nb, run, botID)
 	image, user, err := EnsureHarnessImage(harnessType, o.RepoRoot)
@@ -87,12 +188,17 @@ func (o *Orchestrator) runBot(run *Run, rs *planner.ResolvedSwarm, botID string,
 		return err
 	}
 
-	inputs, err := o.resolveInputs(run, rs, botID, rb)
+	inputs, err := o.resolveInputsAt(run, rs, botID, rb, at)
 	if err != nil {
 		return fmt.Errorf("resolve inputs: %w", err)
 	}
 
+	// Each item gets its own workspace, so one item's outputs can't be
+	// mistaken for the next one's.
 	runDir := filepath.Join(o.RunWorkDir, run.ID, botID)
+	if at != noFan {
+		runDir = filepath.Join(runDir, fmt.Sprintf("item-%d", int(at)))
+	}
 	if err := os.MkdirAll(filepath.Join(runDir, "outputs"), 0o755); err != nil {
 		return err
 	}
@@ -132,7 +238,7 @@ func (o *Orchestrator) runBot(run *Run, rs *planner.ResolvedSwarm, botID string,
 	if err != nil {
 		return err
 	}
-	deps := BuildDeps(run, botID, nb, o.OneClaw, agentID, agentAPIKey, blobs, o.Google, o.GitHub, o.Slack, o.Stripe, o.HubSpot, o.X, o.LinkedIn)
+	deps := BuildDeps(run, botID, nb, o.OneClaw, agentID, agentAPIKey, blobs, o.Google, o.GitHub, o.Slack, o.Stripe, o.HubSpot, o.X, o.LinkedIn, batch)
 
 	token := uuid.NewString()
 	o.Callbacks.Register(token, deps)
