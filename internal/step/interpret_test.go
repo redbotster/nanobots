@@ -696,3 +696,72 @@ func TestAGenuinelyBrokenResponseStillFails(t *testing.T) {
 		}
 	}
 }
+
+// A model asked for {"drafts": [...], "escalations": [...]} will sometimes
+// omit a key when the answer is empty. draft-replies died on exactly that —
+// `output port "drafts": expected a list, got <nil>` — during a real run
+// over a transcript with nothing to follow up, which is an ordinary Tuesday
+// rather than an error.
+func TestAListOutputBoundToNothingIsAnEmptyList(t *testing.T) {
+	nb := &schema.Nanobot{
+		Metadata: schema.Metadata{Name: "probe", Version: "0.1.0"},
+		Spec: schema.NanobotSpec{
+			Steps: []schema.Step{{
+				Name: "write", Type: "ai.generate", PromptFile: "p.md",
+				Outputs: map[string]string{"drafts": "{{steps.write.output.drafts}}"},
+			}},
+			Ports: schema.Ports{Outputs: []schema.OutputPort{{Name: "drafts", Type: "list<json>"}}},
+		},
+	}
+	dir := t.TempDir()
+	nb.SourcePath = dir
+	if err := os.WriteFile(filepath.Join(dir, "p.md"), []byte("write"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A response with no `drafts` key at all.
+	deps := &fakeDeps{aiResult: `{"note": "nothing to draft"}`}
+
+	res, err := Interpret(nb, map[string]any{}, nil, deps)
+	if err != nil {
+		t.Fatalf("an empty list output failed the run: %v", err)
+	}
+	arr, ok := res.Outputs["drafts"].([]any)
+	if !ok || len(arr) != 0 {
+		t.Errorf("drafts = %#v, want an empty list", res.Outputs["drafts"])
+	}
+	// And it has to say so — a downstream bot seeing nothing should be
+	// traceable to this line rather than looking like a silent gap.
+	var said bool
+	for _, l := range res.Log {
+		if strings.Contains(l.Msg, "empty list") {
+			said = true
+		}
+	}
+	if !said {
+		t.Errorf("coerced silently; log was %+v", res.Log)
+	}
+}
+
+// Narrow on purpose. A string where a list belongs is a real mis-shape, not
+// an absence, and must still fail — otherwise the coercion becomes a way to
+// hide genuinely broken model output.
+func TestAWrongShapedOutputStillFails(t *testing.T) {
+	nb := &schema.Nanobot{
+		Metadata: schema.Metadata{Name: "probe", Version: "0.1.0"},
+		Spec: schema.NanobotSpec{
+			Steps: []schema.Step{{
+				Name: "write", Type: "ai.generate", PromptFile: "p.md",
+				Outputs: map[string]string{"drafts": "{{steps.write.output.drafts}}"},
+			}},
+			Ports: schema.Ports{Outputs: []schema.OutputPort{{Name: "drafts", Type: "list<json>"}}},
+		},
+	}
+	dir := t.TempDir()
+	nb.SourcePath = dir
+	_ = os.WriteFile(filepath.Join(dir, "p.md"), []byte("write"), 0o600)
+	deps := &fakeDeps{aiResult: `{"drafts": "not a list"}`}
+
+	if _, err := Interpret(nb, map[string]any{}, nil, deps); err == nil {
+		t.Error("a string where a list belongs was accepted")
+	}
+}

@@ -251,6 +251,25 @@ func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, swarmVars map[
 		if !ok {
 			return res, fmt.Errorf("declared output port %q was never produced by any step", port.Name)
 		}
+		// A list port bound to nothing is "none", not a failure.
+		//
+		// A model asked for {"drafts": [...], "escalations": [...]} will
+		// sometimes omit a key entirely when the answer is empty, and the
+		// binding then resolves to nil. draft-replies died on exactly that
+		// — "output port \"drafts\": expected a list, got <nil>" — on a
+		// transcript with nothing to follow up, which is an ordinary
+		// Tuesday rather than an error.
+		//
+		// Narrow on purpose: only a port the bot itself declared as a list,
+		// and only nil. A wrong-shaped value (a string where a list
+		// belongs) still fails, because that is a real mis-shape rather
+		// than an absence. Logged either way, so it can't quietly become
+		// the reason a downstream bot saw nothing.
+		if val == nil && strings.HasPrefix(port.Type, "list<") {
+			log("", "output %q was empty; treating as an empty list", port.Name)
+			val = []any{}
+			outputsCtx[port.Name] = val
+		}
 		if err := validateOutputType(val, port.Type); err != nil {
 			return res, fmt.Errorf("output port %q: %w", port.Name, err)
 		}

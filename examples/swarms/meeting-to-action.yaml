@@ -50,8 +50,13 @@ spec:
   snaps:
     - from: watcher.file
       to: notes.transcript
-    - from: notes.decisions.0
+    # Every decision, one per line — not `.0`, which alerted on the first
+    # and dropped the rest, and died outright on a meeting that reached no
+    # decisions at all. That is an ordinary Tuesday, and `lines` renders it
+    # as an empty message rather than an out-of-range index.
+    - from: notes.decisions
       to: alert.message
+      join: lines
     - from: notes.action_items
       to: followups.threads
 
