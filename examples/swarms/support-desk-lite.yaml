@@ -48,9 +48,13 @@ spec:
   snaps:
     - from: triage.escalations.*.reason
       to: alert.message
-    - from: triage.draft_ids.*
+    # Both from `drafted`, not one from draft_ids and one from tickets:
+    # those two lists are different lengths whenever a ticket escalates,
+    # and fanning out over both made the run die mid-swarm with "they
+    # iterate together, so they must be the same length".
+    - from: triage.drafted.*.draft_id
       to: sender.draft_id
-    - from: triage.tickets.*.subject
+    - from: triage.drafted.*.subject
       to: sender.summary
 
   deploy:

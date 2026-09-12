@@ -1,3 +1,7 @@
 {
-  "draft_ids": ["draft-demo-1", "draft-demo-2"]
+  "draft_ids": ["draft-demo-1", "draft-demo-2"],
+  "drafts": [
+    { "draft_id": "draft-demo-1", "to": "sam@client.example", "subject": "Re: Contract review — one open item" },
+    { "draft_id": "draft-demo-2", "to": "jo@partner.example", "subject": "Re: Kickoff moved to the 15th" }
+  ]
 }

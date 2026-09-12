@@ -45,6 +45,13 @@ spec:
         schema: ./schemas/ticket.json
       - name: draft_ids
         type: list<string>
+      # Each draft with the subject it was written for. draft_ids alone
+      # cannot be fanned out next to anything describing it: one draft per
+      # non-escalated ticket means this list is shorter than `tickets`
+      # whenever anything escalates. See docs/fan-out.md.
+      - name: drafted
+        type: list<json>
+        schema: ./schemas/drafted.json
       - name: escalations
         type: list<json>
         schema: ./schemas/escalation.json
@@ -77,6 +84,7 @@ spec:
       params: { drafts: "{{steps.triage.output.drafts}}" }
       outputs:
         draft_ids: "{{steps.create_drafts.output.draft_ids}}"
+        drafted: "{{steps.create_drafts.output.drafts}}"
     # Feed today's escalations back in, so a recall-capable backend has
     # something to derive from. A no-op on key/value backends.
     - name: note_escalations

@@ -109,6 +109,73 @@ func (d *DAG) TopoSort() ([]string, error) {
 	return order, nil
 }
 
+// Levels groups the DAG into waves: every bot in a wave has all its
+// dependencies satisfied by earlier waves, so a wave's bots can run at the
+// same time.
+//
+// TopoSort flattens that structure away. It returns one valid order, and
+// the runner walked it one bot at a time — so morning-brief, which is four
+// bots in two waves of two, ran as four sequential container starts and
+// four sequential rounds of model calls when half of that work never
+// depended on the other half.
+//
+// Same algorithm as TopoSort (Kahn's), keeping the wave boundaries instead
+// of discarding them, and sorted within each wave so a plan printed twice
+// reads the same twice.
+func (d *DAG) Levels() ([][]string, error) {
+	indegree := map[string]int{}
+	for _, n := range d.Nodes {
+		indegree[n] = 0
+	}
+	for _, tos := range d.Edges {
+		for _, to := range tos {
+			indegree[to]++
+		}
+	}
+
+	var ready []string
+	for _, n := range d.Nodes {
+		if indegree[n] == 0 {
+			ready = append(ready, n)
+		}
+	}
+	sort.Strings(ready)
+
+	var levels [][]string
+	placed := 0
+	for len(ready) > 0 {
+		wave := ready
+		levels = append(levels, wave)
+		placed += len(wave)
+
+		var next []string
+		for _, n := range wave {
+			for _, to := range d.Edges[n] {
+				indegree[to]--
+				if indegree[to] == 0 {
+					next = append(next, to)
+				}
+			}
+		}
+		sort.Strings(next)
+		ready = next
+	}
+
+	if placed != len(d.Nodes) {
+		// Same condition TopoSort reports, phrased the same way, so a
+		// cycle reads identically whichever entry point found it.
+		var stuck []string
+		for _, n := range d.Nodes {
+			if indegree[n] > 0 {
+				stuck = append(stuck, n)
+			}
+		}
+		sort.Strings(stuck)
+		return nil, fmt.Errorf("cycle detected involving: %v", stuck)
+	}
+	return levels, nil
+}
+
 // Print renders the DAG as a text tree, in run order, for `nanobots plan`.
 func (d *DAG) Print() string {
 	order, err := d.TopoSort()

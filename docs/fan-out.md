@@ -64,3 +64,29 @@ All three share a shape that makes the conversion safe: the fanned-out bot is *t
 - **`content-engine`**: its own comment says the catalog intent is "scheduled across the week". Fanning `post-writer` and `post-publisher` would write ten posts and publish all ten at once, which is not "across the week" — it's a burst. Per-item scheduling doesn't exist, so `.0` remains the closer approximation.
 
 Both are blocked on the same missing primitive: a way to **join** a fanned-out bot's list back into one value. That's the natural next piece of this feature, and it isn't built.
+
+## Two lists in lockstep
+
+Fanning one bot out over more than one source list iterates them together on
+a shared index — `chaser.overdue.*` and `chaser.draft_ids.*` into the same
+bot means element *i* of each. That is what "for each overdue invoice, with
+its draft" means, and it requires the lists to be the same length.
+
+They often aren't, and the reason is usually structural rather than
+accidental. `support-desk-lite` fanned its sender over
+`triage.draft_ids.*` and `triage.tickets.*.subject`: a ticket that escalates
+gets no draft, so `draft_ids` is *by construction* shorter than `tickets`
+whenever anything escalates. The run died halfway through, after the triage
+bot had already called Gmail.
+
+**Snap both sides from one list whose items carry everything the target
+needs.** `support-triage` now exposes `drafted` — each created draft paired
+with the subject it was written for, built at the one point where both are
+in hand — so the swarm fans out over `triage.drafted.*.draft_id` and
+`triage.drafted.*.subject`, one source, alignment guaranteed.
+
+`TestNoSwarmFansOutOverListsOfDifferentLengths` checks this across every
+swarm in the repo, using each source bot's own conformance outputs as the
+example data. That's a proxy rather than a proof — real lists could still
+diverge where the fixtures agree — but a bot whose own demo data disagrees
+is broken for the one input set it ships.

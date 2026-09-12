@@ -138,6 +138,14 @@ func dispatchGoogle(c googleAPI, op string, params map[string]any, blobs BlobSto
 	case "drafts.create":
 		items, _ := params["drafts"].([]any)
 		ids := make([]string, 0, len(items))
+		// Also returned as one list of objects, because `draft_ids` alone
+		// cannot be fanned out alongside anything that describes them. A
+		// swarm wanting "send each draft, and say what it is" had to snap
+		// draft_ids from here and subjects from the bot's `tickets` output
+		// — two lists that are not the same length, since an escalated
+		// ticket gets no draft. Pairing them at the point where both are
+		// already in hand is the only place the alignment is guaranteed.
+		drafted := make([]map[string]any, 0, len(items))
 		for _, it := range items {
 			d, _ := it.(map[string]any)
 			to, _ := d["to"].(string)
@@ -148,8 +156,9 @@ func dispatchGoogle(c googleAPI, op string, params map[string]any, blobs BlobSto
 				return nil, fmt.Errorf("drafts.create: %w", err)
 			}
 			ids = append(ids, id)
+			drafted = append(drafted, map[string]any{"draft_id": id, "to": to, "subject": subject})
 		}
-		return map[string]any{"draft_ids": ids}, nil
+		return map[string]any{"draft_ids": ids, "drafts": drafted}, nil
 
 	case "drafts.send":
 		draftID, _ := params["draft_id"].(string)

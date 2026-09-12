@@ -2,9 +2,13 @@ package runner
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -43,6 +47,11 @@ type Orchestrator struct {
 	// provider key. Nil means this deployment has no LLM at all, and bots
 	// fall back to their fixtures. See internal/llm.
 	LLM llm.Generator
+
+	// runBotFn is the seam runLevels calls through, so its wave scheduling
+	// and failure aggregation can be tested without Docker. nil means the
+	// real thing; only tests set it.
+	runBotFn func(*Run, *planner.ResolvedSwarm, string, *planner.ResolvedBot) error
 }
 
 // ExecuteSwarm plans swarmPath, then runs it in the background, returning
@@ -56,7 +65,7 @@ func (o *Orchestrator) ExecuteSwarm(swarmPath string) (*Run, error) {
 	if !result.OK() {
 		return nil, fmt.Errorf("swarm does not type-check:\n%s", result.Report())
 	}
-	order, err := result.DAG.TopoSort()
+	levels, err := result.DAG.Levels()
 	if err != nil {
 		return nil, err
 	}
@@ -66,24 +75,137 @@ func (o *Orchestrator) ExecuteSwarm(swarmPath string) (*Run, error) {
 	run.SetStatus(StatusRunning)
 
 	go func() {
-		for _, botID := range order {
-			rb := result.Resolved.Bots[botID]
-			if err := o.runBot(run, result.Resolved, botID, rb); err != nil {
-				run.Log(botID, "", "FAILED: %v", err)
-				// SetError before SetStatus, not after: the terminal status
-				// is what makes a run final, and RunStore snapshots it to
-				// history right then. Setting the error afterwards persisted
-				// failed runs with a blank "why", which is the one thing you
-				// come back to a failed run for.
-				run.SetError(err)
-				run.SetStatus(StatusFailed)
-				return
-			}
+		if err := o.runLevels(run, result.Resolved, levels); err != nil {
+			// SetError before SetStatus, not after: the terminal status is
+			// what makes a run final, and RunStore snapshots it to history
+			// right then. Setting the error afterwards persisted failed
+			// runs with a blank "why", which is the one thing you come back
+			// to a failed run for.
+			run.SetError(err)
+			run.SetStatus(StatusFailed)
+			return
 		}
 		run.SetStatus(StatusSucceeded)
 	}()
 
 	return run, nil
+}
+
+// maxParallelBots is the default cap on how many bots run at once within a
+// wave.
+//
+// Each one is a container plus a model call, so the limit is about the
+// machine rather than the model: four Chromium-bearing containers already
+// want a couple of gigabytes, and a laptop that starts swapping finishes
+// slower than it would have sequentially.
+//
+// Override with NANOBOTS_MAX_PARALLEL_BOTS. 1 restores the old strictly
+// sequential behaviour, which is the honest way to compare — and the thing
+// to reach for on a small machine, or when reading an interleaved run log
+// is harder than waiting.
+const maxParallelBots = 4
+
+// parallelBots resolves the cap once per wave, so changing the environment
+// takes effect on the next run rather than needing a restart.
+func parallelBots() int {
+	if v := os.Getenv("NANOBOTS_MAX_PARALLEL_BOTS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return maxParallelBots
+}
+
+// runLevels runs the swarm wave by wave, with the bots inside a wave
+// running concurrently.
+//
+// A wave's bots have no path between them in the DAG, so nothing one
+// produces can be read by another — which is what makes this safe rather
+// than merely faster. Everything they do share is already synchronised: the
+// run's log and outputs behind its mutex, the memory store behind its own,
+// the callback registry behind its.
+//
+// On failure the wave is allowed to finish rather than being cancelled
+// half-way. Two reasons. A bot that is mid-container would leave that
+// container orphaned, which is the leak this runner already had once. And
+// when two bots in a wave both fail, seeing both errors is more useful than
+// seeing whichever lost the race — a swarm's two independent branches
+// failing for one shared reason (an expired credential, say) is a common
+// case, and reporting one of them sends you looking for two bugs.
+func (o *Orchestrator) runLevels(run *Run, rs *planner.ResolvedSwarm, levels [][]string) error {
+	limit := parallelBots()
+	for _, wave := range levels {
+		if len(wave) == 1 || limit == 1 {
+			// The common shape — nine of the fifteen catalog swarms are a
+			// straight chain — and worth not paying a goroutine and a
+			// channel for.
+			// One at a time: either the wave has one bot (nine of the
+			// fifteen catalog swarms are a straight chain), or the cap
+			// says so.
+			for _, botID := range wave {
+				if err := o.runOneBot(run, rs, botID); err != nil {
+					run.Log(botID, "", "FAILED: %v", err)
+					return err
+				}
+			}
+			continue
+		}
+
+		run.Log("", "", "running %d bots at once: %s", len(wave), strings.Join(wave, ", "))
+
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+		failures := map[string]error{}
+		slots := make(chan struct{}, limit)
+
+		for _, botID := range wave {
+			botID := botID
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				slots <- struct{}{}
+				defer func() { <-slots }()
+
+				if err := o.runOneBot(run, rs, botID); err != nil {
+					run.Log(botID, "", "FAILED: %v", err)
+					mu.Lock()
+					failures[botID] = err
+					mu.Unlock()
+				}
+			}()
+		}
+		wg.Wait()
+
+		if len(failures) > 0 {
+			return waveError(wave, failures)
+		}
+	}
+	return nil
+}
+
+func (o *Orchestrator) runOneBot(run *Run, rs *planner.ResolvedSwarm, botID string) error {
+	if o.runBotFn != nil {
+		return o.runBotFn(run, rs, botID, rs.Bots[botID])
+	}
+	return o.runBot(run, rs, botID, rs.Bots[botID])
+}
+
+// waveError reports a wave's failures as one error, naming every bot that
+// failed rather than only the first — in swarm order, so the message is the
+// same whichever goroutine finished first.
+func waveError(wave []string, failures map[string]error) error {
+	var failed []string
+	for _, botID := range wave {
+		if err, ok := failures[botID]; ok {
+			failed = append(failed, fmt.Sprintf("%s: %v", botID, err))
+		}
+	}
+	if len(failed) == 1 {
+		// Unchanged wording for the single-failure case, which is what
+		// every existing message and test looks like.
+		return errors.New(failed[0][strings.Index(failed[0], ": ")+2:])
+	}
+	return fmt.Errorf("%d bots in the same wave failed — %s", len(failed), strings.Join(failed, "; "))
 }
 
 // runBot runs one bot instance — once, or once per item when a snap into it

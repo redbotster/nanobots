@@ -1,3 +1,6 @@
 {
-  "draft_ids": ["draft-demo-1"]
+  "draft_ids": ["draft-demo-1"],
+  "drafts": [
+    { "draft_id": "draft-demo-1", "to": "dana@acme.example", "subject": "Re: Export is failing on large workspaces" }
+  ]
 }

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "drafted",
+  "description": "One created draft, paired with the subject it was written for. Kept together so a swarm can fan out over drafts and describe each one from the same list \u2014 draft_ids and tickets are different lengths whenever a ticket escalates.",
+  "type": "object",
+  "properties": {
+    "draft_id": {
+      "type": "string",
+      "description": "The created draft's id, for sending later."
+    },
+    "to": {
+      "type": "string",
+      "description": "Who the draft is addressed to."
+    },
+    "subject": {
+      "type": "string",
+      "description": "The draft's subject line."
+    }
+  },
+  "required": [
+    "draft_id",
+    "subject"
+  ],
+  "additionalProperties": false
+}
