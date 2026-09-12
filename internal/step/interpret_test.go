@@ -2,6 +2,7 @@ package step
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,6 +25,7 @@ type fakeDeps struct {
 	approvedBy    string
 	memory        map[string]string
 	recall        func(namespace, question string) string
+	recallErr     error // a backend that is reachable but failing
 	remembered    []string
 	notifyCalled  bool
 	renderResult  []byte
@@ -48,6 +50,9 @@ func (f *fakeDeps) MemoryGet(namespace, key string) (string, bool, error) {
 	return v, ok, nil
 }
 func (f *fakeDeps) MemoryRecall(namespace, question string) (string, error) {
+	if f.recallErr != nil {
+		return "", f.recallErr
+	}
 	if f.recall == nil {
 		// The real sentinel, not a lookalike: the interpreter branches on
 		// errors.Is(err, memory.ErrNoRecall), so a fake with its own error
@@ -559,5 +564,64 @@ func TestMemoryRecallNeedsAQuestion(t *testing.T) {
 	}
 	if _, err := Interpret(nb, map[string]any{}, nil, &fakeDeps{recall: func(_, _ string) string { return "x" }}); err == nil {
 		t.Error("a recall step with no query should be rejected, not sent as an empty question")
+	}
+}
+
+// `optional: true` has to cover every reason there is no answer, not just
+// "this backend only does key/value". A memory server that is rate
+// limited, restarting or simply down is exactly when a bot that said it
+// can work without recall must keep going.
+//
+// Found against a real Honcho, not in a test: two bots in one swarm each
+// asked a question, the LLM provider's per-minute quota ran out on the
+// second, and a swarm that had already triaged the whole inbox died on a
+// step marked optional.
+func TestOptionalRecallDegradesWhenTheBackendFailsNotJustWhenItCannotAnswer(t *testing.T) {
+	nb := func(optional bool) *schema.Nanobot {
+		return &schema.Nanobot{
+			Metadata: schema.Metadata{Name: "probe", Version: "0.1.0"},
+			Spec: schema.NanobotSpec{
+				Steps: []schema.Step{
+					{Name: "ask", Type: "memory.recall", Query: "what matters?", Optional: optional, Output: "out"},
+				},
+				Ports: schema.Ports{Outputs: []schema.OutputPort{{Name: "out", Type: "string"}}},
+			},
+		}
+	}
+	// Not ErrNoRecall: a backend that exists, answers questions in
+	// principle, and is having a bad minute.
+	failing := &fakeDeps{recallErr: errors.New("honcho: POST /chat returned 500: rate limited")}
+
+	res, err := Interpret(nb(true), map[string]any{}, nil, failing)
+	if err != nil {
+		t.Fatalf("optional recall should survive a failing backend: %v", err)
+	}
+	if got := res.Outputs["out"]; got != "" {
+		t.Errorf("degraded output = %q, want empty", got)
+	}
+
+	// The reason has to reach the log — and it must be the real one, not
+	// the key/value message, or whoever reads it goes and reconfigures a
+	// backend that was never the problem.
+	var sawReason, sawWrongReason bool
+	for _, l := range res.Log {
+		if strings.Contains(l.Msg, "rate limited") {
+			sawReason = true
+		}
+		if strings.Contains(l.Msg, "key/value memory only") {
+			sawWrongReason = true
+		}
+	}
+	if !sawReason {
+		t.Errorf("degraded without saying why; log was %+v", res.Log)
+	}
+	if sawWrongReason {
+		t.Errorf("blamed the backend's capabilities for a transient failure; log was %+v", res.Log)
+	}
+
+	// A bot that depends on recall still fails — "optional" is the whole
+	// difference, and a failing backend must not quietly become fine.
+	if _, err := Interpret(nb(false), map[string]any{}, nil, failing); err == nil {
+		t.Error("a required recall step survived a failing backend")
 	}
 }

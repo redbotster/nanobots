@@ -1,0 +1,85 @@
+# Local Honcho for nanobots. Start it with ./honcho.sh, which clones
+# upstream into src-checkout/ and sources GEMINI_API_KEY from
+# ~/.secrets/nanobots.env — the key is never written into a file here.
+#
+# Trimmed from Honcho's own docker-compose.yml.example: no mcp service
+# (nanobots talks to the REST API directly) and no monitoring stack.
+
+services:
+  api:
+    build:
+      context: ./src-checkout
+      dockerfile: Dockerfile
+    entrypoint: ["sh", "docker/entrypoint.sh"]
+    depends_on:
+      database: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2).read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    volumes:
+      - ./config.toml:/app/config.toml:ro
+    environment:
+      - DB_CONNECTION_URI=postgresql+psycopg://postgres:postgres@database:5432/postgres
+      - CACHE_URL=redis://redis:6379/0?suppress=true
+      - CACHE_ENABLED=true
+      - LLM_GEMINI_API_KEY=${GEMINI_API_KEY:?set GEMINI_API_KEY in ~/.secrets/nanobots.env}
+    restart: unless-stopped
+
+  deriver:
+    build:
+      context: ./src-checkout
+      dockerfile: Dockerfile
+    entrypoint: ["/app/.venv/bin/python", "-m", "src.deriver"]
+    depends_on:
+      api: { condition: service_healthy }
+      database: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    volumes:
+      - ./config.toml:/app/config.toml:ro
+    environment:
+      - DB_CONNECTION_URI=postgresql+psycopg://postgres:postgres@database:5432/postgres
+      - CACHE_URL=redis://redis:6379/0?suppress=true
+      - CACHE_ENABLED=true
+      - LLM_GEMINI_API_KEY=${GEMINI_API_KEY:?set GEMINI_API_KEY in ~/.secrets/nanobots.env}
+    restart: unless-stopped
+
+  database:
+    image: pgvector/pgvector:pg15
+    restart: unless-stopped
+    # Deliberately not published to the host: nothing outside this stack
+    # talks to the database, and 5432/5433 are often already taken.
+    command: ["postgres", "-c", "max_connections=200"]
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - ./src-checkout/database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - pgdata:/var/lib/postgresql/data/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8.2
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
+  redis-data:

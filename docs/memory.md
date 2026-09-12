@@ -73,8 +73,35 @@ A bot with **no** such fixture is treated as having no recall available, not as 
 - **Local**, end to end and twice: `competitor-watch` logged `memory.get last_summary (found=false)` on its first run and `found=true` on its second, with the summary on disk between them — and no 1Claw involved in either.
 - **Honcho**, against a fake server asserting the exact routes and bodies read out of its source: `POST /v3/workspaces/{ws}/sessions/{ns}-runs/messages` with `MessageBatchCreate` (`peer_name` is aliased `peer_id` on the wire), and `POST /v3/workspaces/{ws}/peers/{ns}/chat` with `DialecticOptions{query}` returning `DialecticResponse{content}`. Nullable content is treated as "nothing known", not an error, and no `Authorization` header is sent when no key is configured.
 
-**Not verified against a real Honcho server.** Nothing in this repo can reach one, so the client is built and tested against shapes read from Honcho's own routers and schemas — the same standard `internal/oneclaw` holds itself to — but the first run against a live deployment is still the first run.
+**Verified against a real Honcho server**, now that the repo ships one — see *Running Honcho locally* below. Every route and body shape the fake asserts was confirmed live: `POST .../messages` returned 201 with `peer_id` echoed back, and the dialectic answered a real question from three real observations. The one thing the fake got wrong was not a shape but a failure mode; see the same section.
 
+
+## Running Honcho locally
+
+```sh
+./docker/honcho/honcho.sh up -d --build     # first run clones and builds; a few minutes
+```
+
+It needs one LLM provider key — Honcho uses a model to derive memories and to answer questions. The shipped config uses Gemini Flash Lite for everything and Gemini for embeddings, so a free key from https://aistudio.google.com/apikey is enough. Put it in `~/.secrets/nanobots.env` as `GEMINI_API_KEY`, alongside:
+
+```
+NANOBOTS_MEMORY=honcho
+HONCHO_URL=http://localhost:8000
+```
+
+Then restart nanobotd. `/api/status` should say `local + honcho`, and Settings should stop warning you.
+
+Honcho itself is not vendored — `honcho.sh` clones upstream on first run, so you get their Dockerfile and migrations rather than a copy that goes stale. `HONCHO_REF` pins what's checked out. Nothing here writes your key to disk: the script reads it from `~/.secrets/nanobots.env` and passes it to the containers as an environment variable.
+
+### What running it for real changed
+
+Two things a fake could not have told us.
+
+**The free tier is small, and a dialectic query is not one request.** Gemini's free tier allows five `generate_content` calls a minute; a single dialectic query makes several, because the model calls `search_memory` and `search_messages` as tools before answering. Two bots in one swarm each asking one question exhausted the minute. `docker/honcho/config.toml` caps tool iterations per reasoning level for that reason — and because nanobots asks one short, specific question per run, which does not need ten rounds of tool use. Raise them on a paid key.
+
+**`optional: true` was only half implemented.** It degraded when the backend *couldn't* answer questions, but not when the backend *failed* to. So the rate-limited second query took down a swarm that had already triaged the whole inbox. A bot that says it can work without recall must mean that for every reason there's no answer, not just one — fixed, and the reason is always logged so a run never gets quietly worse. A *required* recall step still fails.
+
+Also worth knowing: model names expire. `gemini-2.5-flash` returns 404 for keys created after its retirement, which is how the first attempt failed. The config pins a version deliberately rather than tracking a `-latest` alias, so it will need bumping one day but won't change under you between runs.
 
 ## Seeing which backend you're on
 
