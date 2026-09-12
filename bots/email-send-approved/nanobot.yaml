@@ -32,6 +32,11 @@ spec:
         type: string
       - name: sent_at
         type: datetime
+      # What this send was about, echoed back from the input. A fanned-out
+      # sender's message_ids join into an unreadable list; its summaries
+      # join into a sentence someone can act on. See docs/fan-out.md.
+      - name: acted_on
+        type: string
 
   steps:
     # This gate cannot be removed by a swarm's approval_required_for default
@@ -52,6 +57,10 @@ spec:
     - name: stamp
       type: transform.now
       output: sent_at
+    - name: echo
+      type: transform.pick
+      data: "{{inputs.summary}}"
+      output: acted_on
 
   guardrails:
     pii: redact

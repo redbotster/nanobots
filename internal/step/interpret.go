@@ -339,7 +339,7 @@ func runAIGenerate(nb *schema.Nanobot, s schema.Step, ctx map[string]any, deps D
 	if err != nil {
 		return nil, err
 	}
-	cleaned := stripCodeFence(raw)
+	cleaned := extractJSON(raw)
 	var parsed any
 	if err := json.Unmarshal([]byte(cleaned), &parsed); err != nil {
 		return nil, fmt.Errorf("model response was not valid JSON: %w (response: %s)", err, truncate(raw, 200))
@@ -530,6 +530,89 @@ func stripCodeFence(s string) string {
 	s = strings.TrimPrefix(s, "```")
 	s = strings.TrimSuffix(s, "```")
 	return strings.TrimSpace(s)
+}
+
+// extractJSON pulls the JSON value out of a model response that has prose
+// around it.
+//
+// Every ai.generate prompt in this catalog ends with "Output raw JSON
+// only", and models mostly comply — but "mostly" is the problem. A live
+// invoice-chaser run died on a response that began "I need to evaluate the
+// invoice:" and reasoned for two paragraphs before emitting a perfectly
+// good object. The whole swarm failed; the JSON was right there.
+//
+// Fences are handled first because they are the common case and cheap.
+// Otherwise this scans for the first { or [ and walks to its matching
+// close, tracking string literals and escapes so a brace inside a quoted
+// value doesn't end the scan early. It deliberately does not try to repair
+// malformed JSON: a truncated or genuinely broken response should still
+// fail loudly rather than be half-guessed into something plausible.
+func extractJSON(raw string) string {
+	cleaned := stripCodeFence(raw)
+	if json.Valid([]byte(cleaned)) {
+		return cleaned
+	}
+	// A fenced block anywhere in the response, not just wrapping the whole
+	// of it — "here you go:\n```json\n{...}\n```" is the shape models
+	// reach for when they want to explain themselves first.
+	if i := strings.Index(cleaned, "```"); i >= 0 {
+		rest := cleaned[i+3:]
+		rest = strings.TrimPrefix(rest, "json")
+		if j := strings.Index(rest, "```"); j >= 0 {
+			if inner := strings.TrimSpace(rest[:j]); json.Valid([]byte(inner)) {
+				return inner
+			}
+		}
+	}
+	if v, ok := firstJSONValue(cleaned); ok {
+		return v
+	}
+	return cleaned
+}
+
+// firstJSONValue returns the first balanced { } or [ ] run in s that parses.
+func firstJSONValue(s string) (string, bool) {
+	for start := strings.IndexAny(s, "{["); start >= 0; {
+		open := rune(s[start])
+		close := '}'
+		if open == '[' {
+			close = ']'
+		}
+		depth, inString, escaped := 0, false, false
+		for i := start; i < len(s); i++ {
+			c := rune(s[i])
+			switch {
+			case escaped:
+				escaped = false
+			case c == '\\' && inString:
+				escaped = true
+			case c == '"':
+				inString = !inString
+			case inString:
+				// Braces inside a string value are not structure.
+			case c == open:
+				depth++
+			case c == close:
+				depth--
+				if depth == 0 {
+					candidate := s[start : i+1]
+					if json.Valid([]byte(candidate)) {
+						return candidate, true
+					}
+					// Unbalanced-but-closed run that doesn't parse: keep
+					// looking from after this opener rather than giving up,
+					// since prose can contain a stray brace.
+					i = len(s)
+				}
+			}
+		}
+		next := strings.IndexAny(s[start+1:], "{[")
+		if next < 0 {
+			return "", false
+		}
+		start = start + 1 + next
+	}
+	return "", false
 }
 
 func truncate(s string, n int) string {

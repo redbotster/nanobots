@@ -82,7 +82,13 @@ func (p *PlanResult) Report() string {
 	}
 	for _, s := range p.Snaps {
 		if s.OK {
-			fmt.Fprintf(&b, "  OK   %s (%s) -> %s (%s)\n", s.Snap.From, s.FromType, s.Snap.To, s.ToType)
+			if s.Joined() {
+				// Say what the join did, not just what came out of it.
+				fmt.Fprintf(&b, "  OK   %s (%s) --join:%s--> %s (%s)\n",
+					s.Snap.From, s.RawFromType, s.Snap.Join, s.Snap.To, s.ToType)
+			} else {
+				fmt.Fprintf(&b, "  OK   %s (%s) -> %s (%s)\n", s.Snap.From, s.FromType, s.Snap.To, s.ToType)
+			}
 		} else {
 			fmt.Fprintf(&b, "  FAIL %s -> %s: %v\n", s.Snap.From, s.Snap.To, s.Err)
 		}

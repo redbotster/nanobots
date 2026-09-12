@@ -13,12 +13,21 @@ import (
 
 // SnapCheck is the outcome of type-checking one snap.
 type SnapCheck struct {
-	Snap     schema.Snap
-	FromType schema.ParsedType
-	ToType   schema.ParsedType
-	OK       bool
-	Err      error
+	Snap schema.Snap
+	// FromType is what arrives at the target — after any join. RawFromType
+	// is what the source port produced before it, and differs only when
+	// the snap joins. Both are kept because a plan that showed only the
+	// joined type would hide the fact that twenty values became one, which
+	// is the single most surprising thing a swarm can do.
+	FromType    schema.ParsedType
+	RawFromType schema.ParsedType
+	ToType      schema.ParsedType
+	OK          bool
+	Err         error
 }
+
+// Joined reports whether this snap collapses a list on the way through.
+func (c SnapCheck) Joined() bool { return c.Snap.Join != "" }
 
 // Endpoint is a parsed "<bot-id>.<port>[.<field>...]" reference, exported so
 // internal/runner can resolve a snap's actual value (not just its type) when
@@ -61,6 +70,16 @@ func TypeCheckSnaps(rs *ResolvedSwarm) []SnapCheck {
 			check.Err = fmt.Errorf("to %q: %w", snap.To, err)
 			results = append(results, check)
 			continue
+		}
+		check.RawFromType = fromType
+		if snap.Join != "" {
+			joined, err := JoinType(JoinMode(snap.Join), fromType)
+			if err != nil {
+				check.Err = fmt.Errorf("snap %s -> %s: %w", snap.From, snap.To, err)
+				results = append(results, check)
+				continue
+			}
+			fromType = joined
 		}
 		check.FromType, check.ToType = fromType, toType
 		if !schema.Assignable(fromType, toType) {

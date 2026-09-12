@@ -105,7 +105,7 @@ Once the WebUI is running, in **basic mode** (the default): type what you want a
 | `content-ideas`, `post-writer`, `post-publisher`, `repurposer`, `newsletter-drafter` | `support-triage`, `review-responder`, `competitor-watch` |
 | `recap-emails-to-pdf`, `email-drive-file`, `github-issues-digest` | |
 
-**14 swarms** (`examples/swarms/`), each with a header comment documenting any place it simplifies the catalog's own aspirational diagram (usually: a downstream bot acts on the first item, where fanning out would need a join that isn't built — see `docs/fan-out.md`):
+**14 swarms** (`examples/swarms/`), each with a header comment documenting any place it simplifies the catalog's own aspirational diagram (usually: a downstream bot acts on the first item where fanning out would multiply container starts — see `docs/fan-out.md`):
 
 | Swarm | What it does |
 |---|---|
@@ -198,7 +198,7 @@ Being explicit about this matters more here than in most projects, because so mu
 | The AI composer — a real Shroud call, a real planner validation pass, a real hydrate-into-the-builder handoff | The composer never auto-saves or auto-runs; a hallucinated bot id or type mismatch surfaces as a normal validation error for the human to see, by design |
 | The unified Connect UI (Settings) — real vault writes/reads, real Google OAuth kicked off server-side | Connections are always whole-port-to-port in the visual builder and the composer (no picking a nested field of a `json` output the way a couple of example swarms do by hand); a swarm's trigger/vars/deploy config has no UI yet; canvas layout isn't persisted |
 | Approvals — a run genuinely blocks, flips to `awaiting_approval`, and waits for a real decision from the WebUI or CLI | The local run queue's approvals aren't mirrored into 1Claw's own approval system/mobile app — that's a separate, real queue (`docs/approvals.md`) |
-| Per-item fan-out — a `.*` snap runs a downstream bot once per list item, with one approval covering the batch (`docs/fan-out.md`); three catalog swarms use it | Three others still snap `.0` on purpose: they feed a bot *downstream* of the one that would fan out, and joining a fanned-out list back into one value isn't built |
+| Per-item fan-out *and* the join back — a `.*` snap runs a downstream bot once per list item with one approval covering the batch, and `join: lines\|json\|count\|flatten\|first` collapses the results into one value for a bot that isn't fanned out (`docs/fan-out.md`). `get-paid` now chases every overdue invoice and posts one summary, where it used to chase the first | Two swarms still snap `.0`: `content-engine` and `meeting-to-action` would fan out cleanly but multiply container starts, which is a cost decision rather than a missing primitive |
 | Basic/advanced mode toggle — a real, tested UI gate | Purely a UI-visibility gate; it never changes what actually executes |
 
 **A real constraint hit repeatedly while building and testing this, worth knowing about**: 1Claw vaults can require passkey verification before `GetSecret` succeeds, depending on the account's own vault security tier — a 403 `"Passkey verification required to access vault secrets"` from 1Claw itself, not a bug here. It means a connected credential can sit in the vault but be temporarily unreadable until a human unlocks it with their passkey in a browser. It surfaced again during this session's final live-run pass (the connections status check correctly reported every service as disconnected while it was in effect) and correctly errors bots that need it instead of pretending to deliver. Bots and swarms that only need Shroud (`ai.generate`) or `web.fetch` are unaffected — that's most of the busy-person hero path — and account-level agent caps are a separate, real, tier-based constraint (this account is capped at 10 concurrent agents on its current plan; deleting an unused agent frees the slot instantly since agents are recreated on demand by name).
@@ -249,7 +249,7 @@ Per the project's own working style, expensive verification is a single consolid
 go build ./... && go vet ./... && go test ./...
 ```
 
-408 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
+416 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
 - `internal/contract`'s `TestRunConformanceOnLaunchBots` — auto-discovers and conformance-tests all 30 bots under `bots/` against their own fixtures, no Docker or network.
 - `internal/planner`'s `TestPlanAllExampleSwarms` — auto-discovers and type-checks all 14 swarms under `examples/swarms/`.
 - httptest-mocked 1Claw/Google/Slack/GitHub/Stripe/HubSpot/X/LinkedIn API clients, built against each provider's real, documented endpoint shapes (verified against `@1claw/openapi-spec` and each provider's own docs, not guessed).

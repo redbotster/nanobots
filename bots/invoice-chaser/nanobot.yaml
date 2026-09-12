@@ -47,6 +47,12 @@ spec:
         schema: ./schemas/overdue.json
       - name: draft_ids
         type: list<string>
+      # Each drafted reminder with who it is for. Snapping draft_ids and
+      # overdue separately into one fanned-out bot iterates two lists that
+      # nothing guarantees are the same length; this one list carries both.
+      - name: drafted
+        type: list<json>
+        schema: ./schemas/drafted.json
 
   steps:
     - name: fetch
@@ -67,6 +73,7 @@ spec:
       params: { drafts: "{{steps.draft.output.drafts}}" }
       outputs:
         draft_ids: "{{steps.create.output.draft_ids}}"
+        drafted: "{{steps.create.output.drafts}}"
 
   guardrails:
     pii: redact

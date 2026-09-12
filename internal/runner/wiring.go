@@ -128,6 +128,16 @@ func (o *Orchestrator) resolveSnapValueAt(run *Run, snap schema.Snap, at fanInde
 			return nil, fmt.Errorf("%s.%s has no field %q", from.BotID, from.Port, field)
 		}
 	}
+	// Last, after any field access: `join` collapses what the fan-out
+	// produced, and the planner type-checked it against exactly this
+	// value's type. See internal/planner/join.go.
+	if snap.Join != "" {
+		joined, err := planner.JoinValue(planner.JoinMode(snap.Join), val)
+		if err != nil {
+			return nil, fmt.Errorf("snap %s -> %s: %w", snap.From, snap.To, err)
+		}
+		return joined, nil
+	}
 	return val, nil
 }
 

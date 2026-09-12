@@ -2,6 +2,7 @@ package step
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -623,5 +624,75 @@ func TestOptionalRecallDegradesWhenTheBackendFailsNotJustWhenItCannotAnswer(t *t
 	// difference, and a failing backend must not quietly become fine.
 	if _, err := Interpret(nb(false), map[string]any{}, nil, failing); err == nil {
 		t.Error("a required recall step survived a failing backend")
+	}
+}
+
+// Every ai.generate prompt in this catalog ends with "Output raw JSON
+// only", and models mostly comply. "Mostly" is the problem: a live
+// invoice-chaser run died on a response that opened "I need to evaluate the
+// invoice:" and reasoned for two paragraphs before emitting a perfectly
+// good object. The whole swarm failed with the JSON sitting right there in
+// the error message.
+func TestJSONIsFoundInAChattyModelResponse(t *testing.T) {
+	for _, tc := range []struct {
+		name, raw, want string
+	}{
+		{"already clean", `{"a":1}`, `{"a":1}`},
+		{"fenced", "```json\n{\"a\":1}\n```", `{"a":1}`},
+		{"unlabelled fence", "```\n{\"a\":1}\n```", `{"a":1}`},
+		{
+			// The exact shape that killed the real run.
+			"prose then json",
+			"I need to evaluate the invoice:\n\n- due_date: 1757203200\n- Days overdue: ~2\n\n{\"overdue\": [], \"drafts\": []}",
+			`{"overdue": [], "drafts": []}`,
+		},
+		{"prose then a fenced block", "Here you go:\n\n```json\n{\"a\":1}\n```\n\nLet me know!", `{"a":1}`},
+		{"trailing prose", "{\"a\":1}\n\nHope that helps.", `{"a":1}`},
+		{"a top-level array", "Sure:\n[1,2,3]", `[1,2,3]`},
+		{
+			// A brace inside a string value must not end the scan early.
+			"braces inside a string",
+			`Result: {"note":"use {curly} braces","n":2}`,
+			`{"note":"use {curly} braces","n":2}`,
+		},
+		{
+			// An escaped quote must not flip the in-string state.
+			"escaped quote inside a string",
+			`{"note":"she said \"hi\"","n":1}`,
+			`{"note":"she said \"hi\"","n":1}`,
+		},
+		{
+			// A stray brace in the prose must not derail the search.
+			"a stray brace before the real object",
+			"The template is {placeholder} — anyway:\n{\"a\":1}",
+			`{"a":1}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := extractJSON(tc.raw)
+			if got != tc.want {
+				t.Errorf("extractJSON()\n got %s\nwant %s", got, tc.want)
+			}
+			if !json.Valid([]byte(got)) {
+				t.Errorf("result is not valid JSON: %s", got)
+			}
+		})
+	}
+}
+
+// Repairing malformed JSON is deliberately out of scope. A truncated or
+// genuinely broken response must still fail loudly — half-guessing it into
+// something plausible would turn a visible failure into a wrong answer.
+func TestAGenuinelyBrokenResponseStillFails(t *testing.T) {
+	for _, raw := range []string{
+		"I could not do that.",
+		`{"a": 1`,   // truncated
+		`{"a": 1,}`, // trailing comma
+		"",
+	} {
+		got := extractJSON(raw)
+		if json.Valid([]byte(got)) && strings.TrimSpace(raw) != "" {
+			t.Errorf("extractJSON(%q) = %q, which parses — it should not have been rescued", raw, got)
+		}
 	}
 }

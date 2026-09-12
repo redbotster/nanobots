@@ -2,7 +2,7 @@ apiVersion: nanobots.dev/v1alpha1
 kind: Nanoswarm
 metadata:
   name: get-paid
-  description: Every Monday, find overdue invoices, send the first reminder once approved, and confirm it went out.
+  description: Every Monday, find every overdue invoice, send each reminder once approved, and post one summary of what went out.
   owner: me@example.com
 
 # Catalog's S10 is "invoice-chaser -> approve -> email-send-approved ->
@@ -10,12 +10,12 @@ metadata:
 # `approve` is skipped, same reason as every other swarm here —
 # email-send-approved's own built-in gate is the one approval.
 #
-# Per-item fan-out exists (docs/fan-out.md) and is deliberately not used
-# here: `sender` feeds `notifier`, so fanning it would leave notifier
-# either posting one Slack message per invoice, or confirming only the
-# first of N sends — which is worse than not confirming. What this wants
-# is one notification summarising the batch, and there's no join step to
-# build that with yet. So it still chases the first overdue invoice only.
+# This chased only the first overdue invoice until `join:` existed.
+# Fanning `sender` out was never the problem; what was missing was the way
+# back — `sender` feeds `notifier`, and fanning it left notifier either
+# posting one Slack message per invoice or confirming only the first send.
+# `join: lines` collapses the fanned-out sender's outputs into the one
+# summary this wants (docs/fan-out.md).
 
 spec:
   defaults:
@@ -46,12 +46,18 @@ spec:
         channel: "{{vars.notify_channel}}"
 
   snaps:
-    - from: chaser.draft_ids.0
+    # One reminder per overdue invoice. Both sides come from `drafted`, not
+    # one from draft_ids and one from overdue: fanned snaps iterate in
+    # lockstep on one index, so they must be one list.
+    - from: chaser.drafted.*.draft_id
       to: sender.draft_id
-    - from: chaser.overdue.0.customer_email
+    - from: chaser.drafted.*.subject
       to: sender.summary
-    - from: sender.message_id
+    # And back to one value: every reminder that actually went out, one per
+    # line, as a single Slack message.
+    - from: sender.acted_on
       to: notifier.message
+      join: lines
 
   deploy:
     target: local

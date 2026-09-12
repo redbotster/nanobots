@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "drafted",
+  "description": "One drafted reminder, paired with who it is addressed to and what it says. Kept together so a swarm can fan out over reminders and describe each one from the same list.",
+  "type": "object",
+  "properties": {
+    "draft_id": {
+      "type": "string"
+    },
+    "to": {
+      "type": "string"
+    },
+    "subject": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "draft_id",
+    "subject"
+  ],
+  "additionalProperties": false
+}

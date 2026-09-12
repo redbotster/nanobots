@@ -90,3 +90,58 @@ swarm in the repo, using each source bot's own conformance outputs as the
 example data. That's a proxy rather than a proof — real lists could still
 diverge where the fixtures agree — but a bot whose own demo data disagrees
 is broken for the one input set it ships.
+
+## Joining: the way back
+
+Fanning out is only half of "for each". A bot that fans out runs once per
+item and produces one of each output per run, so the planner types its
+outputs as `list<T>`. A downstream bot that *doesn't* fan out wants one
+value — "send each of these twenty reminders, then post me one summary".
+
+Nothing bridged that, so `get-paid` snapped `.0` and chased the first
+overdue invoice only, with a comment apologising for it.
+
+`join:` on a snap says how the list becomes one value:
+
+```yaml
+- from: sender.acted_on          # list<string>: one per reminder sent
+  to: notifier.message           # string
+  join: lines
+```
+
+| mode | takes | gives | for |
+|---|---|---|---|
+| `lines` | `list<T>` | `string` | one per line — a Slack message, an email body |
+| `json` | `list<T>` | `string` | a JSON array, for a bot that will parse it |
+| `count` | `list<T>` | `string` | "how many", as text (this schema has no numeric port type) |
+| `flatten` | `list<list<T>>` | `list<T>` | ten ideas × three posts is thirty posts, not ten groups |
+| `first` | `list<T>` | `T` | today's `.0`, named, so ignoring the rest is a visible choice |
+
+It's explicit rather than implicit on purpose. "Twenty message ids became
+one string" is a real decision — newline-separated, a JSON array, or just
+the count are all reasonable — and a reader of the YAML shouldn't have to
+know a rule to see which one happened. `nanobots plan` shows it:
+
+```
+OK   sender.acted_on (list<string>) --join:lines--> notifier.message (string)
+```
+
+The planner type-checks the join before anything runs: a mode that can't
+produce the target port's type is a plan-time failure, and a `join:` on a
+snap that isn't a list at all is rejected too — that means the author
+expected a fan-out that isn't happening.
+
+`JoinType` and `JoinValue` live in the same file
+(`internal/planner/join.go`) because they have to agree. A join the planner
+accepts must be one the runner can perform, or a swarm type-checks and then
+dies mid-run — which is exactly the failure mode this feature exists to end.
+
+### Give the downstream bot something worth reading
+
+`get-paid`'s notifier could have joined `sender.message_id`, but a list of
+opaque Gmail ids is not a useful Slack message. So `email-send-approved`
+now echoes its `summary` input back as an `acted_on` output, and the join
+produces one reminder per line in words a person can act on. Echoing an
+input as an output is worth doing whenever a bot's real outputs are
+identifiers: the downstream bot is usually reporting on *what happened*,
+not on *what it is called*.

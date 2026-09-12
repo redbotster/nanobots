@@ -196,6 +196,10 @@ type BotRef struct {
 type Snap struct {
 	From string `json:"from" yaml:"from"` // "<bot-id>.<port>[.<field>...]"
 	To   string `json:"to" yaml:"to"`
+	// Join collapses a fanned-out bot's list output into one value — the
+	// inverse of the `.*` marker. lines | json | count | flatten | first.
+	// See internal/planner/join.go and docs/fan-out.md.
+	Join string `json:"join,omitempty" yaml:"join,omitempty"`
 }
 
 // Trigger is how a swarm starts a run.
