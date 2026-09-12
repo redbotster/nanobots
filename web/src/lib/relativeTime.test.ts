@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { relativeTime } from "./relativeTime";
+import { relativeTime, untilTime } from "./relativeTime";
 
 describe("relativeTime", () => {
   const now = new Date("2026-03-02T12:00:00Z");
@@ -41,5 +41,33 @@ describe("relativeTime", () => {
 
   it("returns the raw input for an unparsable date rather than throwing", () => {
     expect(relativeTime("not-a-date")).toBe("not-a-date");
+  });
+});
+
+describe("untilTime", () => {
+  const inSeconds = (s: number) => new Date(Date.now() + s * 1000).toISOString();
+
+  it("phrases near-future times", () => {
+    expect(untilTime(inSeconds(45))).toBe("in 45s");
+    expect(untilTime(inSeconds(60 * 5))).toBe("in 5m");
+    expect(untilTime(inSeconds(60 * 60 * 3))).toBe("in 3h");
+    expect(untilTime(inSeconds(60 * 60 * 24 * 2))).toBe("in 2d");
+  });
+
+  // A schedule that's due, or that fired a moment ago and hasn't been
+  // recomputed yet, must never render as "in -3s".
+  it("never counts backwards", () => {
+    expect(untilTime(inSeconds(-5))).toBe("any moment now");
+    expect(untilTime(inSeconds(-3600))).toBe("any moment now");
+    expect(untilTime(inSeconds(10))).toBe("any moment now");
+  });
+
+  it("falls back to a date beyond a week", () => {
+    const far = inSeconds(60 * 60 * 24 * 30);
+    expect(untilTime(far)).toBe(new Date(far).toLocaleDateString());
+  });
+
+  it("passes through something that isn't a date", () => {
+    expect(untilTime("not a date")).toBe("not a date");
   });
 });

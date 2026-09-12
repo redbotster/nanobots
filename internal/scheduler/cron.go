@@ -27,7 +27,7 @@ var fieldBounds = [5][2]int{
 	{0, 23}, // hour
 	{1, 31}, // day of month
 	{1, 12}, // month
-	{0, 6},  // day of week (0 = Sunday)
+	{0, 7},  // day of week (0 and 7 both mean Sunday, as in standard cron)
 }
 
 // Schedule is one parsed cron expression — a set of allowed values for each
@@ -59,6 +59,15 @@ func Parse(expr string) (*Schedule, error) {
 			return nil, fmt.Errorf("cron: %s field %q: %w", names[i], f, err)
 		}
 		sets[i] = set
+	}
+	// Standard cron accepts both 0 and 7 for Sunday, and people write 7.
+	// This parser only allowed 0-6, so "0 9 * * 7" failed to parse — and
+	// the scheduler's response to a parse failure is to log and skip, so
+	// the swarm silently never fired. Normalising here keeps matches()
+	// comparing against time.Weekday(), which is only ever 0-6.
+	if sets[4][7] {
+		sets[4][0] = true
+		delete(sets[4], 7)
 	}
 	return &Schedule{
 		minute: sets[0], hour: sets[1], dom: sets[2], month: sets[3], dow: sets[4],

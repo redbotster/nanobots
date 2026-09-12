@@ -11,6 +11,7 @@ import { RunLog } from "../components/RunLog";
 import { RunResults } from "../components/RunResults";
 import { YamlView } from "../components/YamlView";
 import { Button } from "../components/Button";
+import { untilTime } from "../lib/relativeTime";
 import { StatusDot } from "../components/StatusDot";
 
 export function SwarmView({
@@ -110,6 +111,20 @@ export function SwarmView({
               {plan?.swarm ?? swarm.name}
             </h1>
             <p className="mt-1 max-w-xl text-sm text-muted">{swarm.description}</p>
+            {swarm.schedule && (
+              <p className="mt-1.5 text-[12px] text-muted">
+                ⏰ Runs automatically {swarm.schedule.toLowerCase()}
+                {swarm.timezone && ` (${swarm.timezone})`}
+                {swarm.next_run_at && ` — next ${untilTime(swarm.next_run_at)}`}
+                <span className="ml-1.5 text-muted/60">{swarm.schedule_expr}</span>
+              </p>
+            )}
+            {swarm.schedule_error && (
+              <p className="mt-1.5 text-[12px] text-danger">
+                ⏰ This swarm's schedule can't be read ({swarm.schedule_expr}), so it
+                never fires on its own: {swarm.schedule_error}
+              </p>
+            )}
           </div>
           {onEdit && (
             <Button variant="ghost" onClick={onEdit} disabled={isBusy}>

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/redbotster/nanobots/internal/planner"
 	"github.com/redbotster/nanobots/internal/runner"
+	"github.com/redbotster/nanobots/internal/scheduler"
 	"github.com/redbotster/nanobots/internal/schema"
 )
 
@@ -32,6 +34,49 @@ type SwarmSummary struct {
 	LastRunStatus  string `json:"last_run_status,omitempty"`
 	LastRunAt      string `json:"last_run_at,omitempty"`
 	LastRunTrigger string `json:"last_run_trigger,omitempty"`
+
+	// The schedule this swarm fires on, if any. The scheduler has been
+	// firing these all along while the UI said nothing about them — you
+	// couldn't tell a swarm was scheduled, when it ran, or when it would
+	// run next. Absent for a swarm with no cron trigger.
+	Schedule     string `json:"schedule,omitempty"`      // "Weekdays at 7:00 AM"
+	ScheduleExpr string `json:"schedule_expr,omitempty"` // "0 7 * * 1-5", for anyone who wants the truth
+	Timezone     string `json:"timezone,omitempty"`
+	NextRunAt    string `json:"next_run_at,omitempty"`
+	// ScheduleError explains a cron expression the scheduler cannot parse.
+	// Such a swarm never fires, and previously said so only in a daemon log
+	// line nobody reads.
+	ScheduleError string `json:"schedule_error,omitempty"`
+}
+
+// describeSchedule fills in the schedule fields from a swarm's trigger,
+// using the same parser the scheduler itself runs on — so what the UI shows
+// and what actually fires can't disagree.
+func describeSchedule(sum *SwarmSummary, t schema.Trigger, now time.Time) {
+	if t.Type != "cron" || t.Expr == "" {
+		return
+	}
+	sum.ScheduleExpr = t.Expr
+	sum.Timezone = t.Timezone
+
+	sched, err := scheduler.Parse(t.Expr)
+	if err != nil {
+		sum.ScheduleError = err.Error()
+		return
+	}
+	sum.Schedule = scheduler.Describe(t.Expr)
+
+	loc := time.UTC
+	if t.Timezone != "" {
+		if l, lerr := time.LoadLocation(t.Timezone); lerr == nil {
+			loc = l
+		} else {
+			sum.ScheduleError = fmt.Sprintf("unknown timezone %q, treating as UTC", t.Timezone)
+		}
+	}
+	if next := sched.Next(now.In(loc)); !next.IsZero() {
+		sum.NextRunAt = next.Format(time.RFC3339)
+	}
 }
 
 // lastRunFor finds the most recently started run matching swarmName —
@@ -104,6 +149,7 @@ func (s *Server) handleListSwarms(w http.ResponseWriter, r *http.Request) {
 			Path: relPath, Name: sw.Metadata.Name, Description: sw.Metadata.Description,
 			ServicesLive: live, ServicesTotal: total,
 		}
+		describeSchedule(&summary, sw.Spec.Trigger, time.Now())
 		if last := lastRunFor(allRuns, sw.Metadata.Name); last != nil {
 			summary.LastRunID = last.ID
 			summary.LastRunStatus = string(last.GetStatus())

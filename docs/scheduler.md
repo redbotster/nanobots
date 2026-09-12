@@ -23,3 +23,25 @@ scheduler: firing examples/swarms/your-swarm.yaml (due 2026-09-11T09:00:00-05:00
 ```
 
 `GET /api/runs` shows the resulting run exactly like a manually-started one — including a real approval gate opening if the swarm has one.
+
+
+## Seeing a schedule without reading cron
+
+Every cron-triggered swarm now says when it runs, in words, on its card and in its detail view — plus when it fires next:
+
+```
+⏰ Weekdays at 7:00 AM · in 2d
+⏰ Every 2 hours on weekdays · in 30m
+```
+
+Before this the scheduler was invisible. It had been firing swarms since it was built, and nothing in the WebUI said a swarm was scheduled, when it ran, or when it would run again. A swarm that quietly emails you every weekday at 07:00 should not be a surprise.
+
+`GET /api/swarms` carries `schedule` (the sentence), `schedule_expr` (the cron, kept because the sentence is a convenience and the expression is the truth), `timezone`, and `next_run_at`. The next-run time is computed with the same `scheduler.Parse` + `Schedule.Next` the scheduler itself runs on, so what the UI promises and what actually fires cannot disagree.
+
+`scheduler.Describe` phrases the shapes the catalog uses and the ones people write by hand — times of day, day sets (`Weekdays`, `Weekends`, `Mon, Wed, Fri`), day-of-month (`Monthly on the 1st`), intervals (`Every 15 minutes`, `Hourly`), and intervals restricted to days (`Every 2 hours on weekdays`). Anything beyond that falls back to the raw expression rather than guessing: a wrong sentence about when something fires is worse than an honest cron string. Every phrase in the test table is also asserted to be something `Parse` accepts, so the UI can never describe a schedule the scheduler silently ignores.
+
+A cron expression that *can't* be parsed now surfaces as `schedule_error` and renders in red on the card. Such a swarm never fires, and previously said so only in a daemon log line nobody reads.
+
+## `7` means Sunday
+
+Standard cron accepts both `0` and `7` for Sunday. This parser only allowed `0-6`, so `0 9 * * 7` failed to parse — and the scheduler's response to a parse failure is to log and skip, meaning the swarm silently never ran. `Parse` now normalises `7` to `0`, which keeps `matches` comparing against `time.Weekday()` (only ever 0-6).

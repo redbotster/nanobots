@@ -5,7 +5,7 @@ import type { UIMode } from "../lib/uiMode";
 import { SwarmView } from "./SwarmView";
 import { Button } from "../components/Button";
 import { StatusDot } from "../components/StatusDot";
-import { relativeTime } from "../lib/relativeTime";
+import { relativeTime, untilTime } from "../lib/relativeTime";
 
 // Both are reached only by an explicit action — opening the builder, or
 // opting into a foundry job after a composer gap — and the builder drags in
@@ -131,6 +131,36 @@ function GapPanel({
           Never mind
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** When a swarm fires on its own, and when that next happens. The scheduler
+ * has been running these all along with nothing in the UI to say so — a
+ * swarm that quietly emails you every weekday at 7 should not be a surprise.
+ * A swarm with no cron trigger renders nothing rather than "manual only",
+ * which would be noise on every card that has one. */
+function ScheduleLine({ swarm }: { swarm: SwarmSummary }) {
+  if (swarm.schedule_error) {
+    return (
+      <div
+        className="mt-2.5 text-[11px] text-danger"
+        title={`${swarm.schedule_expr} — ${swarm.schedule_error}`}
+      >
+        ⏰ schedule can't be read, so this never fires on its own
+      </div>
+    );
+  }
+  if (!swarm.schedule) return null;
+  return (
+    <div
+      className="mt-2.5 truncate text-[11px] text-muted"
+      title={`${swarm.schedule_expr}${swarm.timezone ? ` (${swarm.timezone})` : ""}`}
+    >
+      ⏰ {swarm.schedule}
+      {swarm.next_run_at && (
+        <span className="text-muted/70"> · {untilTime(swarm.next_run_at)}</span>
+      )}
     </div>
   );
 }
@@ -274,14 +304,15 @@ export function SwarmsPage({ uiMode }: { uiMode: UIMode }) {
             <p className="mt-1.5 text-[13px] leading-snug text-muted">
               {s.description}
             </p>
+            <ScheduleLine swarm={s} />
             {s.last_run_status ? (
-              <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-muted">
+              <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted">
                 <StatusDot tone={RUN_TONE[s.last_run_status] ?? "muted"} />
                 last ran {relativeTime(s.last_run_at!)}
                 {s.last_run_trigger === "schedule" && " · scheduled"}
               </div>
             ) : (
-              <div className="mt-2.5 text-[11px] text-muted/60">never run yet</div>
+              <div className="mt-1 text-[11px] text-muted/60">never run yet</div>
             )}
           </button>
         ))}

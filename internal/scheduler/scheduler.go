@@ -35,7 +35,7 @@ type Scheduler struct {
 	Orchestrator Orchestrator
 	Runs         RunStore
 	SwarmsDir    string
-	PollInterval time.Duration   // 0 => 20s
+	PollInterval time.Duration    // 0 => 20s
 	Now          func() time.Time // 0 => time.Now; overridable for tests
 
 	mu    sync.Mutex

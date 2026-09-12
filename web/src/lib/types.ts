@@ -173,6 +173,16 @@ export interface SwarmSummary {
   last_run_status?: RunStatus;
   last_run_at?: string;
   last_run_trigger?: "manual" | "schedule";
+  /** "Weekdays at 7:00 AM" — the swarm's cron trigger in words. Absent when
+   * the swarm has no cron trigger. See internal/scheduler/describe.go. */
+  schedule?: string;
+  /** The raw cron expression behind `schedule`, for anyone who wants it. */
+  schedule_expr?: string;
+  timezone?: string;
+  next_run_at?: string;
+  /** Set when the cron expression can't be parsed — such a swarm never
+   * fires, and used to say so only in a daemon log line nobody reads. */
+  schedule_error?: string;
 }
 
 /** One bot instance in a swarm draft, as the visual builder edits it — the
