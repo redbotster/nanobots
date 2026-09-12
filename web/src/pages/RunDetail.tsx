@@ -6,6 +6,7 @@ import { RunLog } from "../components/RunLog";
 import { RunResults } from "../components/RunResults";
 import { StatusDot } from "../components/StatusDot";
 import { parseRunError, runRemedy } from "../lib/runError";
+import type { ToleratedFailure } from "../lib/types";
 
 const tone: Record<string, "ok" | "warn" | "danger" | "muted"> = {
   succeeded: "ok",
@@ -80,6 +81,57 @@ function FailureBanner({
           )}
         </>
       )}
+    </div>
+  );
+}
+
+/** Bots the swarm was told to continue past. The run did its real work —
+ * get-paid's reminders went out — and something at the edge didn't. Both
+ * halves of that sentence matter, so this says "finished" and then names
+ * exactly what is missing. */
+function ToleratedBanner({
+  tolerated,
+  onOpenSettings,
+}: {
+  tolerated: ToleratedFailure[];
+  onOpenSettings?: () => void;
+}) {
+  return (
+    <div className="mt-3 rounded-lg border border-warn/40 bg-warn/[0.06] px-3.5 py-2.5">
+      <span className="font-display text-[11px] uppercase tracking-wider text-warn">
+        Finished, but {tolerated.length === 1 ? "one step" : `${tolerated.length} steps`} didn't run
+      </span>
+      <p className="mt-1 text-[12px] leading-snug text-muted">
+        This swarm is set to carry on without {tolerated.length === 1 ? "it" : "them"}, so the rest
+        of the run completed.
+      </p>
+      {tolerated.map((t) => {
+        const parts = parseRunError(t.error);
+        const remedy = runRemedy(t.error);
+        return (
+          <div key={t.bot} className="mt-2 border-t border-warn/20 pt-2">
+            <span className="rounded border border-warn/30 px-1.5 py-0.5 text-[10px] text-warn/80">
+              {t.bot}
+            </span>
+            <p className="mt-1 whitespace-pre-wrap break-words text-[12px] leading-snug text-ink">
+              {parts?.message ?? t.error}
+            </p>
+            {remedy && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <span className="text-[12px] leading-snug text-muted">{remedy.advice}</span>
+                {remedy.action && onOpenSettings && (
+                  <button
+                    onClick={onOpenSettings}
+                    className="rounded border border-tron/50 px-2 py-0.5 text-[11px] text-tron transition-colors hover:bg-tron/10"
+                  >
+                    {remedy.action.label}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -168,6 +220,12 @@ export function RunDetail({
             run said "failed" and made you read the whole log to find out why. */}
         {run?.status === "failed" && run.error && (
           <FailureBanner error={run.error} onOpenSettings={onOpenSettings} />
+        )}
+        {/* A run that finished with a hole in it. Rendered as a warning
+            rather than left to the log, because the point of continuing
+            past a failure is that someone still finds out. */}
+        {run?.status === "succeeded" && (run.tolerated?.length ?? 0) > 0 && (
+          <ToleratedBanner tolerated={run.tolerated!} onOpenSettings={onOpenSettings} />
         )}
         {rerunError && (
           <div className="mt-3 rounded-lg border border-danger/40 bg-danger/[0.06] px-3.5 py-2.5 text-[12px] text-danger">

@@ -365,6 +365,12 @@ func runRun(args []string) error {
 			// test drives this loop.
 			if status := run.GetStatus(); status == runner.StatusSucceeded || status == runner.StatusFailed {
 				fmt.Printf("\nrun %s: %s\n", run.ID, status)
+				// A run that finished with a hole in it must not print as
+				// an unqualified success — the whole point of continuing
+				// past a failure is that someone still finds out.
+				for _, t := range run.GetTolerated() {
+					fmt.Printf("  continued past a failure in %s: %s\n", t.Bot, t.Error)
+				}
 				if msg := run.GetError(); msg != "" {
 					fmt.Println("error:", msg)
 					os.Exit(1)

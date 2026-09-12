@@ -15,6 +15,9 @@ type PlanResult struct {
 	Snaps    []SnapCheck
 	DAG      *DAG
 	DAGErr   error
+	// Invalid are swarm-level mistakes that aren't about a snap or a port
+	// — today, an unrecognised on_error value.
+	Invalid []error
 	// Unfed are required input ports with no value source. A plan-time
 	// property that used to surface only at run time, several containers
 	// in. See CheckRequiredInputs.
@@ -24,7 +27,7 @@ type PlanResult struct {
 // OK reports whether the swarm is runnable: every snap type-checked and the
 // DAG has no cycles.
 func (p *PlanResult) OK() bool {
-	if p.DAGErr != nil || len(p.Unfed) > 0 {
+	if p.DAGErr != nil || len(p.Unfed) > 0 || len(p.Invalid) > 0 {
 		return false
 	}
 	for _, s := range p.Snaps {
@@ -60,6 +63,7 @@ func PlanSwarm(sw *schema.Nanoswarm, botsDir string) (*PlanResult, error) {
 	result := &PlanResult{Resolved: resolved}
 	result.Snaps = TypeCheckSnaps(resolved)
 	result.Unfed = CheckRequiredInputs(resolved)
+	result.Invalid = CheckOnError(resolved)
 	dag, err := BuildDAG(resolved)
 	result.DAG = dag
 	result.DAGErr = err
@@ -79,6 +83,10 @@ func (p *PlanResult) Report() string {
 		for _, line := range strings.Split(strings.TrimRight(p.DAG.Print(), "\n"), "\n") {
 			fmt.Fprintf(&b, "  %s\n", line)
 		}
+	}
+
+	for _, e := range p.Invalid {
+		fmt.Fprintf(&b, "\nFAIL %v\n", e)
 	}
 
 	if len(p.Unfed) > 0 {

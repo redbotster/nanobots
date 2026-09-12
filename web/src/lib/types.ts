@@ -133,6 +133,7 @@ export interface Run {
    * absent on a foundry job (which embeds a Run but has no swarm file).
    * It's what makes "Run it again" possible from the run itself. */
   swarm_path?: string;
+  tolerated?: ToleratedFailure[];
 }
 
 /** A file-typed output's shape on the wire — see internal/runner's
@@ -224,6 +225,17 @@ export interface DraftBot {
   id: string;
   use: string; // "<bot-dir-id>@<version>"
   inputs?: Record<string, unknown>;
+  /** Carried through the builder even though nothing in the UI sets it
+   * yet: a round-trip that drops a field deletes it. */
+  on_error?: string;
+}
+
+/** A bot that failed while its swarm was told to carry on without it
+ * (`on_error: continue`). A run carrying one of these finished, but with a
+ * hole in it — see docs/error-policy.md. */
+export interface ToleratedFailure {
+  bot: string;
+  error: string;
 }
 
 /** One connection in a swarm draft — internal/api/builder.go's builderSnap. */

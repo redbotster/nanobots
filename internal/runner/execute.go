@@ -138,50 +138,92 @@ func parallelBots() int {
 // case, and reporting one of them sends you looking for two bugs.
 func (o *Orchestrator) runLevels(run *Run, rs *planner.ResolvedSwarm, levels [][]string) error {
 	limit := parallelBots()
+	// dependsOn is who feeds whom, so a bot whose upstream never produced
+	// anything is skipped rather than run against missing inputs. Without
+	// this, one tolerated failure cascades into a confusing run of
+	// "upstream bot has no recorded outputs yet" from every bot behind it.
+	dependsOn := map[string][]string{}
+	// A ResolvedSwarm always carries its Swarm in production; guarding is
+	// for the malformed case, where a segfault is a much worse answer than
+	// "no dependency edges and no error policy".
+	snaps := []schema.Snap{}
+	if rs.Swarm != nil {
+		snaps = rs.Swarm.Spec.Snaps
+	}
+	for _, snap := range snaps {
+		from, ferr := planner.ParseEndpoint(snap.From)
+		to, terr := planner.ParseEndpoint(snap.To)
+		if ferr == nil && terr == nil {
+			dependsOn[to.BotID] = append(dependsOn[to.BotID], from.BotID)
+		}
+	}
+	// Skipping is transitive for free: a skipped bot joins the set, so
+	// anything behind it is skipped on the next wave too.
+	gone := map[string]string{} // botID -> why its outputs never arrived
+
 	for _, wave := range levels {
-		if len(wave) == 1 || limit == 1 {
-			// The common shape — nine of the fifteen catalog swarms are a
-			// straight chain — and worth not paying a goroutine and a
-			// channel for.
-			// One at a time: either the wave has one bot (nine of the
-			// fifteen catalog swarms are a straight chain), or the cap
-			// says so.
-			for _, botID := range wave {
-				if err := o.runOneBot(run, rs, botID); err != nil {
-					run.Log(botID, "", "FAILED: %v", err)
-					return err
-				}
+		var toRun []string
+		for _, botID := range wave {
+			if why, ok := upstreamMissing(dependsOn[botID], gone); ok {
+				gone[botID] = fmt.Sprintf("skipped: %s", why)
+				run.Log(botID, "", "skipped — %s", why)
+				continue
 			}
+			toRun = append(toRun, botID)
+		}
+		if len(toRun) == 0 {
 			continue
 		}
 
-		run.Log("", "", "running %d bots at once: %s", len(wave), strings.Join(wave, ", "))
-
-		var wg sync.WaitGroup
-		var mu sync.Mutex
-		failures := map[string]error{}
-		slots := make(chan struct{}, limit)
-
-		for _, botID := range wave {
-			botID := botID
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				slots <- struct{}{}
-				defer func() { <-slots }()
-
-				if err := o.runOneBot(run, rs, botID); err != nil {
-					run.Log(botID, "", "FAILED: %v", err)
+		results := make(map[string]error, len(toRun))
+		if len(toRun) == 1 || limit == 1 {
+			// One at a time: either the wave has one bot (nine of the
+			// fifteen catalog swarms are a straight chain), or the cap
+			// says so.
+			for _, botID := range toRun {
+				results[botID] = o.runOneBot(run, rs, botID)
+			}
+		} else {
+			run.Log("", "", "running %d bots at once: %s", len(toRun), strings.Join(toRun, ", "))
+			var wg sync.WaitGroup
+			var mu sync.Mutex
+			slots := make(chan struct{}, limit)
+			for _, botID := range toRun {
+				botID := botID
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					slots <- struct{}{}
+					defer func() { <-slots }()
+					err := o.runOneBot(run, rs, botID)
 					mu.Lock()
-					failures[botID] = err
+					results[botID] = err
 					mu.Unlock()
-				}
-			}()
+				}()
+			}
+			wg.Wait()
 		}
-		wg.Wait()
 
-		if len(failures) > 0 {
-			return waveError(wave, failures)
+		fatal := map[string]error{}
+		for _, botID := range toRun {
+			err := results[botID]
+			if err == nil {
+				continue
+			}
+			if onErrorContinue(rs, botID) {
+				// The swarm said this bot's failure doesn't end the run.
+				// Recorded rather than swallowed: a run that quietly stops
+				// notifying anyone every night is the thing to avoid.
+				run.Log(botID, "", "FAILED, but this swarm continues without it: %v", err)
+				run.AddTolerated(botID, err.Error())
+				gone[botID] = "the bot it needed failed, and this swarm was told to continue without it"
+				continue
+			}
+			run.Log(botID, "", "FAILED: %v", err)
+			fatal[botID] = err
+		}
+		if len(fatal) > 0 {
+			return waveError(toRun, fatal)
 		}
 	}
 	return nil
@@ -192,6 +234,32 @@ func (o *Orchestrator) runOneBot(run *Run, rs *planner.ResolvedSwarm, botID stri
 		return o.runBotFn(run, rs, botID, rs.Bots[botID])
 	}
 	return o.runBot(run, rs, botID, rs.Bots[botID])
+}
+
+// upstreamMissing reports whether any bot this one reads from never
+// produced outputs, and names the first such bot for the log.
+func upstreamMissing(deps []string, gone map[string]string) (string, bool) {
+	for _, d := range deps {
+		if _, missing := gone[d]; missing {
+			return fmt.Sprintf("%s never produced its outputs", d), true
+		}
+	}
+	return "", false
+}
+
+// onErrorContinue reports whether the swarm marked this bot instance as
+// non-fatal. Default is stop: a run that fails loudly is the safe reading
+// of silence, and continuing has to be something someone chose.
+func onErrorContinue(rs *planner.ResolvedSwarm, botID string) bool {
+	if rs.Swarm == nil {
+		return false
+	}
+	for _, b := range rs.Swarm.Spec.Bots {
+		if b.ID == botID {
+			return b.OnError == schema.OnErrorContinue
+		}
+	}
+	return false
 }
 
 // waveError reports a wave's failures as one error, naming every bot that

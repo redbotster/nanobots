@@ -72,6 +72,9 @@ type Run struct {
 	// mutated (same safety argument as TriggeredBy). Empty for a foundry
 	// job, which embeds a Run but was never planned from a swarm file.
 	SwarmPath string `json:"swarm_path,omitempty"`
+	// Tolerated are bots that failed while the swarm was told to continue
+	// without them. Guarded by mu — read it with GetTolerated.
+	Tolerated []ToleratedFailure `json:"tolerated,omitempty"`
 
 	mu            sync.Mutex
 	log           []LogEntry
@@ -220,6 +223,37 @@ func (r *Run) SetError(err error) {
 // in-progress swarm run already was via runToJSON). ID/SwarmName/StartedAt
 // are write-once at NewRun and never mutated again, so reading them
 // directly elsewhere isn't a race the same way.
+// ToleratedFailure is a bot that failed while the swarm was told to carry
+// on without it (BotRef.OnError: continue).
+//
+// Recorded rather than swallowed, and rather than given its own terminal
+// status. A third status would have to be understood by the run store, the
+// scheduler, every filter and every tone map — and the honest summary is
+// still "the run finished": the reminders went out, the Slack message
+// didn't. What matters is that it cannot be invisible, so a run carrying
+// one of these renders as a warning wherever a plain success would render
+// as green.
+type ToleratedFailure struct {
+	Bot   string `json:"bot"`
+	Error string `json:"error"`
+}
+
+// AddTolerated records a failure the swarm chose to continue past.
+func (r *Run) AddTolerated(bot, msg string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.Tolerated = append(r.Tolerated, ToleratedFailure{Bot: bot, Error: msg})
+}
+
+// GetTolerated returns the failures this run continued past.
+func (r *Run) GetTolerated() []ToleratedFailure {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]ToleratedFailure, len(r.Tolerated))
+	copy(out, r.Tolerated)
+	return out
+}
+
 func (r *Run) GetStatus() RunStatus {
 	r.mu.Lock()
 	defer r.mu.Unlock()

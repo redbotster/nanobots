@@ -32,6 +32,7 @@ type snapshot struct {
 	FinishedAt  time.Time                 `json:"finished_at,omitempty"`
 	Error       string                    `json:"error,omitempty"`
 	TriggeredBy string                    `json:"triggered_by"`
+	Tolerated   []ToleratedFailure        `json:"tolerated,omitempty"`
 	Log         []LogEntry                `json:"log"`
 	Outputs     map[string]map[string]any `json:"outputs"`
 }
@@ -45,6 +46,7 @@ func snapshotOf(r *Run) snapshot {
 		StartedAt:   r.StartedAt,
 		FinishedAt:  r.GetFinishedAt(),
 		Error:       r.GetError(),
+		Tolerated:   r.GetTolerated(),
 		TriggeredBy: r.TriggeredBy,
 		Log:         r.LogEntries(),
 		Outputs:     r.AllOutputs(),
@@ -60,6 +62,7 @@ func (s snapshot) toRun() *Run {
 		StartedAt:   s.StartedAt,
 		FinishedAt:  s.FinishedAt,
 		Error:       s.Error,
+		Tolerated:   s.Tolerated,
 		TriggeredBy: s.TriggeredBy,
 		log:         s.Log,
 		outputs:     s.Outputs,

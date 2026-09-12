@@ -119,5 +119,9 @@ func runToJSON(run *runner.Run) map[string]any {
 		"log":               run.LogEntries(),
 		"pending_approvals": pending,
 		"outputs":           run.AllOutputs(),
+		// Bots that failed while the swarm was told to continue without
+		// them. A run carrying one of these is a success with a hole in
+		// it, and the UI renders it as a warning rather than plain green.
+		"tolerated": run.GetTolerated(),
 	}
 }

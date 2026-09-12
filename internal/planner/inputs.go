@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/redbotster/nanobots/internal/schema"
 )
 
 // UnfedInput is a required input port with nothing to fill it.
@@ -95,4 +97,23 @@ func hasIncomingSnap(rs *ResolvedSwarm, botID string) bool {
 		}
 	}
 	return false
+}
+
+// CheckOnError rejects an on_error value that isn't one of the two.
+//
+// A typo here is uniquely bad: `on_error: contninue` reads as "keep going"
+// to whoever wrote it, and silently means "stop" to the runner. It would
+// only ever be noticed on the night something failed and the whole run
+// went down anyway.
+func CheckOnError(rs *ResolvedSwarm) []error {
+	var out []error
+	for _, b := range rs.Swarm.Spec.Bots {
+		switch b.OnError {
+		case "", schema.OnErrorStop, schema.OnErrorContinue:
+		default:
+			out = append(out, fmt.Errorf("bot %q has on_error: %q — it must be %q or %q (default %q)",
+				b.ID, b.OnError, schema.OnErrorStop, schema.OnErrorContinue, schema.OnErrorStop))
+		}
+	}
+	return out
 }

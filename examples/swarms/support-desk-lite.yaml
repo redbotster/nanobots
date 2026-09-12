@@ -42,6 +42,10 @@ spec:
       use: notify@0.1.0
       inputs:
         channel: "{{vars.escalation_channel}}"
+      # A notification is the last thing this swarm does and nothing
+      # reads it. Losing it should not fail a run whose real work already
+      # succeeded — see docs/error-policy.md.
+      on_error: continue
     - id: sender
       use: email-send-approved@0.1.0
 

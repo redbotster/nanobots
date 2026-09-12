@@ -190,7 +190,25 @@ type BotRef struct {
 	Use    string         `json:"use,omitempty" yaml:"use,omitempty"`   // registry ref: name@version
 	Path   string         `json:"path,omitempty" yaml:"path,omitempty"` // local path, alternative to use:
 	Inputs map[string]any `json:"inputs,omitempty" yaml:"inputs,omitempty"`
+	// OnError decides whether this bot failing ends the run.
+	//
+	//	stop      (default) the run fails, as it always has
+	//	continue  the run carries on; anything downstream is skipped
+	//
+	// Per bot *instance* rather than per bot, because only the swarm knows
+	// whether a failure matters: notify failing after get-paid has already
+	// sent every reminder is a missed Slack message, not a failed run,
+	// while the same bot elsewhere might be the whole point.
+	//
+	// See docs/error-policy.md.
+	OnError string `json:"on_error,omitempty" yaml:"on_error,omitempty"`
 }
+
+// OnError values.
+const (
+	OnErrorStop     = "stop"
+	OnErrorContinue = "continue"
+)
 
 // Snap is a typed connection from one bot's output port to another's input.
 type Snap struct {
