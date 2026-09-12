@@ -694,3 +694,15 @@ func firstNonEmpty(a, b string) string {
 	}
 	return b
 }
+
+// parseJSONValue decodes s if it is valid JSON, for callers that want the
+// value rather than the text. Used by RecordingDeps: a fixture is read back
+// with json.Unmarshal, so what belongs on disk is the JSON a model
+// produced, not a JSON string containing it.
+func parseJSONValue(s string) (any, bool) {
+	var v any
+	if err := json.Unmarshal([]byte(s), &v); err != nil {
+		return nil, false
+	}
+	return v, true
+}

@@ -18,6 +18,7 @@ import type {
   SwarmSummary,
   ValidateSwarmRequest,
   RoleLibrary,
+  RunFixtures,
 } from "./types";
 
 async function reqText(path: string): Promise<string> {
@@ -94,6 +95,12 @@ export const api = {
     }),
   fleet: () => req<Fleet>("/api/fleet"),
   roles: () => req<RoleLibrary>("/api/roles"),
+  runFixtures: (runId: string) => req<RunFixtures>(`/api/runs/${runId}/fixtures`),
+  pinFixtures: (runId: string, body: { bot?: string; files?: string[] }) =>
+    req<{ written: string[] }>(`/api/runs/${runId}/fixtures`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   setRole: (id: string, body: { name?: string; focus?: string; retired?: boolean }) =>
     req<RoleLibrary>(`/api/roles/${id}`, { method: "POST", body: JSON.stringify(body) }),
   resetRole: (id: string) => req<RoleLibrary>(`/api/roles/${id}/reset`, { method: "POST" }),

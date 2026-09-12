@@ -115,6 +115,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/runs/{id}", s.handleGetRun)
 	mux.HandleFunc("GET /api/runs/{id}/events", s.handleRunEvents)
 	mux.HandleFunc("POST /api/runs/{id}/approvals/{approvalID}/decide", s.handleDecideApproval)
+	mux.HandleFunc("GET /api/runs/{id}/fixtures", s.handleRunFixtures)
+	mux.HandleFunc("POST /api/runs/{id}/fixtures", s.handlePinFixtures)
 	mux.HandleFunc("POST /api/foundry", s.handleStartFoundryJob)
 	mux.HandleFunc("GET /api/foundry", s.handleListFoundryJobs)
 	mux.HandleFunc("GET /api/foundry/{id}", s.handleGetFoundryJob)

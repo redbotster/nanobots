@@ -7,6 +7,7 @@ import { RunResults } from "../components/RunResults";
 import { StatusDot } from "../components/StatusDot";
 import { parseRunError, runRemedy } from "../lib/runError";
 import type { ToleratedFailure } from "../lib/types";
+import { PinFixtures } from "../components/PinFixtures";
 
 const tone: Record<string, "ok" | "warn" | "danger" | "muted"> = {
   succeeded: "ok",
@@ -224,6 +225,7 @@ export function RunDetail({
         {/* A run that finished with a hole in it. Rendered as a warning
             rather than left to the log, because the point of continuing
             past a failure is that someone still finds out. */}
+        {run?.status === "succeeded" && <PinFixtures runId={run.id} />}
         {run?.status === "succeeded" && (run.tolerated?.length ?? 0) > 0 && (
           <ToleratedBanner tolerated={run.tolerated!} onOpenSettings={onOpenSettings} />
         )}

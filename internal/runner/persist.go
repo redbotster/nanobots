@@ -24,17 +24,21 @@ import (
 // fields, and because the on-disk shape should be free to lag the in-memory
 // one.
 type snapshot struct {
-	ID          string                    `json:"id"`
-	SwarmName   string                    `json:"swarm_name"`
-	SwarmPath   string                    `json:"swarm_path,omitempty"`
-	Status      RunStatus                 `json:"status"`
-	StartedAt   time.Time                 `json:"started_at"`
-	FinishedAt  time.Time                 `json:"finished_at,omitempty"`
-	Error       string                    `json:"error,omitempty"`
-	TriggeredBy string                    `json:"triggered_by"`
-	Tolerated   []ToleratedFailure        `json:"tolerated,omitempty"`
-	Log         []LogEntry                `json:"log"`
-	Outputs     map[string]map[string]any `json:"outputs"`
+	ID          string             `json:"id"`
+	SwarmName   string             `json:"swarm_name"`
+	SwarmPath   string             `json:"swarm_path,omitempty"`
+	Status      RunStatus          `json:"status"`
+	StartedAt   time.Time          `json:"started_at"`
+	FinishedAt  time.Time          `json:"finished_at,omitempty"`
+	Error       string             `json:"error,omitempty"`
+	TriggeredBy string             `json:"triggered_by"`
+	Tolerated   []ToleratedFailure `json:"tolerated,omitempty"`
+	// Captured is what each bot's run would produce as fixtures. Persisted
+	// so "turn this run into test data" still works after a restart —
+	// otherwise the button quietly disappears from every run in history.
+	Captured map[string]map[string]any `json:"captured,omitempty"`
+	Log      []LogEntry                `json:"log"`
+	Outputs  map[string]map[string]any `json:"outputs"`
 }
 
 func snapshotOf(r *Run) snapshot {
@@ -47,6 +51,7 @@ func snapshotOf(r *Run) snapshot {
 		FinishedAt:  r.GetFinishedAt(),
 		Error:       r.GetError(),
 		Tolerated:   r.GetTolerated(),
+		Captured:    cappedCaptures(r.Captured()),
 		TriggeredBy: r.TriggeredBy,
 		Log:         r.LogEntries(),
 		Outputs:     r.AllOutputs(),
@@ -63,6 +68,7 @@ func (s snapshot) toRun() *Run {
 		FinishedAt:  s.FinishedAt,
 		Error:       s.Error,
 		Tolerated:   s.Tolerated,
+		captured:    s.Captured,
 		TriggeredBy: s.TriggeredBy,
 		log:         s.Log,
 		outputs:     s.Outputs,
@@ -163,4 +169,32 @@ func DefaultHistoryDir() (string, error) {
 		return "", fmt.Errorf("locate home directory for run history: %w", err)
 	}
 	return filepath.Join(home, ".nanobots", "history"), nil
+}
+
+// maxCapturedFixture bounds one recorded fixture on disk. A fixture is
+// meant to be readable test data someone commits; a megabyte of scraped
+// HTML from a web.fetch is neither, and would bloat every run snapshot in
+// history to keep it.
+const maxCapturedFixture = 256 << 10
+
+func cappedCaptures(in map[string]map[string]any) map[string]map[string]any {
+	if len(in) == 0 {
+		return nil
+	}
+	out := map[string]map[string]any{}
+	for bot, fixtures := range in {
+		kept := map[string]any{}
+		for name, v := range fixtures {
+			if raw, err := json.Marshal(v); err == nil && len(raw) <= maxCapturedFixture {
+				kept[name] = v
+			}
+		}
+		if len(kept) > 0 {
+			out[bot] = kept
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

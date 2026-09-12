@@ -443,6 +443,24 @@ func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID str
 	}
 	deps := BuildDeps(run, botID, nb, o.OneClaw, agentID, agentAPIKey, blobs, o.Services, batch, o.memoryFor(agentID), o.LLM)
 
+	// Watch what this bot actually gets back, so a real run can be turned
+	// into the bot's test data afterwards. Wrapping cannot change what the
+	// bot sees — every method returns the inner value untouched — and only
+	// the first item of a fan-out is recorded, since a fixture describes
+	// one run of a bot and twenty would overwrite each other anyway.
+	if at == noFan || at == 0 {
+		rec := step.NewRecordingDeps(deps)
+		deps = rec
+		// Keyed by the catalog bot, not the swarm-local instance id: a
+		// fixture belongs to `bots/review-board/`, not to whichever swarm
+		// happened to call that instance "board".
+		catalogID := catalogIDOf(rb)
+		// A closure, not `defer run.SetCaptured(botID, rec.Captured())`:
+		// deferred arguments are evaluated immediately, so that form
+		// recorded an empty map before the bot had run at all.
+		defer func() { run.SetCaptured(catalogID, rec.Captured()) }()
+	}
+
 	token := uuid.NewString()
 	o.Callbacks.Register(token, deps)
 	defer o.Callbacks.Unregister(token)
@@ -607,4 +625,20 @@ func replayContainerLog(run *Run, botID, runDir string) {
 		}
 		run.Log(botID, line.Step, "%s", line.Msg)
 	}
+}
+
+// catalogIDOf maps a swarm-local bot instance to the bots/<id> directory it
+// came from: "board" -> "review-board", from `use: review-board@0.1.0`.
+func catalogIDOf(rb *planner.ResolvedBot) string {
+	if rb == nil {
+		return ""
+	}
+	if use := rb.Ref.Use; use != "" {
+		if i := strings.Index(use, "@"); i >= 0 {
+			return use[:i]
+		}
+		return use
+	}
+	// A local `path:` bot: the directory's own name is its id.
+	return filepath.Base(strings.TrimRight(rb.Ref.Path, "/"))
 }

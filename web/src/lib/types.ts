@@ -404,3 +404,22 @@ export interface RoleLibrary {
   roster: string;
   error?: string;
 }
+
+/** One fixture a finished run would write into a bot's test data.
+ *
+ * Fixtures here are hand-written, which makes them a guess at what a model
+ * or an API returns — and guesses drift. This is the real thing, offered
+ * back. See docs/fixtures.md. */
+export interface FixturePreview {
+  file: string;
+  /** "new" or "replaces" — overwriting committed test data is the part
+   * worth looking at twice. */
+  status: string;
+  content: string;
+  current?: string;
+}
+
+export interface RunFixtures {
+  bots: Record<string, FixturePreview[]>;
+  error?: string;
+}

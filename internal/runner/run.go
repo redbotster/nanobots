@@ -77,6 +77,7 @@ type Run struct {
 	Tolerated []ToleratedFailure `json:"tolerated,omitempty"`
 
 	mu            sync.Mutex
+	captured      map[string]map[string]any // botID -> fixture filename -> value
 	log           []LogEntry
 	outputs       map[string]map[string]any // botID -> port -> value (JSON-safe)
 	approvals     map[string]*PendingApproval
@@ -236,6 +237,38 @@ func (r *Run) SetError(err error) {
 type ToleratedFailure struct {
 	Bot   string `json:"bot"`
 	Error string `json:"error"`
+}
+
+// SetCaptured stores what a bot's real run would produce as fixtures.
+//
+// Kept on the run rather than written straight to disk: turning a run into
+// a bot's committed test data is a deliberate act, and one that overwrites
+// files in the repo. The run holds the material; a person decides.
+func (r *Run) SetCaptured(botID string, fixtures map[string]any) {
+	if len(fixtures) == 0 {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.captured == nil {
+		r.captured = map[string]map[string]any{}
+	}
+	r.captured[botID] = fixtures
+}
+
+// Captured returns what each bot's run would produce as fixtures.
+func (r *Run) Captured() map[string]map[string]any {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make(map[string]map[string]any, len(r.captured))
+	for bot, fx := range r.captured {
+		copyFx := make(map[string]any, len(fx))
+		for k, v := range fx {
+			copyFx[k] = v
+		}
+		out[bot] = copyFx
+	}
+	return out
 }
 
 // AddTolerated records a failure the swarm chose to continue past.
