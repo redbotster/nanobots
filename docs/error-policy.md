@@ -70,6 +70,17 @@ with the run, survives a restart, and renders as a warning wherever a plain
 success renders green. If that ever proves too quiet in practice, the status
 is the next thing to add, not the first.
 
+## Setting it
+
+In the YAML, or in the builder: select a bot and the inspector's **If this
+bot fails** picks between *Stop the whole run* and *Carry on without it*.
+Going back to the default writes no `on_error` key at all, rather than
+littering every swarm file with `on_error: stop`.
+
+The AI composer sets it too — a trailing notification in a composed swarm
+comes back marked `continue` (`docs/fan-out.md` covers the rest of what it
+now writes).
+
 ## When to use it
 
 Use `continue` for work at the edge of a swarm that nothing else reads —

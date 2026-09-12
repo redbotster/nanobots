@@ -10,6 +10,7 @@ import type {
   SwarmSummary,
 } from "../lib/types";
 import { BuilderCanvas, type CanvasSnap, type PlacedBot } from "../components/builder/BuilderCanvas";
+import { placeBots, toCanvasSnaps } from "../components/builder/hydrate";
 import { BuilderPalette } from "../components/builder/BuilderPalette";
 import { BuilderInspector } from "../components/builder/BuilderInspector";
 import { Button } from "../components/Button";
@@ -102,13 +103,12 @@ export function BuilderPage({
   // starting template, and loading the AI composer's draft, since all three
   // are just "a bots[]/snaps[] list to put on the canvas."
   const hydrateFrom = (full: { bots: DraftBot[]; snaps: DraftSnap[] }) => {
-    const placed = full.bots.map((b, i) => {
-      const [botId] = b.use.split("@");
-      const pos = defaultPosition(i);
-      return { instanceId: b.id, botId, x: pos.x, y: pos.y };
-    });
+    // The mapping lives in ./builder/hydrate so it can be tested: the
+    // builder round-trips a whole swarm on save, so anything it forgets to
+    // load, it deletes.
+    const placed = placeBots(full.bots, defaultPosition);
     setBots(placed);
-    setSnaps(full.snaps.map((s) => ({ from: s.from, to: s.to })));
+    setSnaps(toCanvasSnaps(full.snaps));
     setInputValues(
       Object.fromEntries(
         full.bots.map((b) => [
@@ -163,6 +163,7 @@ export function BuilderPage({
             id: b.instanceId,
             use: `${b.botId}@${botDefs[b.botId]?.version ?? "0.0.0"}`,
             inputs: inputValues[b.instanceId],
+            on_error: b.onError,
           })),
           snaps,
         })
@@ -212,6 +213,14 @@ export function BuilderPage({
   const editSnapFrom = (index: number, newFrom: string) =>
     setSnaps((prev) => prev.map((s, i) => (i === index ? { ...s, from: newFrom } : s)));
 
+  const editSnapJoin = (index: number, join: string) =>
+    setSnaps((prev) => prev.map((s, i) => (i === index ? { ...s, join: join || undefined } : s)));
+
+  const editBotOnError = (instanceId: string, onError: string) =>
+    setBots((prev) =>
+      prev.map((b) => (b.instanceId === instanceId ? { ...b, onError: onError || undefined } : b)),
+    );
+
   const selectedBot = bots.find((b) => b.instanceId === selected) ?? null;
   const selectedDef = selectedBot ? botDefs[selectedBot.botId] : null;
 
@@ -231,6 +240,7 @@ export function BuilderPage({
           inputs: Object.fromEntries(
             Object.entries(inputValues[b.instanceId] ?? {}).filter(([, v]) => v.trim() !== ""),
           ),
+          on_error: b.onError,
         })),
         snaps,
       });
@@ -404,6 +414,8 @@ export function BuilderPage({
                 }))
               }
               onEditSnapFrom={editSnapFrom}
+              onEditSnapJoin={editSnapJoin}
+              onEditOnError={(v) => editBotOnError(selectedBot.instanceId, v)}
               onClose={() => setSelected(null)}
             />
             </div>

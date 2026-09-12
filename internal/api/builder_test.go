@@ -338,3 +338,89 @@ spec:
 		t.Errorf("the merge dropped the swarm's trigger:\n%s", merged)
 	}
 }
+
+// The builder loads a swarm, the human edits one thing, the builder saves
+// the whole swarm back. Anything it fails to load, it deletes — which is
+// how "Save changes" once removed a cron trigger, and would have removed a
+// join or an on_error.
+//
+// This is the round trip end to end: a real swarm file in, through the
+// endpoint the builder loads from, back out through the endpoint it saves
+// to, and read again.
+func TestABuilderRoundTripPreservesJoinAndOnError(t *testing.T) {
+	srv := testServer(t)
+	dir := t.TempDir()
+	srv.SwarmsDir = dir
+	path := filepath.Join(dir, "probe.yaml")
+	original := `apiVersion: nanobots.dev/v1alpha1
+kind: Nanoswarm
+metadata:
+  name: probe
+  description: probe
+spec:
+  trigger:
+    type: cron
+    expr: "0 8 * * 1"
+  bots:
+    - id: recap
+      use: recap-emails-to-pdf@0.3.0
+    - id: mailer
+      use: email-drive-file@1.1.0
+      inputs:
+        to: me@example.com
+      on_error: continue
+  snaps:
+    - from: recap.drive_file_id
+      to: mailer.file_id
+      join: first
+`
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Load it the way the builder does.
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet,
+		"/api/swarms/full?path="+filepath.Base(path), nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("load: %d %s", rec.Code, rec.Body.String())
+	}
+	var loaded swarmFullResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &loaded); err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Snaps[0].Join != "first" {
+		t.Errorf("join lost on load: %+v", loaded.Snaps[0])
+	}
+	var mailer builderBotRef
+	for _, b := range loaded.Bots {
+		if b.ID == "mailer" {
+			mailer = b
+		}
+	}
+	if mailer.OnError != "continue" {
+		t.Errorf("on_error lost on load: %+v", mailer)
+	}
+
+	// Save it straight back, changing only the description — the shape of
+	// a human opening a swarm, touching one field, and pressing save.
+	body, _ := json.Marshal(saveSwarmRequest{
+		Path: path, Name: "probe", Description: "edited",
+		Bots: loaded.Bots, Snaps: loaded.Snaps,
+	})
+	rec = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/swarms", bytes.NewReader(body)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("save: %d %s", rec.Code, rec.Body.String())
+	}
+
+	saved, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"join: first", "on_error: continue", "0 8 * * 1"} {
+		if !strings.Contains(string(saved), want) {
+			t.Errorf("a builder save dropped %q:\n%s", want, saved)
+		}
+	}
+}

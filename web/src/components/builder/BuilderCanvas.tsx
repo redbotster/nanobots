@@ -6,11 +6,17 @@ export interface PlacedBot {
   botId: string;
   x: number;
   y: number;
+  /** "continue" keeps this bot's failure from ending the run — see
+   * docs/error-policy.md. Undefined means the default, "stop". */
+  onError?: string;
 }
 
 export interface CanvasSnap {
   from: string; // "<instanceId>.<port>"
   to: string;
+  /** How a fanned-out list collapses into one value on the way through —
+   * lines | json | count | flatten | first. See docs/fan-out.md. */
+  join?: string;
 }
 
 const NODE_WIDTH = 208;

@@ -146,6 +146,15 @@ input as an output is worth doing whenever a bot's real outputs are
 identifiers: the downstream bot is usually reporting on *what happened*,
 not on *what it is called*.
 
+## Setting a join by hand
+
+Select the bot the snap arrives at; the inspector shows **collapse a list**
+on any wired input, with the five modes. It defaults to *no* rather than
+guessing one, because the modes give genuinely different results and
+choosing for someone is worse than asking. A join that doesn't fit surfaces
+as a plan error from the same planner a save goes through, like any other
+bad snap.
+
 ## The composer knows all of this
 
 `POST /api/compose` — the "describe what you want automated" box — writes

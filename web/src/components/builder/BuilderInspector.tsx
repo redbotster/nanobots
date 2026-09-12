@@ -44,6 +44,34 @@ function WiredFromField({
   );
 }
 
+/** How a fanned-out list collapses into one value on the way into this
+ * port (docs/fan-out.md).
+ *
+ * Only shown on a wired input, because that is the only place it means
+ * anything — and left at "no" by default, since the modes are a real choice
+ * with different results and guessing one for someone is worse than asking.
+ * A join that doesn't fit surfaces as a plan error from the same planner a
+ * save goes through, like any other bad snap. */
+function JoinField({ join, onChange }: { join: string; onChange: (j: string) => void }) {
+  return (
+    <label className="mt-1 flex items-center gap-1.5 text-[10px] text-muted">
+      <span className="shrink-0">collapse a list</span>
+      <select
+        value={join}
+        onChange={(e) => onChange(e.target.value)}
+        className="min-w-0 flex-1 rounded border border-edge bg-void px-1 py-0.5 text-[10px] text-ink focus:border-tron focus:outline-none"
+      >
+        <option value="">no</option>
+        <option value="lines">lines — one per line</option>
+        <option value="json">json — a JSON array</option>
+        <option value="count">count — how many</option>
+        <option value="flatten">flatten — lists into one list</option>
+        <option value="first">first — only the first</option>
+      </select>
+    </label>
+  );
+}
+
 /** The selected node's settings panel: a text field per input port that
  * isn't fed by a snap (or a nested-field editor for one that is) — matching
  * how nanobot.yaml `default:` values are themselves always written as
@@ -57,6 +85,8 @@ export function BuilderInspector({
   values,
   onChange,
   onEditSnapFrom,
+  onEditSnapJoin,
+  onEditOnError,
   onClose,
 }: {
   bot: PlacedBot;
@@ -65,6 +95,8 @@ export function BuilderInspector({
   values: Record<string, string>;
   onChange: (port: string, value: string) => void;
   onEditSnapFrom: (snapIndex: number, newFrom: string) => void;
+  onEditSnapJoin: (snapIndex: number, join: string) => void;
+  onEditOnError: (onError: string) => void;
   onClose: () => void;
 }) {
   return (
@@ -93,15 +125,21 @@ export function BuilderInspector({
                 <span className="font-normal text-muted">({p.type})</span>
               </label>
               {wiredFrom ? (
-                <WiredFromField
-                  // Keyed by the current value so an external rewire (e.g.
-                  // dragging a new connection onto this same port while
-                  // this panel is open) resets the suffix input's local
-                  // state instead of showing a stale edit.
-                  key={wiredFrom.from}
-                  from={wiredFrom.from}
-                  onChange={(newFrom) => onEditSnapFrom(wiredIndex, newFrom)}
-                />
+                <>
+                  <WiredFromField
+                    // Keyed by the current value so an external rewire (e.g.
+                    // dragging a new connection onto this same port while
+                    // this panel is open) resets the suffix input's local
+                    // state instead of showing a stale edit.
+                    key={wiredFrom.from}
+                    from={wiredFrom.from}
+                    onChange={(newFrom) => onEditSnapFrom(wiredIndex, newFrom)}
+                  />
+                  <JoinField
+                    join={wiredFrom.join ?? ""}
+                    onChange={(j) => onEditSnapJoin(wiredIndex, j)}
+                  />
+                </>
               ) : (
                 <input
                   value={values[p.name] ?? ""}
@@ -116,6 +154,28 @@ export function BuilderInspector({
         {def.inputs.length === 0 && (
           <p className="text-[11px] text-muted">This bot has no inputs.</p>
         )}
+
+        {/* Per-instance, because only the swarm knows whether this bot
+            failing matters — see docs/error-policy.md. */}
+        <div className="border-t border-edge pt-3">
+          <label className="text-[11px] font-medium text-ink" htmlFor="builder-on-error">
+            If this bot fails
+          </label>
+          <select
+            id="builder-on-error"
+            value={bot.onError ?? "stop"}
+            onChange={(e) => onEditOnError(e.target.value === "stop" ? "" : e.target.value)}
+            className="mt-1 w-full rounded border border-edge-strong bg-void px-2 py-1.5 text-[11px] text-ink focus:border-tron focus:outline-none"
+          >
+            <option value="stop">Stop the whole run</option>
+            <option value="continue">Carry on without it</option>
+          </select>
+          <p className="mt-1 text-[10px] leading-snug text-muted">
+            {bot.onError === "continue"
+              ? "The run finishes and says this step didn't. Anything downstream of it is skipped."
+              : "The default. Everything after this stops."}
+          </p>
+        </div>
       </div>
     </div>
   );
