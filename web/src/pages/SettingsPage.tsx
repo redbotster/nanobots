@@ -72,6 +72,43 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
       </section>
 
       <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-4">
+        <h2 className="font-display text-sm font-semibold text-ink">Model</h2>
+        <div className="mt-3 flex items-center gap-2 text-sm">
+          <StatusDot
+            tone={
+              !status || status.llm_backend === "none"
+                ? "warn"
+                : status.llm_guardrails
+                  ? "ok"
+                  : "muted"
+            }
+          />
+          {status
+            ? status.llm_backend === "none"
+              ? "No model configured — bots produce their demo output"
+              : status.llm_backend
+            : "Checking…"}
+        </div>
+        {status && status.llm_backend === "none" && (
+          <p className="mt-1.5 text-[12px] leading-snug text-muted">
+            Every ai.generate step returns canned fixture text until there's a
+            model behind it. Set <code className="text-ink">ONECLAW_API_KEY</code>{" "}
+            for 1Claw token billing, or any one of{" "}
+            <code className="text-ink">ANTHROPIC_API_KEY</code>,{" "}
+            <code className="text-ink">OPENAI_API_KEY</code> or{" "}
+            <code className="text-ink">GEMINI_API_KEY</code> — see docs/llm.md.
+          </p>
+        )}
+        {status && status.llm_backend !== "none" && !status.llm_guardrails && (
+          <p className="mt-1.5 text-[12px] leading-snug text-muted">
+            Prompts go straight to the provider. No spend ceiling, no PII
+            redaction and no injection screening — 1Claw adds those, and{" "}
+            <code className="text-ink">ONECLAW_API_KEY</code> switches to it.
+          </p>
+        )}
+      </section>
+
+      <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-4">
         <h2 className="font-display text-sm font-semibold text-ink">Memory</h2>
         <div className="mt-3 flex items-center gap-2 text-sm">
           <StatusDot tone={status?.memory_recall ? "ok" : "muted"} />

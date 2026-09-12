@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/redbotster/nanobots/internal/llm"
 	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/planner"
@@ -37,6 +38,11 @@ type Orchestrator struct {
 	LinkedIn      step.LinkedInConfig
 	// Memory backs every memory.* step. See internal/memory.
 	Memory memory.Store
+
+	// LLM backs every ai.generate step — 1Claw Shroud, or a direct
+	// provider key. Nil means this deployment has no LLM at all, and bots
+	// fall back to their fixtures. See internal/llm.
+	LLM llm.Generator
 }
 
 // ExecuteSwarm plans swarmPath, then runs it in the background, returning
@@ -241,7 +247,7 @@ func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID str
 	if err != nil {
 		return err
 	}
-	deps := BuildDeps(run, botID, nb, o.OneClaw, agentID, agentAPIKey, blobs, o.Google, o.GitHub, o.Slack, o.Stripe, o.HubSpot, o.X, o.LinkedIn, batch, o.memoryFor(agentID))
+	deps := BuildDeps(run, botID, nb, o.OneClaw, agentID, agentAPIKey, blobs, o.Google, o.GitHub, o.Slack, o.Stripe, o.HubSpot, o.X, o.LinkedIn, batch, o.memoryFor(agentID), o.LLM)
 
 	token := uuid.NewString()
 	o.Callbacks.Register(token, deps)

@@ -170,6 +170,13 @@ export interface StatusResponse {
    * Settings can say what a key/value backend costs *this* install without
    * a bot name being hardcoded here and going stale. */
   memory_recall_bots: string[];
+  /** Which LLM an ai.generate step reaches: "1claw shroud (token billing)",
+   * "gemini (direct)", "openai-compatible (http://…)", or "none". */
+  llm_backend: string;
+  /** Whether prompts pass through 1Claw on the way out — per-agent budget,
+   * PII redaction, injection screening. A direct provider key has none of
+   * that, and nothing in a run looks different, so it's said here. */
+  llm_guardrails: boolean;
 }
 
 export interface SwarmSummary {

@@ -26,6 +26,7 @@ import (
 
 	"github.com/redbotster/nanobots/internal/google"
 	"github.com/redbotster/nanobots/internal/linkedin"
+	"github.com/redbotster/nanobots/internal/llm"
 	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/runner"
@@ -268,4 +269,129 @@ func BuildMemory(paths Paths, envFilePath string, oc *oneclaw.Client, logf Logf)
 		return &memory.Composite{KV: local, Rich: memory.NewHoncho(url, workspace, apiKey)}, nil
 	}
 	return nil, fmt.Errorf("NANOBOTS_MEMORY=%q is not a backend this build has (local, 1claw, honcho)", kind)
+}
+
+// BuildLLM chooses what an ai.generate step's prompt is sent to.
+//
+// Configured through the same dotenv file as everything else:
+//
+//	NANOBOTS_LLM         shroud (default when 1Claw is configured) |
+//	                     anthropic | openai | gemini | none
+//	ANTHROPIC_API_KEY    used by NANOBOTS_LLM=anthropic
+//	OPENAI_API_KEY       used by NANOBOTS_LLM=openai
+//	OPENAI_BASE_URL      point openai at any chat-completions endpoint —
+//	                     OpenRouter, Together, Groq, vLLM, LiteLLM, Ollama
+//	GEMINI_API_KEY       used by NANOBOTS_LLM=gemini
+//	NANOBOTS_LLM_MODEL   the model to use when a bot asks for a provider
+//	                     this backend doesn't serve (see llm.resolveModel)
+//
+// Shroud is the default whenever 1Claw is configured, and that is a
+// deliberate preference rather than alphabetical luck: it is the only
+// backend that bills tokens against a per-agent budget, redacts PII and
+// secrets before a prompt leaves the machine, and screens for injection.
+// Those are the protections this project uses 1Claw for. A direct provider
+// key is a fallback for people who don't have 1Claw — not an equal option.
+//
+// Which is why a direct key alone is now enough to run live at all. It
+// wasn't: ai.generate called Shroud directly, so without 1Claw every bot in
+// the catalog silently fell back to demo fixtures no matter what other keys
+// were configured.
+func BuildLLM(envFilePath string, oc *oneclaw.Client, logf Logf) (llm.Generator, error) {
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
+	kind, err := oneclaw.LoadEnvValue(envFilePath, "NANOBOTS_LLM")
+	if err != nil {
+		return nil, fmt.Errorf("read NANOBOTS_LLM: %w", err)
+	}
+	model, _ := oneclaw.LoadEnvValue(envFilePath, "NANOBOTS_LLM_MODEL")
+	kind = strings.ToLower(strings.TrimSpace(kind))
+
+	// Unset means "work out what this machine has", so that adding one key
+	// to the env file is the whole setup step.
+	if kind == "" {
+		kind = autoDetectLLM(envFilePath, oc)
+	}
+
+	switch kind {
+	case "none":
+		logf("llm: none configured — ai.generate steps will use demo fixtures")
+		return nil, nil
+
+	case "shroud", "1claw", "oneclaw":
+		if oc == nil || !oc.Configured() {
+			return nil, fmt.Errorf("NANOBOTS_LLM=shroud needs ONECLAW_API_KEY")
+		}
+		// A Shroud client is per-agent and a bot's agent is provisioned
+		// when the run reaches it, so internal/runner swaps in the real one
+		// per bot. The fallback covers anything generating outside a bot
+		// run.
+		fallback, _ := directLLM(envFilePath, model, func(string, ...any) {})
+		logf("llm: 1Claw Shroud — token billing, per-agent budgets, PII redaction and injection screening")
+		return &llm.DeferredShroud{Fallback: fallback}, nil
+
+	case "anthropic", "openai", "gemini":
+		g, err := namedDirectLLM(envFilePath, kind, model)
+		if err != nil {
+			return nil, err
+		}
+		logf("llm: %s — no 1Claw in the path, so no budget ceiling, PII redaction or injection screening", g.Describe())
+		return g, nil
+	}
+	return nil, fmt.Errorf("NANOBOTS_LLM=%q is not a backend this build has (shroud, anthropic, openai, gemini, none)", kind)
+}
+
+// autoDetectLLM picks a backend from what's actually configured, preferring
+// Shroud for its guardrails and otherwise taking the first direct key
+// present. Order among the direct three is fixed rather than clever, so the
+// answer doesn't change between machines with the same env file.
+func autoDetectLLM(envFilePath string, oc *oneclaw.Client) string {
+	if oc != nil && oc.Configured() {
+		return "shroud"
+	}
+	for _, c := range []struct{ env, kind string }{
+		{"ANTHROPIC_API_KEY", "anthropic"},
+		{"OPENAI_API_KEY", "openai"},
+		{"GEMINI_API_KEY", "gemini"},
+	} {
+		if v, _ := oneclaw.LoadEnvValue(envFilePath, c.env); v != "" {
+			return c.kind
+		}
+	}
+	return "none"
+}
+
+// directLLM builds whichever direct provider is configured, or nil. Used as
+// Shroud's stand-in before a bot's agent exists.
+func directLLM(envFilePath, model string, logf Logf) (llm.Generator, error) {
+	kind := autoDetectLLM(envFilePath, nil)
+	if kind == "none" {
+		return nil, nil
+	}
+	return namedDirectLLM(envFilePath, kind, model)
+}
+
+func namedDirectLLM(envFilePath, kind, model string) (llm.Generator, error) {
+	switch kind {
+	case "anthropic":
+		key, _ := oneclaw.LoadEnvValue(envFilePath, "ANTHROPIC_API_KEY")
+		if key == "" {
+			return nil, fmt.Errorf("NANOBOTS_LLM=anthropic needs ANTHROPIC_API_KEY")
+		}
+		return llm.NewAnthropic(key, model), nil
+	case "openai":
+		key, _ := oneclaw.LoadEnvValue(envFilePath, "OPENAI_API_KEY")
+		if key == "" {
+			return nil, fmt.Errorf("NANOBOTS_LLM=openai needs OPENAI_API_KEY")
+		}
+		base, _ := oneclaw.LoadEnvValue(envFilePath, "OPENAI_BASE_URL")
+		return llm.NewOpenAI(key, base, model), nil
+	case "gemini":
+		key, _ := oneclaw.LoadEnvValue(envFilePath, "GEMINI_API_KEY")
+		if key == "" {
+			return nil, fmt.Errorf("NANOBOTS_LLM=gemini needs GEMINI_API_KEY")
+		}
+		return llm.NewGemini(key, model), nil
+	}
+	return nil, fmt.Errorf("no direct provider named %q", kind)
 }

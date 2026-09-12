@@ -297,6 +297,11 @@ func runRun(args []string) error {
 		return err
 	}
 
+	gen, err := wiring.BuildLLM("", oc, func(f string, a ...any) { fmt.Printf(f+"\n", a...) })
+	if err != nil {
+		return err
+	}
+
 	callbacks := runner.NewCallbackRegistry()
 	orch := wiring.BuildOrchestrator(wiring.OrchestratorOpts{
 		RepoRoot:     root,
@@ -304,6 +309,7 @@ func runRun(args []string) error {
 		CallbackPort: port,
 	}, paths, oc, svc, callbacks)
 	orch.Memory = mem
+	orch.LLM = gen
 	// The same persistent store the daemon uses, so a run started here shows
 	// up in the WebUI's Runs page and survives this command exiting.
 	runs := wiring.BuildRunStore(paths, func(f string, a ...any) { fmt.Printf(f+"\n", a...) })

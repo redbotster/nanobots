@@ -77,6 +77,11 @@ func Run(opts Options) error {
 		return err
 	}
 
+	gen, err := wiring.BuildLLM(opts.EnvFilePath, oc, func(f string, a ...any) { log.Printf(f, a...) })
+	if err != nil {
+		return err
+	}
+
 	callbacks := runner.NewCallbackRegistry()
 	orch := wiring.BuildOrchestrator(wiring.OrchestratorOpts{
 		RepoRoot:     opts.RepoRoot,
@@ -84,6 +89,7 @@ func Run(opts Options) error {
 		CallbackPort: portOf(opts.Addr),
 	}, paths, oc, svc, callbacks)
 	orch.Memory = mem
+	orch.LLM = gen
 
 	foundryOrch := &foundry.Orchestrator{Config: foundry.Config{
 		RepoRoot:      opts.RepoRoot,

@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"context"
+
+	"github.com/redbotster/nanobots/internal/llm"
 	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/schema"
@@ -21,6 +23,14 @@ type LiveDeps struct {
 	OneClaw *oneclaw.Client
 	Shroud  *oneclaw.ShroudClient
 	AgentID string
+	// LLM is where an ai.generate prompt goes — 1Claw Shroud, or a direct
+	// provider key. Nil falls back to the bot's fixtures, which is what a
+	// deployment with no LLM at all should do rather than failing.
+	//
+	// Kept separate from Shroud above because those are now different
+	// things: Shroud is one backend among several, and this field is the
+	// choice between them. See internal/llm.
+	LLM llm.Generator
 	// Memory is the backend behind memory.* steps — local files, 1Claw, a
 	// Honcho server, or a composite of two. See internal/memory.
 	Memory    memory.Store
@@ -151,8 +161,15 @@ func (l *LiveDeps) ServiceCall(svc schema.Service, op string, params map[string]
 	return result.Result, nil
 }
 
+// AIGenerate sends the prompt to whichever backend this deployment
+// configured. Falling back to fixtures when there is none is deliberate: a
+// bot with no LLM behind it produces its demo output and says so in the
+// log, rather than failing a whole swarm on a missing key.
 func (l *LiveDeps) AIGenerate(prompt string, model schema.Model) (string, error) {
-	return l.Shroud.Chat(model.Provider, model.Name, prompt, model.MaxTokens)
+	if l.LLM == nil {
+		return l.Demo.AIGenerate(prompt, model)
+	}
+	return l.LLM.Generate(context.Background(), prompt, model)
 }
 
 func (l *LiveDeps) Render(templatePath string, data any, to string) ([]byte, string, error) {

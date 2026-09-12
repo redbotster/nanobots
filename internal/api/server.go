@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/redbotster/nanobots/internal/foundry"
+	"github.com/redbotster/nanobots/internal/llm"
 	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/runner"
@@ -191,6 +192,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	dockerOK, dockerReason := s.docker.get(now)
 	memKind, memRecall := s.memoryStatus()
+	llmKind, llmGuarded := s.llmStatus()
 	vaultLocked, vaultReason := s.vault.get(now, s.OneClaw, s.VaultID)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"oneclaw_configured": s.OneClaw != nil && s.OneClaw.Configured(),
@@ -204,6 +206,12 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		// to be visible somewhere other than a run log — including *which*
 		// bots it costs, read from the catalog so the answer can't go stale
 		// as bots gain or lose recall steps.
+		// Which LLM an ai.generate step reaches, and whether it carries
+		// 1Claw's budget/redaction guardrails. Reported because the
+		// difference is invisible in a run otherwise: a bot generates
+		// either way, and only the bill and the redaction differ.
+		"llm_backend":        llmKind,
+		"llm_guardrails":     llmGuarded,
 		"memory_backend":     memKind,
 		"memory_recall":      memRecall,
 		"memory_recall_bots": s.botsUsingRecall(),
@@ -235,6 +243,16 @@ func (s *Server) memoryStatus() (kind string, recall bool) {
 		return "local", false
 	}
 	return "custom", recall
+}
+
+// llmStatus names the configured LLM backend and says whether prompts pass
+// through 1Claw's guardrails on the way out. See internal/llm.
+func (s *Server) llmStatus() (kind string, guarded bool) {
+	if s.Orchestrator == nil || s.Orchestrator.LLM == nil {
+		return "none", false
+	}
+	g := s.Orchestrator.LLM
+	return g.Describe(), llm.IsDeferredShroud(g)
 }
 
 // botsUsingRecall names the bots that ask memory a question, sorted, so
