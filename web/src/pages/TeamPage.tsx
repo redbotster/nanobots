@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { RoleLibrarySection } from "../components/RoleLibrary";
+import { Tabs } from "../components/Tabs";
 import type { BotSummary, Team, TeamMember } from "../lib/types";
 
 /**
@@ -187,53 +188,73 @@ export function TeamPage() {
   }, []);
   useEffect(reload, [reload]);
 
+  // Two tabs, not one page with a paragraph explaining that it is really
+  // two things. The old header opened "How your team works — two separate
+  // things. Below: … Further down: …", which is a page apologising for its
+  // own structure: about twelve lines of prose before the first control.
+  // Bot instructions and review roles are genuinely unrelated — one tunes a
+  // bot you own, the other edits perspectives a review board draws on — so
+  // they get somewhere to be unrelated.
   return (
-    <div className="h-full overflow-auto p-5 sm:p-6">
+    <div className="flex h-full flex-col p-5 sm:p-6">
       <h1 className="font-display text-xl font-medium text-ink">Team</h1>
-      <p className="mt-1 hidden max-w-2xl text-sm text-muted sm:block">
-        How your team works — two separate things. Below: the bots you've told
-        how to do their job, each showing what it shipped with so you can put
-        it back. Further down: the perspectives a review board draws on, which
-        aren't bots and aren't assigned to them.
-      </p>
 
-      {error && (
-        <div className="mt-6 rounded border border-danger/40 bg-danger/5 px-4 py-3 text-sm text-danger">
-          Couldn't load the team: {error}
-        </div>
-      )}
+      <div className="mt-3 min-h-0 flex-1">
+        <Tabs
+          defaultValue="bots"
+          tabs={[
+            {
+              value: "bots",
+              label: "How bots work",
+              content: (
+                <div className="h-full overflow-auto pt-4">
+                  <p className="max-w-2xl text-[13px] leading-snug text-muted">
+                    The bots you've told how to do their job. Each keeps what it
+                    shipped with, so you can always put it back.
+                  </p>
 
-      {team === null && !error && (
-        <p className="mt-5 text-sm text-muted/60">Loading…</p>
-      )}
+                  {error && (
+                    <div className="mt-4 rounded border border-danger/40 bg-danger/5 px-4 py-3 text-sm text-danger">
+                      Couldn't load the team: {error}
+                    </div>
+                  )}
+                  {team === null && !error && (
+                    <p className="mt-4 text-sm text-muted/60">Loading…</p>
+                  )}
+                  {team !== null && team.members.length === 0 && (
+                    <p className="mt-4 max-w-xl text-[13px] leading-snug text-muted">
+                      Nothing tuned yet. Every bot with an LLM step ships with a
+                      suggested way of working — "Anything mentioning data loss or
+                      billing is top priority" — and changing one brings it here.
+                    </p>
+                  )}
+                  {team !== null && team.members.length > 0 && (
+                    <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                      {team.members.map((m) => (
+                        <MemberRow key={m.bot_id} member={m} onChanged={reload} />
+                      ))}
+                    </div>
+                  )}
 
-      {team !== null && team.members.length === 0 && (
-        <div className="mt-6 max-w-xl rounded-lg border border-edge bg-panel/40 p-5">
-          <p className="text-sm text-ink">You haven't told anyone how to work yet.</p>
-          <p className="mt-1.5 text-[13px] leading-snug text-muted">
-            Every bot with an LLM step ships with a suggested way of working —
-            "Anything mentioning data loss or billing is top priority". Pick one
-            below to change it, and it'll appear here alongside what it started
-            with, so you can always put it back.
-          </p>
-        </div>
-      )}
-
-      {team !== null && team.members.length > 0 && (
-        <div className="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {team.members.map((m) => (
-            <MemberRow key={m.bot_id} member={m} onChanged={reload} />
-          ))}
-        </div>
-      )}
-
-      <TuneAnother
-        tuned={new Set((team?.members ?? []).map((m) => m.bot_id))}
-        onChanged={reload}
-      />
-
-      <RoleLibrarySection />
-
+                  <TuneAnother
+                    tuned={new Set((team?.members ?? []).map((m) => m.bot_id))}
+                    onChanged={reload}
+                  />
+                </div>
+              ),
+            },
+            {
+              value: "roles",
+              label: "Review roles",
+              content: (
+                <div className="h-full overflow-auto pt-4">
+                  <RoleLibrarySection />
+                </div>
+              ),
+            },
+          ]}
+        />
+      </div>
     </div>
   );
 }

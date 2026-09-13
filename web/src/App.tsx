@@ -87,7 +87,11 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           {notifyPermission === "default" && (
             <button
               onClick={enableNotifications}
-              className="shrink-0 text-xs text-muted underline decoration-dotted hover:text-ink"
+              // Offset, because at this size a dotted underline sitting on the
+              // baseline cuts through the descenders of "approval" and reads
+              // as strikethrough — i.e. as a disabled control, which is the
+              // opposite of what this is.
+              className="shrink-0 text-xs text-muted underline decoration-dotted underline-offset-4 hover:text-ink"
               title="Get a browser notification the moment something needs your approval"
             >
               🔔<span className="hidden sm:inline"> Enable approval alerts</span>

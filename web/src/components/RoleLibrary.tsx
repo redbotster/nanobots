@@ -195,16 +195,16 @@ export function RoleLibrarySection() {
   const active = (lib?.roles ?? []).filter((r) => !r.retired).length;
 
   return (
-    <section className="mt-8">
-      <h2 className="font-display text-xs font-semibold uppercase tracking-wider text-muted">
-        Roles a review team is built from
-      </h2>
-      <p className="mt-1 max-w-2xl text-[13px] leading-snug text-muted">
-        These aren't bots — they're the perspectives a review board draws on. It picks two to five
-        {active > 0 ? ` of these ${active}` : " of these"} per review, so the same work gets looked
-        at the same way twice. Tick <span className="text-ink">on every team</span> for one that must
-        always be there. Each role's line is what its reviewer is told to look at; keep them sharp and
-        non-overlapping, since two roles that would raise the same concern is one role too many.
+    <section>
+      {/* No heading here any more: this lives under a tab called "Review
+          roles", and a section that has to open by explaining it is not the
+          other thing on the page was a sign the page had two subjects. */}
+      <p className="max-w-2xl text-[13px] leading-snug text-muted">
+        A review board picks two to five{active > 0 ? ` of these ${active}` : " of these"} per
+        review, so the same work gets looked at the same way twice. Tick{" "}
+        <span className="text-ink">on every team</span> for one that must always be there. Each
+        role's line is what its reviewer is told to look at; keep them sharp and non-overlapping,
+        since two roles that would raise the same concern is one role too many.
       </p>
 
       {error && (
