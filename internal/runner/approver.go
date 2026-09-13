@@ -29,6 +29,9 @@ type RunQueueApprover struct {
 	Run  *Run
 	Bot  string
 	Step string
+	// Writes is the bot's guardrails.writes_allowed, shown in the prompt so
+	// the person answering can see what "yes" permits.
+	Writes []string
 
 	// OneClaw and the agent mirror the approval into 1Claw's queue. No
 	// client or no agent means local-only, which is what a demo run and a
@@ -53,7 +56,7 @@ func (a *RunQueueApprover) Approve(summary, riskTier string) (bool, string, erro
 	done := make(chan struct{})
 	defer close(done)
 
-	return a.Run.RequestApproval(a.Bot, a.Step, summary, riskTier, approvalTimeout,
+	return a.Run.RequestApprovalWithWrites(a.Bot, a.Step, summary, riskTier, a.Writes, approvalTimeout,
 		func(localID string) { a.mirror(localID, summary, riskTier, done) })
 }
 

@@ -45,3 +45,30 @@ Deliberate details:
   withdrawn one.
 - **A fanned-out batch mirrors once**, like the local gate: one question
   naming the count, not twenty.
+
+## The prompt says what "yes" does
+
+It used to read:
+
+```
+Approval needed   Re: Export is failing on large workspaces   [Skip] [Approve]
+```
+
+which tells you what the thing is *about* and nothing about what approving
+*does*. It now reads:
+
+```
+Approval needed  [MEDIUM RISK]  Invoice INV-1042 is 14 days overdue ($4,200)
+sender will write to gmail. Declining stops the run here.
+                                        [ Don't approve ]  [ Approve ]
+```
+
+Three things were already known and thrown away. The risk tier is on the
+`approve` step. The bot's name is on the pending approval. And
+`guardrails.writes_allowed` — the same field the share bundle uses for
+"WHEN RUN, THIS SWARM CAN WRITE TO" — says exactly what the blast radius of
+"yes" is. `PendingApproval.writes` now carries it.
+
+"Skip" became "Don't approve". Declining does not skip a step and carry on;
+it ends the run. A label that reads like *later* on a button that means
+*no* is the wrong kind of gentle.

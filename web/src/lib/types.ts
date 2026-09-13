@@ -96,7 +96,10 @@ export interface PendingApproval {
   step: string;
   summary: string;
   risk_tier: string;
-  created: string;
+  created: string;  /** What this bot may touch outside the machine — its own
+   * guardrails.writes_allowed, so the prompt can show the blast radius of
+   * "yes" instead of only the subject line. */
+  writes?: string[];
 }
 
 /** What GET /api/runs returns per run: everything a list renders, and

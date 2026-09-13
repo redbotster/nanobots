@@ -89,20 +89,36 @@ export function RunLog({
           key={pa.id}
           className="fade-in flex flex-col gap-2 border-t border-warn/40 bg-warn/[0.06] px-4 py-3 sm:flex-row sm:items-center"
         >
-          <div className="text-sm">
+          <div className="min-w-0 text-sm">
             <span className="font-display font-semibold text-warn">
               Approval needed
             </span>
+            {pa.risk_tier && (
+              <span className="ml-2 rounded border border-warn/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-warn">
+                {pa.risk_tier} risk
+              </span>
+            )}
             <span className="ml-2 text-ink">{pa.summary}</span>
+            {/* What "yes" actually permits. The prompt used to name the
+                subject line and nothing else, which tells you what the
+                thing is about and not what approving does. */}
+            <div className="mt-0.5 text-[12px] text-muted">
+              {pa.writes?.length
+                ? `${pa.bot} will write to ${pa.writes.join(", ")}. Declining stops the run here.`
+                : `${pa.bot} is waiting on you. Declining stops the run here.`}
+            </div>
           </div>
-          <div className="flex gap-2 sm:ml-auto">
+          <div className="flex shrink-0 gap-2 sm:ml-auto">
             <Button
               variant="ghost"
               className="border-edge text-muted"
               disabled={deciding === pa.id}
               onClick={() => void decide(pa.id, false)}
             >
-              Skip
+              {/* Not "Skip": this does not skip a step and carry on, it
+                  ends the run. A label that reads like "later" for a
+                  button that means "no" is the wrong kind of gentle. */}
+              Don't approve
             </Button>
             <Button
               variant="primary"

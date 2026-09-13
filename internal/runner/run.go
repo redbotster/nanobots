@@ -43,6 +43,15 @@ type PendingApproval struct {
 	Summary  string    `json:"summary"`
 	RiskTier string    `json:"risk_tier"`
 	Created  time.Time `json:"created"`
+	// Writes is what this bot is allowed to touch outside the machine —
+	// the bot's own guardrails.writes_allowed, carried here so the person
+	// being asked can see the blast radius of "yes".
+	//
+	// The prompt used to read "Approval needed: Re: Export is failing on
+	// large workspaces  [Skip] [Approve]", which says what the thing is
+	// about and nothing about what approving does. A button that sends
+	// mail should say it sends mail.
+	Writes []string `json:"writes,omitempty"`
 
 	decision chan approvalDecision
 }
@@ -375,9 +384,21 @@ func (r *Run) AllOutputs() map[string]map[string]any {
 // callers that don't (the foundry's review gate) are unchanged, and so this
 // package stays ignorant of 1Claw.
 func (r *Run) RequestApproval(bot, step, summary, riskTier string, timeout time.Duration, onOpen ...func(approvalID string)) (approved bool, decidedBy string, err error) {
+	return r.requestApproval(bot, step, summary, riskTier, nil, timeout, onOpen...)
+}
+
+// RequestApprovalWithWrites is RequestApproval plus the bot's declared
+// writes, so the prompt can say what approving will let it touch. Separate
+// rather than another positional parameter: the foundry's review gate has
+// no writes to declare and shouldn't have to pass nil.
+func (r *Run) RequestApprovalWithWrites(bot, step, summary, riskTier string, writes []string, timeout time.Duration, onOpen ...func(approvalID string)) (approved bool, decidedBy string, err error) {
+	return r.requestApproval(bot, step, summary, riskTier, writes, timeout, onOpen...)
+}
+
+func (r *Run) requestApproval(bot, step, summary, riskTier string, writes []string, timeout time.Duration, onOpen ...func(approvalID string)) (approved bool, decidedBy string, err error) {
 	pa := &PendingApproval{
 		ID: uuid.NewString(), Bot: bot, Step: step, Summary: summary, RiskTier: riskTier,
-		Created: time.Now(), decision: make(chan approvalDecision, 1),
+		Writes: writes, Created: time.Now(), decision: make(chan approvalDecision, 1),
 	}
 	r.mu.Lock()
 	r.approvals[pa.ID] = pa

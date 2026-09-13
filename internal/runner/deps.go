@@ -25,6 +25,7 @@ func BuildDeps(run *Run, botID string, nb *schema.Nanobot, oc *oneclaw.Client, a
 	fixturesDir := nb.SourcePath + "/fixtures"
 	var approver step.Approver = &RunQueueApprover{
 		Run: run, Bot: botID, Step: "approve", OneClaw: oc, AgentID: agentID,
+		Writes: nb.Spec.Guardrails.WritesAllowed,
 	}
 	if override != nil {
 		approver = override

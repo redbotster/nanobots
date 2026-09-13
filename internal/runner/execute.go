@@ -378,6 +378,7 @@ func (o *Orchestrator) runBot(run *Run, rs *planner.ResolvedSwarm, botID string,
 	batch := &BatchApprover{
 		Inner: &RunQueueApprover{
 			Run: run, Bot: botID, Step: "approve", OneClaw: o.OneClaw,
+			Writes: rb.Nanobot.Spec.Guardrails.WritesAllowed,
 			// Resolved when the gate actually opens rather than now: the
 			// agent is per bot and this runs before the first item. Cheap
 			// to call — EnsureAgent caches its existence check.
