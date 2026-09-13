@@ -145,9 +145,16 @@ func dockerRunArgs(spec ContainerSpec, name string) []string {
 	for k, v := range spec.Env {
 		args = append(args, "-e", k+"="+v)
 	}
-	// TODO(nanobots#egress): guardrails.network_egress isn't enforced as an
-	// actual container network policy yet — blueprint §3.3 calls this out
-	// explicitly as "reported, not enforced" until it's built.
+	// guardrails.network_egress IS enforced, but on the host rather than
+	// here — see step.EgressPolicy. Almost nothing a bot does reaches the
+	// outside from inside its container: every credentialed step, and
+	// web.fetch, is a callback to nanobotd. web.fetch is the one that takes
+	// an arbitrary URL from a bot's inputs, and it is checked there.
+	//
+	// TODO(nanobots#egress-container): what remains uncovered is a real
+	// browser. An openclaw bot renders HTML in Chromium in here, and remote
+	// assets that HTML references are fetched by the browser, outside any
+	// check. Closing it needs a per-run network plus an egress proxy.
 	return append(args, spec.Image)
 }
 

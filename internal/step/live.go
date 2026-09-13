@@ -56,6 +56,11 @@ type LiveDeps struct {
 	// Approver, when set, overrides Approve entirely (see Approve below).
 	Approver Approver
 
+	// Egress is this bot's declared guardrails.network_egress, enforced on
+	// web.fetch. Zero value enforces nothing, which is what a bot that
+	// declared nothing has promised.
+	Egress EgressPolicy
+
 	// OnServiceCall, when set, is told about each service call and whether
 	// it was answered from fixtures. Used by the runner to record that a
 	// run was (partly) demo data; nil is fine.
@@ -236,7 +241,15 @@ func (l *LiveDeps) Notify(message, channel string) error {
 // connection: demo concept for it (it isn't tied to a schema.Service at
 // all), so LiveDeps never falls back to DemoDeps here the way ServiceCall
 // does for a demo-connection service.
+// WebFetch is the one step that takes an arbitrary URL from a bot's own
+// inputs and goes to it, which is why the bot's declared egress allowlist
+// is enforced right here — see EgressPolicy.
 func (l *LiveDeps) WebFetch(params map[string]any) (any, error) {
+	for _, u := range fetchURLs(params) {
+		if err := l.Egress.Check(u); err != nil {
+			return nil, err
+		}
+	}
 	return runWebFetch(params)
 }
 

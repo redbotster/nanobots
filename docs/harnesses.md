@@ -99,3 +99,21 @@ Relying on people remembering that failed in practice. A 36-hour-old image made 
 `EnsureHarnessImage` now hashes everything that reaches the binary — `cmd/nanobot-agent`, all of `internal`, `go.mod` and `go.sum` — into a `nanobots.agent-source` label at build time, and compares it before reusing an image. A mismatch rebuilds. `_test.go` files are excluded, since they never reach the binary and including them would rebuild the image on every test edit.
 
 `NANOBOTS_REBUILD_HARNESS=1` still forces a rebuild. If the source tree can't be hashed, the old "the image exists, that's good enough" rule applies rather than rebuilding on every run.
+
+## The one thing openclaw can still reach
+
+`guardrails.network_egress` is enforced for `web.fetch` — the step that
+takes an arbitrary URL from a bot's inputs — because that step runs on the
+host, where the bot that asked and the URL it asked for are both known (see
+`docs/bot-contract.md` and `internal/step.EgressPolicy`).
+
+An `openclaw` bot is the exception, and it is worth being exact about why.
+`transform.render` runs a real Chromium *inside* the container, so remote
+assets referenced by the HTML it renders are fetched by the browser, past
+any check this build performs. Nothing in the catalog renders remote assets
+— the templates are self-contained — but the guardrail does not stop one
+that did.
+
+Closing it needs a per-run Docker network with an egress proxy in front of
+it. Until then this is the honest boundary: enforced for the step that
+fetches on your behalf, not for a browser you asked to draw a page.

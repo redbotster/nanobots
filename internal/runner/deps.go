@@ -37,6 +37,7 @@ func BuildDeps(run *Run, botID string, nb *schema.Nanobot, oc *oneclaw.Client, a
 	ld := step.NewLiveDeps(oc, oneclaw.NewShroudClient(agentID, agentAPIKey), agentID, fixturesDir, blobs)
 	ld.Approver = approver
 	ld.Services = services
+	ld.Egress = step.EgressPolicy{Allow: nb.Spec.Guardrails.NetworkEgress}
 	// Every service call this bot makes, marked when it was served from
 	// fixtures — see Run.NoteDemoService for why that has to be visible.
 	ld.OnServiceCall = func(svc schema.Service, _ string, demo bool) {

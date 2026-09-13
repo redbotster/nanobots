@@ -53,9 +53,9 @@ func fetchURL(rawURL string) (FetchedPage, error) {
 // runWebFetch implements the `web.fetch` step type: params.url fetches one
 // page (returns a single object), params.urls fetches each in turn (returns
 // a list) — a bot declares whichever shape its own output port expects.
-// guardrails.network_egress is a per-bot allowlist a human can read, but
-// (like everywhere else in this build) isn't enforced as an actual network
-// policy here — a pre-existing, documented gap, not new to this step.
+// guardrails.network_egress is checked before any of this runs — see
+// LiveDeps.WebFetch and EgressPolicy. Not here, because this function is
+// also the demo path and knows nothing about which bot called it.
 func runWebFetch(params map[string]any) (any, error) {
 	if urls, ok := params["urls"].([]any); ok {
 		pages := make([]FetchedPage, 0, len(urls))
@@ -78,4 +78,23 @@ func runWebFetch(params map[string]any) (any, error) {
 		return nil, err
 	}
 	return toJSONAny(page)
+}
+
+// fetchURLs is every URL a web.fetch step's params would reach, in the two
+// shapes the step accepts. Shared with the egress check so the check cannot
+// look at a different set of URLs than the fetch does.
+func fetchURLs(params map[string]any) []string {
+	if urls, ok := params["urls"].([]any); ok {
+		out := make([]string, 0, len(urls))
+		for _, u := range urls {
+			if s, ok := u.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	if u, ok := params["url"].(string); ok && u != "" {
+		return []string{u}
+	}
+	return nil
 }

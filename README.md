@@ -45,7 +45,7 @@ This repo implements the full 28-brick, 12-swarm launch catalog from `context/NA
 - **A real scheduler**: every catalog swarm's `trigger: {type: cron, ...}` now actually fires — see `docs/scheduler.md`. Previously nothing in this build ever executed one; every run was a human clicking Run.
 - **Run history that survives a restart**: every finished run is kept as a JSON file under `~/.nanobots/history/`, capped at 200 — see `docs/run-history.md`. A failed run shows *why* it failed and offers to run the same swarm again. A run killed mid-flight by a restart is restored as failed rather than sitting in the list as "running" forever.
 
-Not built yet: the `kubernetes`/`apple` compile targets, a real dynamic agent loop (see `docs/harnesses.md` — today's harnesses run a fixed, pre-written step list, not an LLM deciding what to do), enforced network-egress guardrails (reported in a bot's declared guardrails, not actually firewalled), a real OAuth integration for Google Business Profile (`review-responder` stays on `connection: demo`, gap called out in `docs/connections.md`), and the hosted multi-tenant control plane.
+Not built yet: the `kubernetes`/`apple` compile targets, a real dynamic agent loop (see `docs/harnesses.md` — today's harnesses run a fixed, pre-written step list, not an LLM deciding what to do), container-level network egress (a bot's declared `network_egress` is now enforced for `web.fetch`, which is the step that fetches on your behalf — but an `openclaw` bot's in-container Chromium can still reach remote assets, see `docs/harnesses.md`), a real OAuth integration for Google Business Profile (`review-responder` stays on `connection: demo`, gap called out in `docs/connections.md`), and the hosted multi-tenant control plane.
 
 ## The AI composer — the "head nanobot"
 
@@ -256,7 +256,7 @@ Per the project's own working style, expensive verification is a single consolid
 go build ./... && go vet ./... && go test ./...
 ```
 
-465 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
+475 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
 - `internal/contract`'s `TestRunConformanceOnLaunchBots` — auto-discovers and conformance-tests all 30 bots under `bots/` against their own fixtures, no Docker or network.
 - `internal/planner`'s `TestPlanAllExampleSwarms` — auto-discovers and type-checks all 14 swarms under `examples/swarms/`.
 - httptest-mocked 1Claw/Google/Slack/GitHub/Stripe/HubSpot/X/LinkedIn API clients, built against each provider's real, documented endpoint shapes (verified against `@1claw/openapi-spec` and each provider's own docs, not guessed).

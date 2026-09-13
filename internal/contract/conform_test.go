@@ -314,3 +314,40 @@ func TestEveryMemoryRecallStepIsUsableAsShipped(t *testing.T) {
 		t.Errorf("unusable memory.recall steps:\n  %s", strings.Join(problems, "\n  "))
 	}
 }
+
+// guardrails.network_egress is enforced now (see step.EgressPolicy), and
+// the rule for a bot that declares nothing is that nothing is enforced — a
+// promise nobody made is not one to break, and third-party bots should not
+// break the day enforcement lands.
+//
+// That is a loophole this catalog must not use. A bot with a web.fetch step
+// takes an arbitrary URL from its own inputs and goes to it; if it declares
+// no allowlist it has quietly opted out of the only guardrail that applies
+// to it.
+func TestABotThatFetchesDeclaresWhereItMayGo(t *testing.T) {
+	root := repoRoot(t)
+	checked := 0
+	for _, id := range allBotIDs(t, root) {
+		nb, err := schema.LoadNanobot(filepath.Join(root, "bots", id, "nanobot.yaml"))
+		if err != nil {
+			t.Fatalf("%s: %v", id, err)
+		}
+		fetches := false
+		for _, s := range nb.Spec.Steps {
+			if s.Type == "web.fetch" {
+				fetches = true
+			}
+		}
+		if !fetches {
+			continue
+		}
+		checked++
+		if len(nb.Spec.Guardrails.NetworkEgress) == 0 {
+			t.Errorf("%s has a web.fetch step and declares no guardrails.network_egress —"+
+				" say where it may go, or \"*\" if the URLs genuinely come from the user", id)
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no bot fetches, so this test is checking nothing")
+	}
+}
