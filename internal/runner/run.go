@@ -364,7 +364,13 @@ func (r *Run) AllOutputs() map[string]map[string]any {
 
 // RequestApproval registers a pending approval and blocks until Decide is
 // called for it (from the WebUI) or timeout elapses.
-func (r *Run) RequestApproval(bot, step, summary, riskTier string, timeout time.Duration) (approved bool, decidedBy string, err error) {
+// onOpen, when given, is called with the new approval's id once it is
+// queued and before the wait begins. It exists so a caller can mirror the
+// same question somewhere else — 1Claw's mobile queue — and answer this one
+// with Decide when that somewhere else replies first. Variadic so the
+// callers that don't (the foundry's review gate) are unchanged, and so this
+// package stays ignorant of 1Claw.
+func (r *Run) RequestApproval(bot, step, summary, riskTier string, timeout time.Duration, onOpen ...func(approvalID string)) (approved bool, decidedBy string, err error) {
 	pa := &PendingApproval{
 		ID: uuid.NewString(), Bot: bot, Step: step, Summary: summary, RiskTier: riskTier,
 		Created: time.Now(), decision: make(chan approvalDecision, 1),
@@ -374,6 +380,11 @@ func (r *Run) RequestApproval(bot, step, summary, riskTier string, timeout time.
 	r.mu.Unlock()
 	r.SetStatus(StatusAwaitingApproval)
 	r.Log(bot, step, "awaiting approval (%s): %s", pa.ID, summary)
+	for _, f := range onOpen {
+		if f != nil {
+			f(pa.ID)
+		}
+	}
 
 	select {
 	case d, ok := <-pa.decision:

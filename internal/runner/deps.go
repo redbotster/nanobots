@@ -23,7 +23,9 @@ import (
 // Shroud's budget and redaction guardrails on top.
 func BuildDeps(run *Run, botID string, nb *schema.Nanobot, oc *oneclaw.Client, agentID, agentAPIKey string, blobs step.BlobStore, services step.ServiceConfigs, override step.Approver, mem memory.Store, gen llm.Generator) step.Deps {
 	fixturesDir := nb.SourcePath + "/fixtures"
-	var approver step.Approver = &RunQueueApprover{Run: run, Bot: botID, Step: "approve"}
+	var approver step.Approver = &RunQueueApprover{
+		Run: run, Bot: botID, Step: "approve", OneClaw: oc, AgentID: agentID,
+	}
 	if override != nil {
 		approver = override
 	}

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/redbotster/nanobots/internal/oneclaw"
 )
 
 // approvalTimeout bounds how long a run waits on a human decision before
@@ -19,16 +21,86 @@ const approvalTimeout = 30 * time.Minute
 // identically whether the bot behind them is running against real 1Claw or
 // demo fixtures — see run.go's PendingApproval doc comment.
 //
-// TODO(nanobots#approvals-mirror): also mirror live bots' approvals into
-// 1Claw's own approval queue (dashboard/mobile), not just the local WebUI.
+// When 1Claw is configured, the same question is also opened in its own
+// approval queue, so an overnight swarm can be answered from a phone
+// instead of only from a browser tab that happens to be open. Whichever
+// answers first wins; the other is ignored.
 type RunQueueApprover struct {
 	Run  *Run
 	Bot  string
 	Step string
+
+	// OneClaw and the agent mirror the approval into 1Claw's queue. No
+	// client or no agent means local-only, which is what a demo run and a
+	// deployment without 1Claw both get.
+	OneClaw *oneclaw.Client
+	AgentID string
+	// AgentIDFn resolves the agent when the gate opens rather than when the
+	// approver is built — the fan-out case builds its approver before the
+	// first item has run. Takes precedence over AgentID.
+	AgentIDFn func() string
 }
 
+// mirrorPoll is how often the 1Claw queue is checked. Slower than a local
+// decision, which is instant — this is a network round trip against a
+// question a human is thinking about, not a hot loop.
+var mirrorPoll = 5 * time.Second
+
 func (a *RunQueueApprover) Approve(summary, riskTier string) (bool, string, error) {
-	return a.Run.RequestApproval(a.Bot, a.Step, summary, riskTier, approvalTimeout)
+	// Closed when the local wait returns, so the mirror's poll loop stops
+	// rather than running for the full thirty-minute timeout after the
+	// question has already been answered here.
+	done := make(chan struct{})
+	defer close(done)
+
+	return a.Run.RequestApproval(a.Bot, a.Step, summary, riskTier, approvalTimeout,
+		func(localID string) { a.mirror(localID, summary, riskTier, done) })
+}
+
+// mirror opens the same approval in 1Claw and, if it is answered there
+// first, decides the local one.
+//
+// Every failure here is logged and dropped rather than propagated: the
+// local queue is the one that must work. A 1Claw outage should cost you the
+// convenience of approving from your phone, not the ability to approve at
+// all.
+func (a *RunQueueApprover) mirror(localID, summary, riskTier string, done <-chan struct{}) {
+	agentID := a.AgentID
+	if a.AgentIDFn != nil {
+		agentID = a.AgentIDFn()
+	}
+	if a.OneClaw == nil || !a.OneClaw.Configured() || agentID == "" {
+		return
+	}
+	ap, err := a.OneClaw.RequestApproval(agentID, summary, riskTier)
+	if err != nil {
+		a.Run.Log(a.Bot, a.Step, "could not also ask on 1Claw, so this is answerable here only: %v", err)
+		return
+	}
+	a.Run.Log(a.Bot, a.Step, "also asked on 1Claw (%s) — answer it here or on your phone", ap.ID)
+
+	go func() {
+		ticker := time.NewTicker(mirrorPoll)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				// Answered here. The 1Claw approval is left pending rather
+				// than withdrawn: its API has no cancel, and a stale
+				// question is better than pretending to have one.
+				return
+			case <-ticker.C:
+				status, err := a.OneClaw.ApprovalStatus(ap.ID)
+				if err != nil || status == "pending" {
+					continue
+				}
+				// Decide fails harmlessly if the local one was already
+				// answered in the moment between the poll and this call.
+				_ = a.Run.Decide(localID, status == "approved", "1claw ("+status+")")
+				return
+			}
+		}
+	}()
 }
 
 // BatchApprover asks once for a whole fanned-out batch and reuses the

@@ -314,7 +314,13 @@ func (o *Orchestrator) runBot(run *Run, rs *planner.ResolvedSwarm, botID string,
 	// asks on the first iteration, naming the count, and reuses the answer
 	// for the rest.
 	batch := &BatchApprover{
-		Inner: &RunQueueApprover{Run: run, Bot: botID, Step: "approve"},
+		Inner: &RunQueueApprover{
+			Run: run, Bot: botID, Step: "approve", OneClaw: o.OneClaw,
+			// Resolved when the gate actually opens rather than now: the
+			// agent is per bot and this runs before the first item. Cheap
+			// to call — EnsureAgent caches its existence check.
+			AgentIDFn: func() string { id, _, _ := o.agentFor(rb.Nanobot); return id },
+		},
 		Total: n,
 	}
 	perItem := make([]map[string]any, 0, n)
@@ -427,14 +433,9 @@ func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID str
 		}
 	}
 
-	// Only bots that actually use Shroud, memory, or a generic 1Claw service
-	// binding get an agent — see agentneed.go for why "always" was wrong.
-	var agentID, agentAPIKey string
-	if o.OneClaw != nil && o.OneClaw.Configured() && needsOneClawAgent(nb) {
-		agentID, agentAPIKey, err = o.OneClaw.EnsureAgent(o.AgentStateDir, "nanobots-"+nb.Metadata.Name, agentRequestFor(nb))
-		if err != nil {
-			return fmt.Errorf("ensure 1Claw agent: %w", err)
-		}
+	agentID, agentAPIKey, err := o.agentFor(nb)
+	if err != nil {
+		return err
 	}
 
 	blobs, err := step.NewFSBlobStore(o.BlobDir)
@@ -641,4 +642,21 @@ func catalogIDOf(rb *planner.ResolvedBot) string {
 	}
 	// A local `path:` bot: the directory's own name is its id.
 	return filepath.Base(strings.TrimRight(rb.Ref.Path, "/"))
+}
+
+// agentFor returns this bot's 1Claw agent, creating it if needed.
+//
+// Only bots that actually use Shroud, memory, or a generic 1Claw service
+// binding get one — see agentneed.go for why "always" was wrong. Shared by
+// the per-item run and the batch approver, which needs the same agent to
+// mirror one approval for a whole fan-out.
+func (o *Orchestrator) agentFor(nb *schema.Nanobot) (id, apiKey string, err error) {
+	if o.OneClaw == nil || !o.OneClaw.Configured() || !needsOneClawAgent(nb) {
+		return "", "", nil
+	}
+	id, apiKey, err = o.OneClaw.EnsureAgent(o.AgentStateDir, "nanobots-"+nb.Metadata.Name, agentRequestFor(nb))
+	if err != nil {
+		return "", "", fmt.Errorf("ensure 1Claw agent: %w", err)
+	}
+	return id, apiKey, nil
 }

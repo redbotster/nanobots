@@ -19,3 +19,29 @@ nanobots run -f examples/swarms/daily-email-recap.yaml
 ```
 
 Watch for the terminal prompt right before the mail would send — that's the same gate the WebUI shows inline in the run log, with an Approve/Skip button instead of a `[y/N]`.
+
+## Answering from your phone
+
+When 1Claw is configured, the same question is opened in its approval queue
+as well as this one. Whichever answers first wins; the other is ignored, and
+the run records who decided — "1claw (approved)" reads differently from
+"cli" when you come back to it.
+
+This closes a real hole in the scheduler story. A swarm on a cron trigger
+fires at 08:00 and blocks on an approval; if the only way to answer is a
+browser tab that happens to be open, an overnight run waits until someone
+sits down. Now it doesn't.
+
+Deliberate details:
+
+- **The local queue is the one that must work.** Every failure in the mirror
+  is logged and dropped — a 1Claw outage costs you the convenience of
+  approving from a phone, not the ability to approve at all. The run says so
+  ("answerable here only") rather than failing quietly.
+- **The poll stops when the question is answered here**, rather than running
+  for the full thirty-minute timeout against a decision already made.
+- **A local answer leaves the 1Claw approval pending.** Its API has no
+  cancel, and a stale question is more honest than pretending to have
+  withdrawn one.
+- **A fanned-out batch mirrors once**, like the local gate: one question
+  naming the count, not twenty.

@@ -1,13 +1,17 @@
 package runner
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/planner"
 	"github.com/redbotster/nanobots/internal/schema"
 )
@@ -422,5 +426,165 @@ func TestARunRecordsWhichServicesWereDemoData(t *testing.T) {
 	// banner on every live run.
 	if len(NewRun("clean").DemoServices()) != 0 {
 		t.Error("a clean run reported demo services")
+	}
+}
+
+// fakeApprovalAPI stands in for 1Claw's approval endpoints, so the race
+// between the local queue and the mobile one can be tested without a
+// network.
+func fakeApprovalAPI(t *testing.T, statusAfter func(polls int) string) *oneclaw.Client {
+	t.Helper()
+	polls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/auth/api-key-token"):
+			// The client exchanges its API key for a bearer token on first
+			// use; a fake that skips this makes every call fail, which is
+			// how the first version of this test "passed" the outage case
+			// and failed the one that mattered.
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "tok", "token_type": "Bearer", "expires_in": 86400,
+			})
+		case strings.HasSuffix(r.URL.Path, "/approvals/request"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "remote-1", "status": "pending"})
+		case strings.Contains(r.URL.Path, "/approvals/") && strings.HasSuffix(r.URL.Path, "/status"):
+			polls++
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": statusAfter(polls)})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	orig := oneclaw.DefaultBaseURL
+	oneclaw.DefaultBaseURL = srv.URL
+	t.Cleanup(func() { oneclaw.DefaultBaseURL = orig })
+	return oneclaw.NewClient("test-key")
+}
+
+// An overnight swarm should be answerable from a phone, not only from a
+// browser tab that happens to be open. The same question goes to both
+// queues and the first answer wins.
+func TestAnApprovalAnsweredOnAPhoneDecidesTheRun(t *testing.T) {
+	// A real poll interval would make this test a five-second wait for
+	// nothing; the interval is not what is under test.
+	orig := mirrorPoll
+	mirrorPoll = 10 * time.Millisecond
+	t.Cleanup(func() { mirrorPoll = orig })
+
+	run := NewRun("probe")
+	a := &RunQueueApprover{
+		Run: run, Bot: "sender", Step: "approve",
+		OneClaw: fakeApprovalAPI(t, func(int) string { return "approved" }),
+		AgentID: "agent-1",
+	}
+
+	type result struct {
+		ok bool
+		by string
+	}
+	res := make(chan result, 1)
+	go func() {
+		ok, by, _ := a.Approve("Send 20 reminders", "high")
+		res <- result{ok, by}
+	}()
+
+	select {
+	case r := <-res:
+		if !r.ok {
+			t.Error("a remote approval did not approve the run")
+		}
+		// Who decided has to survive: "approved by someone on their phone"
+		// is different from "approved in this tab".
+		if !strings.Contains(r.by, "1claw") {
+			t.Errorf("decided_by = %q, want it to name 1Claw", r.by)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the run never learned about the remote decision")
+	}
+}
+
+// The local queue is the one that must work. A 1Claw outage should cost you
+// the convenience of approving from your phone, not the ability to approve.
+func TestAFailingMirrorDoesNotBlockLocalApproval(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	orig := oneclaw.DefaultBaseURL
+	oneclaw.DefaultBaseURL = srv.URL
+	defer func() { oneclaw.DefaultBaseURL = orig }()
+
+	run := NewRun("probe")
+	a := &RunQueueApprover{
+		Run: run, Bot: "sender", Step: "approve",
+		OneClaw: oneclaw.NewClient("k"), AgentID: "agent-1",
+	}
+
+	done := make(chan bool, 1)
+	go func() {
+		ok, _, _ := a.Approve("Send it", "medium")
+		done <- ok
+	}()
+
+	// The local gate must still open and still be answerable.
+	deadline := time.After(5 * time.Second)
+	for {
+		if p := run.PendingApprovals(); len(p) > 0 {
+			_ = run.Decide(p[0].ID, true, "cli")
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("no local approval was ever queued")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+	select {
+	case ok := <-done:
+		if !ok {
+			t.Error("the local decision did not take")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Approve never returned")
+	}
+	// And it said so, rather than failing silently.
+	var warned bool
+	for _, l := range run.LogEntries() {
+		if strings.Contains(l.Msg, "answerable here only") {
+			warned = true
+		}
+	}
+	if !warned {
+		t.Errorf("nothing said the mirror failed: %+v", run.LogEntries())
+	}
+}
+
+// No 1Claw is the ordinary local-only case and must not reach the network
+// or change behaviour at all.
+func TestWithoutOneClawApprovalIsLocalOnly(t *testing.T) {
+	run := NewRun("probe")
+	a := &RunQueueApprover{Run: run, Bot: "b", Step: "approve"}
+	go func() {
+		deadline := time.After(3 * time.Second)
+		for {
+			if p := run.PendingApprovals(); len(p) > 0 {
+				_ = run.Decide(p[0].ID, true, "cli")
+				return
+			}
+			select {
+			case <-deadline:
+				return
+			case <-time.After(time.Millisecond):
+			}
+		}
+	}()
+	ok, by, err := a.Approve("x", "low")
+	if err != nil || !ok || by != "cli" {
+		t.Errorf("ok=%v by=%q err=%v", ok, by, err)
+	}
+	for _, l := range run.LogEntries() {
+		if strings.Contains(l.Msg, "1Claw") {
+			t.Errorf("mentioned 1Claw with none configured: %q", l.Msg)
+		}
 	}
 }
