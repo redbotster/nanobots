@@ -104,3 +104,19 @@ The shim is the one route on nanobotd that authenticates. Everything else it ser
 **Two honest limits.** Embeddings still go direct to Gemini: Shroud's embeddings route wants a provider key stored in the 1Claw vault, and an agent is scoped to one provider anyway — so the embedding model still sees observation text. And the model must be one the shim's agent may call; that agent is created with `AllowedProviders: [anthropic]`, so `config.shroud.toml` uses an Anthropic model.
 
 Verified end to end: an observation posted to Honcho was derived through Shroud (`observation_count=3`), the dialectic answered a real question about it, and a full `inbox-autopilot` run recalled 1100 and 1820 characters through the whole chain — bot → nanobotd → Honcho → shim → Shroud → model.
+
+## What it costs
+
+`nanobots spend` reports what 1Claw has billed this account for model
+tokens this period, and the credit balance if there is one.
+
+Account-wide, not per-run. 1Claw bills per agent and this build creates one
+agent per bot, so the total is what it can honestly report; attributing a
+figure to a single run would mean inventing arithmetic nobody can check.
+
+"Nothing metered yet" is a real answer and distinct from zero — an account
+with token billing enabled but no metered activity has no upcoming-invoice
+line, and rendering that as $0.00 claims a measurement nobody made. An
+account not on token billing at all gets told so, rather than a zero that
+reads as free: spend on a direct provider key is between you and that
+provider, and nothing here can see it.
