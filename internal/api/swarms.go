@@ -52,11 +52,14 @@ type SwarmSummary struct {
 	// it, so the UI can say so — see InertTrigger.
 	TriggerType string `json:"trigger_type,omitempty"`
 	// InertTrigger is set when a swarm declares automation this build
-	// doesn't implement. internal/scheduler only handles cron, so an
-	// `event: drive.file.created` or `webhook: website.form.submitted`
-	// swarm never fires on its own — and looked identical to an unscheduled
-	// one in the UI, which reads as "manual by design" rather than "its
-	// automation isn't built yet".
+	// doesn't implement, and looked identical to an unscheduled one in the
+	// UI — which reads as "manual by design" rather than "its automation
+	// isn't built yet".
+	//
+	// Only `event:` is left. Cron has always fired, and webhooks now do too
+	// (internal/api/webhooks.go), so a webhook swarm reports trigger_type
+	// "webhook" with no inert flag and the UI offers its URL instead of an
+	// apology.
 	InertTrigger string `json:"inert_trigger,omitempty"`
 }
 
@@ -66,10 +69,9 @@ type SwarmSummary struct {
 func describeSchedule(sum *SwarmSummary, t schema.Trigger, now time.Time) {
 	sum.TriggerType = t.Type
 	if t.Type != "cron" {
-		// Only cron is wired to anything (internal/scheduler). Say so
-		// rather than rendering these identically to a swarm that has no
-		// trigger at all.
-		if t.Type == "event" || t.Type == "webhook" {
+		// `event:` is the last trigger nothing fires. Say so rather than
+		// rendering it identically to a swarm that has no trigger at all.
+		if t.Type == "event" {
 			sum.InertTrigger = t.Expr
 		}
 		return

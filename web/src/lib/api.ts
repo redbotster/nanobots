@@ -19,6 +19,7 @@ import type {
   ValidateSwarmRequest,
   RoleLibrary,
   RunFixtures,
+  WebhookDetails,
 } from "./types";
 
 async function reqText(path: string): Promise<string> {
@@ -55,6 +56,8 @@ export const api = {
     reqText(`/api/swarms/yaml?path=${encodeURIComponent(path)}`),
   swarmFull: (path: string) =>
     req<SwarmFull>(`/api/swarms/full?path=${encodeURIComponent(path)}`),
+  webhookDetails: (name: string) =>
+    req<WebhookDetails>(`/api/swarms/${encodeURIComponent(name)}/webhook`),
   validateSwarm: (draft: ValidateSwarmRequest) =>
     req<PlanResult>("/api/swarms/validate", {
       method: "POST",

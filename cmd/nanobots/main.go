@@ -57,6 +57,8 @@ func main() {
 		err = runConnectors(args)
 	case "spend":
 		err = runSpend(args)
+	case "webhook":
+		err = runWebhook(args)
 	case "export":
 		err = runExport(args)
 	case "import":
@@ -91,6 +93,7 @@ commands:
   service install|status|uninstall        keep nanobotd running across reboots, so cron triggers actually fire
   connectors list|register|install|status one place to register an OAuth app and wire it to a bot
   spend                                   what this account has spent on models
+  webhook <swarm> [--addr host:port]      print where to post to fire a webhook swarm
   export -f <swarm.yaml> [-o <file>]      bundle a swarm to hand to someone else
   import <bundle.yaml>                    add a shared swarm to examples/swarms/
   init, add, save, publish, compile        not implemented in this build yet`)
@@ -755,6 +758,87 @@ func catalogLookup(botsDir string) func(string) (*schema.Nanobot, error) {
 // catalog was the only way to get one. The bundle carries the file itself,
 // which bots it needs, which accounts the recipient will have to connect,
 // and — the part worth surfacing — what it can write to when it runs.
+// runWebhook prints where to post to fire a swarm.
+//
+// Reads the token file and the swarm directly rather than asking a running
+// daemon: the most likely moment to want this is while setting the thing
+// up, and needing `nanobots up` in another terminal first would be a
+// pointless dependency. The address is therefore a flag rather than
+// something discovered — this cannot know what host a form service will
+// reach you on.
+func runWebhook(args []string) error {
+	addr := "127.0.0.1:7474"
+	var name string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--addr":
+			i++
+			if i < len(args) {
+				addr = args[i]
+			}
+		default:
+			if !strings.HasPrefix(args[i], "-") && name == "" {
+				name = args[i]
+			}
+		}
+	}
+	if name == "" {
+		return fmt.Errorf("usage: nanobots webhook <swarm> [--addr host:port]")
+	}
+	root, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	swarmPath, sw, err := findSwarmByName(filepath.Join(root, "examples", "swarms"), name)
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(sw.Spec.Trigger.Type, "webhook") {
+		return fmt.Errorf("%s has trigger type %q, not webhook — nothing would post to this URL.\n"+
+			"Add `trigger: {type: webhook}` to %s if you meant this",
+			name, sw.Spec.Trigger.Type, swarmPath)
+	}
+	stateDir, err := oneclaw.DefaultStateDir()
+	if err != nil {
+		return err
+	}
+	token, err := api.LoadWebhookToken(stateDir)
+	if err != nil {
+		return err
+	}
+	url := "http://" + addr + "/webhooks/" + sw.Metadata.Name
+	fmt.Printf("%s\n\n", url)
+	fmt.Printf("curl -X POST %s \\\n  -H 'Authorization: Bearer %s' \\\n"+
+		"  -H 'Content-Type: application/json' \\\n  -d '{\"example\": \"payload\"}'\n\n",
+		url, token)
+	fmt.Println("The body arrives as {{trigger.payload}} in this swarm's input templates.")
+	fmt.Println("Anyone with that token can start this swarm, and runs send mail — treat it as a password.")
+	return nil
+}
+
+// findSwarmByName resolves a swarm by its metadata name or its filename,
+// the same two ways the webhook endpoint accepts.
+func findSwarmByName(dir, name string) (string, *schema.Nanoswarm, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", nil, err
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		sw, err := schema.LoadNanoswarm(path)
+		if err != nil {
+			continue
+		}
+		if sw.Metadata.Name == name || strings.TrimSuffix(e.Name(), ".yaml") == name {
+			return path, sw, nil
+		}
+	}
+	return "", nil, fmt.Errorf("no swarm called %q in %s", name, dir)
+}
+
 func runExport(args []string) error {
 	var swarmPath, out string
 	for i := 0; i < len(args); i++ {

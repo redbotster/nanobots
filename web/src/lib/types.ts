@@ -217,11 +217,22 @@ export interface SwarmSummary {
   schedule_error?: string;
   /** "cron" | "event" | "webhook" | "manual" — the declared trigger. */
   trigger_type?: string;
-  /** The event/webhook this swarm declares but that nothing in this build
-   * fires. Only cron is wired up (internal/scheduler), so such a swarm runs
-   * only when someone clicks Run — which looked identical to a swarm with
-   * no trigger at all. */
+  /** The event this swarm declares but that nothing in this build fires,
+   * so it runs only when someone clicks Run — which looked identical to a
+   * swarm with no trigger at all. Cron has always fired and webhooks now do
+   * too, so `event:` is the last one left. */
   inert_trigger?: string;
+}
+
+/** Where to post to fire a webhook swarm, and what to send with it. Fetched
+ * on demand rather than carried on SwarmSummary — it contains a credential
+ * and the swarm list is polled continuously. See handleWebhookDetails. */
+export interface WebhookDetails {
+  swarm: string;
+  url: string;
+  token: string;
+  /** The whole thing as one runnable line, token included. */
+  curl: string;
 }
 
 /** One bot instance in a swarm draft, as the visual builder edits it — the

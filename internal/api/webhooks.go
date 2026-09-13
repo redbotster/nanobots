@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -116,6 +117,67 @@ func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		"run_id": run.ID,
 		"swarm":  run.SwarmName,
 		"status": run.GetStatus(),
+	})
+}
+
+// WebhookDetails is everything someone needs to point a form service at a
+// swarm: where to post, and what to send with it.
+type WebhookDetails struct {
+	Swarm string `json:"swarm"`
+	URL   string `json:"url"`
+	Token string `json:"token"`
+	// Curl is the whole thing as one runnable line. The two-part form is
+	// what a config screen wants; this is what a person actually pastes to
+	// find out whether it works.
+	Curl string `json:"curl"`
+}
+
+// handleWebhookDetails returns the posting details for one webhook swarm.
+//
+// Deliberately its own endpoint rather than a field on the swarm list. The
+// token is a credential, /api/swarms is polled continuously by every open
+// tab, and a credential that rides along in a list response ends up in
+// logs, caches and screenshots of something else. Fetching it is an act.
+//
+// It is not a security boundary — anything that can call this can read the
+// token file — and it does not pretend to be one. It is the difference
+// between a secret you asked for and a secret that follows you around.
+func (s *Server) handleWebhookDetails(w http.ResponseWriter, r *http.Request) {
+	if s.Webhook == nil || s.Webhook.Token == "" {
+		writeError(w, http.StatusNotFound, fmt.Errorf("webhook triggers are not enabled on this daemon"))
+		return
+	}
+	name := r.PathValue("swarm")
+	_, sw, err := s.swarmByName(name)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	if !strings.EqualFold(sw.Spec.Trigger.Type, "webhook") {
+		writeError(w, http.StatusConflict, fmt.Errorf(
+			"%s has trigger type %q, not webhook — nothing would post to this URL",
+			name, sw.Spec.Trigger.Type))
+		return
+	}
+
+	// r.Host, not a configured address: whatever the browser used to reach
+	// this daemon is the one hostname known to work from where the person
+	// asking is sitting. A hardcoded 127.0.0.1 is wrong the moment someone
+	// reaches nanobotd over a tunnel to accept real webhooks — which is the
+	// main reason to want this URL at all.
+	scheme := "http"
+	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+		scheme = "https"
+	}
+	base := scheme + "://" + r.Host + "/webhooks/" + url.PathEscape(sw.Metadata.Name)
+
+	writeJSON(w, http.StatusOK, WebhookDetails{
+		Swarm: sw.Metadata.Name,
+		URL:   base,
+		Token: s.Webhook.Token,
+		Curl: fmt.Sprintf("curl -X POST %s \\\n  -H 'Authorization: Bearer %s' \\\n"+
+			"  -H 'Content-Type: application/json' \\\n  -d '{\"example\": \"payload\"}'",
+			base, s.Webhook.Token),
 	})
 }
 

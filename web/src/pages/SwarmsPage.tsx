@@ -156,9 +156,18 @@ function ScheduleLine({ swarm }: { swarm: SwarmSummary }) {
     return (
       <div
         className="mt-2.5 truncate text-[11px] text-muted/70"
-        title={`This swarm declares a ${swarm.trigger_type} trigger (${swarm.inert_trigger}), but only cron triggers are wired up in this build — so it runs only when you click Run.`}
+        title={`This swarm declares a ${swarm.trigger_type} trigger (${swarm.inert_trigger}), which nothing in this build fires — so it runs only when you click Run.`}
       >
         ⚡ {swarm.inert_trigger} — not wired up yet, so runs on demand
+      </div>
+    );
+  }
+  if (swarm.trigger_type === "webhook") {
+    // Not a schedule, but the same question — "does this run on its own?" —
+    // and the answer is yes. Open it to get the URL.
+    return (
+      <div className="mt-2.5 truncate text-[11px] text-muted" title="Open this swarm to get its URL">
+        ⚡ Runs when something posts to it
       </div>
     );
   }

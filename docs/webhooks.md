@@ -16,6 +16,56 @@ curl -X POST http://127.0.0.1:7474/webhooks/lead-to-meeting \
 The body becomes `{{trigger.payload}}` in every bot's input templates,
 alongside `{{vars}}` and `{{run.date}}`.
 
+## Finding the URL without knowing where the token lives
+
+The `cat` above is the honest answer and a useless one for the person this
+feature is actually for — somebody with a form on a website who needs one
+URL to paste into it. Open a webhook swarm in the app and it offers **Show
+the URL**: the address, the token (masked until you ask), and the whole
+thing as a runnable command. Or from a terminal:
+
+```sh
+nanobots webhook lead-to-meeting
+```
+
+Both read `GET /api/swarms/{name}/webhook`, which is deliberately its own
+endpoint rather than a field on the swarm list. The token is a credential,
+`/api/swarms` is polled continuously by every open tab, and a credential
+that rides along in a list response ends up in logs, caches and screenshots
+of something else. Fetching it is an act. It is not a security boundary —
+anything that can call it can read the token file — and it does not pretend
+to be one.
+
+The URL is built from the `Host` you reached the daemon on, not a hardcoded
+`127.0.0.1`. If you are accepting real webhooks you are reaching nanobotd
+through a tunnel, and that is exactly when a loopback address would be
+useless.
+
+## Finding the URL without knowing where the token lives
+
+The `cat` above is the honest answer and a useless one for the person this
+feature is actually for — somebody with a form on a website who needs one
+URL to paste into it. Open a webhook swarm in the app and it offers **Show
+the URL**: the address, the token (masked until you ask), and the whole
+thing as a runnable command. Or from a terminal:
+
+```sh
+nanobots webhook lead-to-meeting
+```
+
+Both read `GET /api/swarms/{name}/webhook`, which is deliberately its own
+endpoint rather than a field on the swarm list. The token is a credential,
+`/api/swarms` is polled continuously by every open tab, and a credential
+that rides along in a list response ends up in logs, caches and screenshots
+of something else. Fetching it is an act. It is not a security boundary —
+anything that can call it can read the token file — and it does not pretend
+to be one.
+
+The URL is built from the `Host` you reached the daemon on, not a hardcoded
+`127.0.0.1`. If you are accepting real webhooks you are reaching nanobotd
+through a tunnel, and that is exactly when a loopback address would be
+useless.
+
 ## One template, two ways to run
 
 ```yaml

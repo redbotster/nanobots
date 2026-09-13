@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { WebhookPanel } from "../components/WebhookPanel";
 import { api } from "../lib/api";
 import { useRun } from "../lib/useRun";
 import type { BotSummary, PlanResult, SwarmSummary } from "../lib/types";
@@ -128,6 +129,7 @@ export function SwarmView({
                 <span className="ml-1.5 text-muted/60">{swarm.schedule_expr}</span>
               </p>
             )}
+            {swarm.trigger_type === "webhook" && <WebhookPanel swarm={swarm} />}
             {swarm.schedule_error && (
               <p className="mt-1.5 text-[12px] text-danger">
                 ⏰ This swarm's schedule can't be read ({swarm.schedule_expr}), so it

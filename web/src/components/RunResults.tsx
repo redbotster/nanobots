@@ -1,37 +1,13 @@
-import { useState } from "react";
 import type { Run } from "../lib/types";
 import { isFileOutput } from "../lib/types";
 import { api } from "../lib/api";
+import { CopyButton } from "./CopyButton";
 
 function mimeIcon(mime: string) {
   if (mime.includes("pdf")) return "📄";
   if (mime.startsWith("image/")) return "🖼";
   if (mime.startsWith("text/")) return "📝";
   return "📦";
-}
-
-/** Copying is the actual next action for most of what a swarm produces — a
- * drafted post, a summary, a rendered link. Without this you're selecting
- * text out of a scroll box. */
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      onClick={() => {
-        navigator.clipboard?.writeText(text).then(
-          () => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-          },
-          () => {},
-        );
-      }}
-      className="shrink-0 rounded border border-edge px-1.5 py-0.5 text-[10px] text-muted transition-colors hover:border-tron hover:text-ink"
-      title="Copy to clipboard"
-    >
-      {copied ? "copied" : "copy"}
-    </button>
-  );
 }
 
 /** Prose a person is meant to read — a drafted post, a summary. Rendered

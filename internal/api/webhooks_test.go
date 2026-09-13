@@ -2,12 +2,16 @@ package api
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/redbotster/nanobots/internal/schema"
 )
 
 func webhookServer(t *testing.T, swarms map[string]string) *Server {
@@ -154,5 +158,94 @@ func TestTokensAreStableAndPrivate(t *testing.T) {
 	}
 	if perm := info.Mode().Perm(); perm != 0o600 {
 		t.Errorf("mode = %o, want 600", perm)
+	}
+}
+
+// The details endpoint is how anyone actually finds their URL. Before it,
+// the only instruction was "cat ~/.nanobots/state/agents/webhook-token".
+func TestWebhookDetailsGivesTheURLAndTheToken(t *testing.T) {
+	srv := webhookServer(t, map[string]string{"intake": webhookSwarm})
+
+	r := httptest.NewRequest(http.MethodGet, "/api/swarms/intake/webhook", nil)
+	r.Host = "localhost:8848"
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, r)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var got WebhookDetails
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if want := "http://localhost:8848/webhooks/intake"; got.URL != want {
+		t.Errorf("url = %q, want %q", got.URL, want)
+	}
+	if got.Token != "test-token" {
+		t.Errorf("token = %q", got.Token)
+	}
+	// The curl line has to be runnable as-is, which means it carries the
+	// token — the whole point is not having to assemble it by hand.
+	for _, want := range []string{got.URL, got.Token, "Content-Type: application/json"} {
+		if !strings.Contains(got.Curl, want) {
+			t.Errorf("curl does not contain %q:\n%s", want, got.Curl)
+		}
+	}
+}
+
+// The URL is built from the Host the caller used, not from a hardcoded
+// loopback address. Someone accepting real webhooks reaches this daemon
+// through a tunnel, and a URL naming 127.0.0.1 is useless to them —
+// which is precisely the case where they need it most.
+func TestWebhookDetailsUsesTheHostTheCallerReachedItOn(t *testing.T) {
+	srv := webhookServer(t, map[string]string{"intake": webhookSwarm})
+
+	r := httptest.NewRequest(http.MethodGet, "/api/swarms/intake/webhook", nil)
+	r.Host = "nanobots.example.ts.net"
+	r.Header.Set("X-Forwarded-Proto", "https")
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, r)
+
+	var got WebhookDetails
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if want := "https://nanobots.example.ts.net/webhooks/intake"; got.URL != want {
+		t.Errorf("url = %q, want %q", got.URL, want)
+	}
+}
+
+// Offering a posting URL for a swarm nothing would post to is worse than
+// refusing: it looks configured.
+func TestWebhookDetailsRefusesANonWebhookSwarm(t *testing.T) {
+	srv := webhookServer(t, map[string]string{"nightly": cronSwarm})
+
+	r := httptest.NewRequest(http.MethodGet, "/api/swarms/nightly/webhook", nil)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, r)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("code = %d, want 409; body = %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "cron") {
+		t.Errorf("the refusal should name the trigger it actually has: %s", rec.Body.String())
+	}
+}
+
+// A webhook swarm is no longer inert, and the summary must stop saying so
+// — the card renders an apology off that field.
+func TestAWebhookSwarmIsNoLongerReportedAsInert(t *testing.T) {
+	var sum SwarmSummary
+	describeSchedule(&sum, schema.Trigger{Type: "webhook", Expr: "website.form.submitted"}, time.Now())
+	if sum.TriggerType != "webhook" {
+		t.Errorf("trigger_type = %q", sum.TriggerType)
+	}
+	if sum.InertTrigger != "" {
+		t.Errorf("inert_trigger = %q, but webhooks fire now", sum.InertTrigger)
+	}
+
+	// `event:` still is inert, and must keep saying so.
+	var ev SwarmSummary
+	describeSchedule(&ev, schema.Trigger{Type: "event", Expr: "drive.file.created"}, time.Now())
+	if ev.InertTrigger != "drive.file.created" {
+		t.Errorf("event inert_trigger = %q, want the expression", ev.InertTrigger)
 	}
 }
