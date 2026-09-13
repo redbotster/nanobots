@@ -71,9 +71,9 @@ func CheckRequiredInputs(rs *ResolvedSwarm) []UnfedInput {
 			if fedByTrigger && !hasIncomingSnap(rs, ref.ID) {
 				// The entry bot of a webhook/event swarm: the trigger is
 				// meant to carry this, and this build never delivers one.
-				why = fmt.Sprintf("this swarm's %s trigger would carry it, and %s triggers aren't delivered in this build"+
-					" (docs/scheduler.md) — give it an example value in the swarm's inputs: so it can be run by hand",
-					trigger, trigger)
+				why = fmt.Sprintf("this swarm's %s trigger carries it as {{trigger.payload}} (docs/webhooks.md)"+
+					" — read it from there, and give the template a `| default:` so the swarm is still"+
+					" runnable by hand when nothing has fired", trigger)
 			}
 			out = append(out, UnfedInput{BotID: ref.ID, Port: port.Name, Why: why})
 		}

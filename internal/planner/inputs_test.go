@@ -106,9 +106,11 @@ func TestAnOptionalInputNeedsNothing(t *testing.T) {
 	}
 }
 
-// A webhook swarm's entry bot is *designed* to be fed by the trigger, and
-// this build never delivers one. Same failure, different fix — so it gets
-// a different message rather than "you forgot a snap".
+// A webhook swarm's entry bot is fed by the trigger, so the fix is to read
+// {{trigger.payload}} rather than to add a snap. Same failure, different
+// remedy, so it gets a different message — and the message has to keep
+// pointing at the doc that explains it, which is why the pointer is
+// asserted rather than the wording.
 func TestAWebhookSwarmSaysWhyItsEntryInputIsEmpty(t *testing.T) {
 	res := planYAML(t, unfedHeader+`  trigger:
     type: webhook
@@ -124,7 +126,7 @@ func TestAWebhookSwarmSaysWhyItsEntryInputIsEmpty(t *testing.T) {
 		t.Fatal("expected payload to be reported")
 	}
 	msg := res.Unfed[0].Error()
-	for _, want := range []string{"payload", "webhook", "docs/scheduler.md"} {
+	for _, want := range []string{"payload", "webhook", "trigger.payload", "docs/webhooks.md"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("message does not mention %q: %s", want, msg)
 		}

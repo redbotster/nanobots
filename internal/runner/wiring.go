@@ -46,8 +46,12 @@ func (o *Orchestrator) resolveInputsAt(run *Run, rs *planner.ResolvedSwarm, botI
 		// a role in the UI changes the next review immediately and no bot
 		// file has to be rewritten. Empty when no library is configured,
 		// which is how review-board falls back to inventing a team.
-		"roles":  map[string]any{"roster": o.roster(run)},
-		"memory": map[string]any{},
+		"roles": map[string]any{"roster": o.roster(run)},
+		// Whatever started this run carried. Always present and usually
+		// empty, so `{{trigger.payload | default: vars.example}}` works
+		// for both a webhook and someone pressing Run.
+		"trigger": map[string]any{"payload": run.TriggerPayload},
+		"memory":  map[string]any{},
 	}
 
 	inputs := map[string]any{}

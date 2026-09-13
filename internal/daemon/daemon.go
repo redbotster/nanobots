@@ -103,6 +103,14 @@ func Run(opts Options) error {
 		OverridePath: filepath.Join(paths.StateDir, "roles.json"),
 	}
 
+	webhookToken, err := api.LoadWebhookToken(paths.StateDir)
+	if err != nil {
+		return err
+	}
+	webhookTrigger := &api.WebhookTrigger{Token: webhookToken}
+	log.Printf("webhooks: POST http://%s/webhooks/{swarm} (token in %s)",
+		opts.Addr, filepath.Join(paths.StateDir, "webhook-token"))
+
 	callbacks := runner.NewCallbackRegistry()
 	orch := wiring.BuildOrchestrator(wiring.OrchestratorOpts{
 		RepoRoot:     opts.RepoRoot,
@@ -137,6 +145,7 @@ func Run(opts Options) error {
 		VaultID:      svc.VaultID,
 		Team:         &api.TeamStore{Path: filepath.Join(paths.StateDir, "team.json")},
 		Shroud:       shroudProxy,
+		Webhook:      webhookTrigger,
 		Roles:        roleStore,
 	}
 

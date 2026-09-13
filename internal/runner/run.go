@@ -73,6 +73,10 @@ type Run struct {
 	// mutated (same safety argument as TriggeredBy). Empty for a foundry
 	// job, which embeds a Run but was never planned from a swarm file.
 	SwarmPath string `json:"swarm_path,omitempty"`
+	// TriggerPayload is whatever started this run carried — a webhook
+	// body. Reaches every bot's input templates as {{trigger.payload}}.
+	// Set once at construction and never mutated, like SwarmPath.
+	TriggerPayload any `json:"trigger_payload,omitempty"`
 	// Tolerated are bots that failed while the swarm was told to continue
 	// without them. Guarded by mu — read it with GetTolerated.
 	Tolerated []ToleratedFailure `json:"tolerated,omitempty"`

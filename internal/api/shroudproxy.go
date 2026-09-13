@@ -81,7 +81,14 @@ type ShroudProxy struct {
 // host.docker.internal even though nanobotd binds 127.0.0.1, which is
 // exactly how Honcho reaches it.
 func LoadShroudProxyToken(stateDir string) (string, error) {
-	path := filepath.Join(stateDir, "shroud-proxy-token")
+	return loadOrCreateToken(filepath.Join(stateDir, "shroud-proxy-token"))
+}
+
+// loadOrCreateToken returns a stable per-install secret, minting one on
+// first use. Shared by the Shroud proxy and the webhook trigger: both guard
+// an endpoint that costs money or sends mail, and both must survive a
+// restart or every caller configured against them breaks.
+func loadOrCreateToken(path string) (string, error) {
 	if raw, err := os.ReadFile(path); err == nil {
 		if tok := strings.TrimSpace(string(raw)); tok != "" {
 			return tok, nil
@@ -92,7 +99,7 @@ func LoadShroudProxyToken(stateDir string) (string, error) {
 		return "", err
 	}
 	tok := hex.EncodeToString(buf)
-	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return "", err
 	}
 	if err := os.WriteFile(path, []byte(tok+"\n"), 0o600); err != nil {

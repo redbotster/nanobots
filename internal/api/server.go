@@ -75,6 +75,11 @@ type Server struct {
 	// given a base URL and a bearer token (Honcho) can still have its spend
 	// metered and its prompts redacted. nil leaves the route returning 404.
 	Shroud *ShroudProxy
+
+	// Webhook, when set, exposes POST /webhooks/{swarm} — the third
+	// trigger type, declared since the first commit and until now inert.
+	// nil leaves the route returning 404.
+	Webhook *WebhookTrigger
 }
 
 func (s *Server) swarmsDir() string {
@@ -128,6 +133,8 @@ func (s *Server) Handler() http.Handler {
 	// and Docker containers can reach it through host.docker.internal even
 	// though nanobotd binds loopback.
 	mux.HandleFunc("POST /shroud/{path...}", s.handleShroudProxy)
+	// Also token-authenticated: this one starts runs, and runs send email.
+	mux.HandleFunc("POST /webhooks/{swarm}", s.handleWebhook)
 
 	mux.HandleFunc("POST /internal/steps/service_call", s.handleStepServiceCall)
 	mux.HandleFunc("POST /internal/steps/ai_generate", s.handleStepAIGenerate)

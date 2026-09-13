@@ -31,6 +31,13 @@ spec:
     resources: { preset: small }
 
   vars:
+    # What a website form would post. Used only when no webhook fired, so
+    # this swarm is runnable by hand without pretending to have a lead.
+    example_lead:
+      name: "Dana Whitfield"
+      email: "dana@northwind.example"
+      company: "Northwind Logistics"
+      message: "We're comparing tools for a 40-person ops team. Can we talk this week?"
     icp: "Small design agencies (2-15 people) that bill clients hourly and need better reporting."
 
   trigger:
@@ -42,15 +49,10 @@ spec:
       use: form-to-sheet@0.1.0
       inputs:
         sheet: "Leads-2026"
-        # A real website form would carry this in the webhook body. This
-        # build doesn't deliver webhook triggers (docs/scheduler.md), so an
-        # example payload is what makes the swarm runnable by hand — and
-        # without one it planned OK and then died several containers in.
-        payload:
-          name: "Dana Whitfield"
-          email: "dana@northwind.example"
-          company: "Northwind Logistics"
-          message: "We're comparing tools for a 40-person ops team. Can we talk this week?"
+        # The real form post, when one arrives; the example below when
+        # somebody presses Run. `default:` falls back to another path, so
+        # one template covers both — see docs/webhooks.md.
+        payload: "{{trigger.payload | default: vars.example_lead}}"
     - id: enricher
       use: lead-enricher@0.1.0
       inputs:

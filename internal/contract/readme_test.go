@@ -131,3 +131,31 @@ func TestReadmeNamesEveryBot(t *testing.T) {
 		t.Errorf("these bots have no mention in the README: %s", strings.Join(missing, ", "))
 	}
 }
+
+// Every page in docs/ should be reachable from the README. docs/memory.md
+// was the one that wasn't — written, linked from other docs, and invisible
+// to anyone starting at the front page.
+func TestReadmeLinksEveryDoc(t *testing.T) {
+	root := repoRoot(t)
+	readme, err := os.ReadFile(filepath.Join(root, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(filepath.Join(root, "docs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var missing []string
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		if !strings.Contains(string(readme), "docs/"+e.Name()) {
+			missing = append(missing, e.Name())
+		}
+	}
+	if len(missing) > 0 {
+		t.Errorf("these docs are never linked from the README, so nobody starting at the front"+
+			" page will find them: %s", strings.Join(missing, ", "))
+	}
+}

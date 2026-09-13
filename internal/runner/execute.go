@@ -61,7 +61,18 @@ type Orchestrator struct {
 // ExecuteSwarm plans swarmPath, then runs it in the background, returning
 // the Run immediately (status "running") so a caller can stream its log
 // over SSE rather than blocking on the whole swarm.
+// ExecuteSwarmWithTrigger runs a swarm with a payload from whatever
+// started it — today, a webhook. The payload reaches every bot's input
+// templates as {{trigger.payload}}, alongside {{vars}} and {{run.date}}.
+func (o *Orchestrator) ExecuteSwarmWithTrigger(swarmPath string, payload any) (*Run, error) {
+	return o.executeSwarm(swarmPath, payload)
+}
+
 func (o *Orchestrator) ExecuteSwarm(swarmPath string) (*Run, error) {
+	return o.executeSwarm(swarmPath, nil)
+}
+
+func (o *Orchestrator) executeSwarm(swarmPath string, triggerPayload any) (*Run, error) {
 	result, err := planner.Plan(swarmPath, o.BotsDir)
 	if err != nil {
 		return nil, err
@@ -76,6 +87,7 @@ func (o *Orchestrator) ExecuteSwarm(swarmPath string) (*Run, error) {
 
 	run := NewRun(result.Resolved.Swarm.Metadata.Name)
 	run.SwarmPath = swarmPath
+	run.TriggerPayload = triggerPayload
 	run.SetStatus(StatusRunning)
 
 	go func() {

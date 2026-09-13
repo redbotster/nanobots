@@ -62,21 +62,50 @@ func resolveString(s string, ctx map[string]any) any {
 }
 
 // resolveExpr resolves one `{{...}}` expression's inner content — a dotted
-// path, optionally followed by `| default: <literal>` (the blueprint's
-// fallback filter, e.g. "memory.last_run_at | default: now-24h"). The
-// fallback is returned as a bare string; it's a literal, not itself a path.
+// path, optionally followed by `| default: <fallback>` (the blueprint's
+// fallback filter, e.g. "memory.last_run_at | default: now-24h").
+//
+// The fallback is tried as a path first and used as a literal string when
+// it doesn't resolve. That generalisation earns its keep: a webhook-driven
+// swarm wants "{{trigger.payload | default: vars.example_lead}}" so it runs
+// by hand as well as when a webhook fires, and a literal cannot carry a
+// JSON object. Existing fallbacks are unaffected — "now-24h" resolves to
+// nothing and stays the string it always was.
 func resolveExpr(inner string, ctx map[string]any) (any, bool) {
 	path, fallback, hasFallback := strings.Cut(inner, "|")
 	val, ok := lookupPath(ctx, strings.TrimSpace(path))
-	if ok {
+	if ok && !isEmptyValue(val) {
 		return val, true
 	}
 	if hasFallback {
-		fb := strings.TrimSpace(fallback)
-		fb = strings.TrimPrefix(fb, "default:")
-		return strings.TrimSpace(fb), true
+		fb := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(fallback), "default:"))
+		if v, ok := lookupPath(ctx, fb); ok && !isEmptyValue(v) {
+			return v, true
+		}
+		return fb, true
 	}
-	return nil, false
+	return val, ok
+}
+
+// isEmptyValue decides whether a resolved value should fall through to the
+// fallback.
+//
+// A path that exists but holds nothing is the same situation as a path that
+// doesn't exist: `trigger.payload` is present on every run and empty on the
+// ones no webhook started. Treating "" and nil as absent is what makes one
+// template work for both. A `false` or a `0` is a real value and stays.
+func isEmptyValue(v any) bool {
+	switch t := v.(type) {
+	case nil:
+		return true
+	case string:
+		return t == ""
+	case map[string]any:
+		return len(t) == 0
+	case []any:
+		return len(t) == 0
+	}
+	return false
 }
 
 // lookupPath walks a dotted path ("inputs.since", "steps.fetch.output.name")
