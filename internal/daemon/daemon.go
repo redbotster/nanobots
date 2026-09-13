@@ -154,10 +154,16 @@ func Run(opts Options) error {
 	// ever fired one — see internal/scheduler's own doc comment. Runs for
 	// the life of the process, same as the HTTP server itself; no
 	// graceful-shutdown story either has one yet.
+	// The breaker is shared with the API so the app can show why a
+	// schedule stopped and offer to start it again — a pause nobody can
+	// see is just a schedule that mysteriously doesn't run.
+	breaker := &scheduler.Breaker{Dir: paths.StateDir}
+	srv.ScheduleBreaker = breaker
 	sched := &scheduler.Scheduler{
 		Orchestrator: orch,
 		Runs:         srv.Runs,
 		SwarmsDir:    filepath.Join(filepath.Dir(opts.BotsDir), "examples", "swarms"),
+		Breaker:      breaker,
 	}
 	go sched.Run(context.Background())
 

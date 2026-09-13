@@ -61,6 +61,18 @@ type SwarmSummary struct {
 	// "webhook" with no inert flag and the UI offers its URL instead of an
 	// apology.
 	InertTrigger string `json:"inert_trigger,omitempty"`
+
+	// SchedulePaused is set when this swarm's schedule has stopped firing
+	// because it kept failing. Before the breaker existed, a swarm whose
+	// Slack was never connected would fail every 30 minutes forever, and
+	// its card looked exactly like one that worked.
+	SchedulePaused bool `json:"schedule_paused,omitempty"`
+	// FailureStreak is how many consecutive runs have failed. Reported
+	// below the pause threshold too, so a card can warn on the way down.
+	FailureStreak int `json:"failure_streak,omitempty"`
+	// StreakError is the most recent failure's message — the one worth
+	// showing, since a streak is nearly always the same fact repeated.
+	StreakError string `json:"streak_error,omitempty"`
 }
 
 // describeSchedule fills in the schedule fields from a swarm's trigger,
@@ -180,7 +192,40 @@ func (s *Server) handleListSwarms(w http.ResponseWriter, r *http.Request) {
 			summary.LastRunAt = last.StartedAt.Format(time.RFC3339)
 			summary.LastRunTrigger = last.TriggeredBy
 		}
+		if s.ScheduleBreaker != nil {
+			st := s.ScheduleBreaker.Check(sw.Metadata.Name, allRuns)
+			summary.FailureStreak = st.Failures
+			summary.StreakError = st.LastError
+			// Only a cron swarm has a schedule to pause. A manual swarm can
+			// have a failing streak worth showing, but nothing is being
+			// stopped, and saying "paused" would be a lie.
+			summary.SchedulePaused = st.Paused && summary.TriggerType == "cron"
+		}
 		swarms = append(swarms, summary)
 	}
 	writeJSON(w, http.StatusOK, nonNil(swarms))
+}
+
+// handleResumeSchedule starts a paused schedule firing again.
+//
+// The pause is derived from run history (see internal/scheduler/breaker.go),
+// so this records "the user asked for another try at time T" and failures
+// are counted afresh from there. It does not fire the swarm — resuming a
+// schedule and running a swarm are different intentions, and conflating
+// them would mean you cannot un-pause something without also triggering it.
+func (s *Server) handleResumeSchedule(w http.ResponseWriter, r *http.Request) {
+	if s.ScheduleBreaker == nil {
+		writeError(w, http.StatusNotFound, fmt.Errorf("this daemon has no scheduler"))
+		return
+	}
+	name := r.PathValue("swarm")
+	if _, _, err := s.swarmByName(name); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	if err := s.ScheduleBreaker.Resume(name); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "swarm": name})
 }

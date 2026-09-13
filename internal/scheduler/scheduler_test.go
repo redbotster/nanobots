@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"sync"
@@ -41,6 +42,12 @@ func (f *fakeRunStore) Add(r *runner.Run) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.runs = append(f.runs, r)
+}
+
+func (f *fakeRunStore) List() []*runner.Run {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]*runner.Run(nil), f.runs...)
 }
 
 func (f *fakeRunStore) count() int {
@@ -235,5 +242,56 @@ func TestTickPicksUpAnExprChangeWithoutRestart(t *testing.T) {
 	s.tick(base.Add(time.Minute))
 	if got := orch.executions(); len(got) != 1 || got[0] != path {
 		t.Fatalf("expected the updated schedule to fire, executions = %v", got)
+	}
+}
+
+// The whole point of the breaker: a schedule that has failed the same way
+// over and over stops costing anything. Before this, support-desk-lite had
+// burned roughly twenty hours of container time re-proving that Slack was
+// not connected.
+func TestTickStopsFiringASwarmThatKeepsFailing(t *testing.T) {
+	dir := t.TempDir()
+	writeSwarm(t, dir, "hourly.yaml", "0 * * * *")
+
+	orch := &fakeOrchestrator{}
+	runs := &fakeRunStore{}
+	s := &Scheduler{
+		Orchestrator: orch,
+		Runs:         runs,
+		SwarmsDir:    dir,
+		Breaker:      &Breaker{MaxFailures: 2},
+	}
+
+	at := time.Date(2026, 3, 2, 9, 0, 0, 0, time.UTC)
+	s.tick(at.Add(-30 * time.Minute)) // establish next fire at 09:00
+
+	// Two hours, two runs, both failing — the fake orchestrator's runs are
+	// added to the store, so mark them failed the way a real one would.
+	for i := 0; i < 2; i++ {
+		s.tick(at.Add(time.Duration(i) * time.Hour))
+		for _, r := range runs.List() {
+			if r.GetStatus() != runner.StatusFailed {
+				r.SetError(errors.New("slack is not connected"))
+				r.SetStatus(runner.StatusFailed)
+			}
+		}
+	}
+	if len(orch.executions()) != 2 {
+		t.Fatalf("expected 2 runs before the breaker trips, got %d", len(orch.executions()))
+	}
+
+	// The third hour is due, and must not fire.
+	s.tick(at.Add(2 * time.Hour))
+	if got := len(orch.executions()); got != 2 {
+		t.Errorf("fired %d times; the breaker should have stopped the third", got)
+	}
+
+	// Resuming lets it try again.
+	if err := s.Breaker.Resume("hourly.yaml"); err != nil {
+		t.Fatal(err)
+	}
+	s.tick(at.Add(3 * time.Hour))
+	if got := len(orch.executions()); got != 3 {
+		t.Errorf("fired %d times after Resume, want 3 — resume did not take effect", got)
 	}
 }

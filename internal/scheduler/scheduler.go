@@ -21,9 +21,12 @@ type Orchestrator interface {
 	ExecuteSwarm(swarmPath string) (*runner.Run, error)
 }
 
-// RunStore is the subset of *runner.RunStore the scheduler needs.
+// RunStore is the subset of *runner.RunStore the scheduler needs. List is
+// here for the breaker: deciding whether to fire means knowing how the last
+// few runs of this swarm went.
 type RunStore interface {
 	Add(r *runner.Run)
+	List() []*runner.Run
 }
 
 // Scheduler polls SwarmsDir on an interval and fires any swarm whose
@@ -38,6 +41,11 @@ type Scheduler struct {
 	PollInterval time.Duration    // 0 => 20s
 	Now          func() time.Time // 0 => time.Now; overridable for tests
 
+	// Breaker stops a schedule that has failed the same way over and over.
+	// nil means fire unconditionally, which is what this did before and
+	// what a test gets unless it asks otherwise.
+	Breaker *Breaker
+
 	mu    sync.Mutex
 	state map[string]*swarmState
 }
@@ -47,6 +55,10 @@ type swarmState struct {
 	schedule *Schedule
 	loc      *time.Location
 	nextFire time.Time
+	// paused tracks whether we have already logged the pause, so a swarm
+	// that is due every 30 seconds doesn't write a log line every 30
+	// seconds saying it isn't running.
+	paused bool
 }
 
 // Run blocks, ticking until ctx is cancelled — meant to be started as
@@ -140,6 +152,25 @@ func (s *Scheduler) tick(now time.Time) {
 		}
 		if now.In(st.loc).Before(st.nextFire) {
 			continue
+		}
+
+		// A schedule that has failed the same way N times running is not
+		// firing again until someone looks at it. The run history says so,
+		// so this survives a restart — see breaker.go for why twenty hours
+		// of identical failures is the thing being prevented.
+		if s.Breaker != nil {
+			if bs := s.Breaker.Check(sw.Metadata.Name, s.Runs.List()); bs.Paused {
+				if !st.paused {
+					st.paused = true
+					log.Printf("scheduler: %s paused after %d consecutive failures — resume it from the app once fixed. Last error: %s",
+						path, bs.Failures, bs.LastError)
+				}
+				// Keep the clock moving so "next run" stays honest and a
+				// resume doesn't immediately fire a backlog.
+				st.nextFire = st.schedule.Next(now.In(st.loc))
+				continue
+			}
+			st.paused = false
 		}
 
 		log.Printf("scheduler: firing %s (due %s)", path, st.nextFire.Format(time.RFC3339))

@@ -143,7 +143,34 @@ function GapPanel({
  * swarm that quietly emails you every weekday at 7 should not be a surprise.
  * A swarm with no cron trigger renders nothing rather than "manual only",
  * which would be noise on every card that has one. */
-function ScheduleLine({ swarm }: { swarm: SwarmSummary }) {
+function ScheduleLine({ swarm, onResume }: { swarm: SwarmSummary; onResume: () => void }) {
+  // A paused schedule outranks everything else this line could say. It is
+  // the difference between "runs every 30 minutes" and "hasn't run since
+  // Tuesday and won't", and the card used to render those identically.
+  if (swarm.schedule_paused) {
+    return (
+      <div className="mt-2.5 rounded border border-warn/40 bg-warn/5 px-2 py-1.5">
+        <div className="text-[11px] font-medium text-warn">
+          ⏸ Paused after {swarm.failure_streak} failed runs
+        </div>
+        {swarm.streak_error && (
+          <div className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted">
+            {swarm.streak_error}
+          </div>
+        )}
+        <button
+          onClick={(e) => {
+            // The card itself opens the swarm; this button does not.
+            e.stopPropagation();
+            onResume();
+          }}
+          className="mt-1.5 rounded border border-edge bg-panel px-2 py-0.5 text-[11px] text-muted transition-colors hover:border-tron hover:text-ink"
+        >
+          Try it again
+        </button>
+      </div>
+    );
+  }
   if (swarm.schedule_error) {
     return (
       <div
@@ -182,6 +209,11 @@ function ScheduleLine({ swarm }: { swarm: SwarmSummary }) {
       ⏰ {swarm.schedule}
       {swarm.next_run_at && (
         <span className="text-muted/70"> · {untilTime(swarm.next_run_at)}</span>
+      )}
+      {/* Said on the way down, not only once it has stopped — two failures
+          in a row is worth knowing before the fifth. */}
+      {(swarm.failure_streak ?? 0) > 1 && (
+        <span className="text-warn"> · {swarm.failure_streak} failed in a row</span>
       )}
     </div>
   );
@@ -343,7 +375,10 @@ export function SwarmsPage({
             <p className="mt-1.5 text-[13px] leading-snug text-muted">
               {s.description}
             </p>
-            <ScheduleLine swarm={s} />
+            <ScheduleLine
+              swarm={s}
+              onResume={() => api.resumeSchedule(s.name).then(reload).catch((e) => setError(String(e)))}
+            />
             {s.last_run_status ? (
               <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted">
                 <StatusDot tone={RUN_TONE[s.last_run_status] ?? "muted"} />

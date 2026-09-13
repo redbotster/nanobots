@@ -108,3 +108,45 @@ means quietly missing a run.
 macOS only in this build. The plist generation is pure and tested against
 `plutil`; a systemd unit is a small amount of work and belongs to someone
 who can actually run it.
+
+## A schedule that never works stops trying
+
+Found by reading a real machine's run history: 198 runs, 135 failed, and
+one swarm — `support-desk-lite`, on "every 30 minutes" — accounted for 85
+of them. Forty-one of its runs held a container open for the full 30-minute
+ceiling before being killed. Slack had never been connected, so every run
+failed the same way, for about twenty hours of container time spent
+re-learning one fact.
+
+Nothing said so. The Runs page showed a wall of red with no sign it was one
+fact repeated, and the card looked like any other swarm's.
+
+After five consecutive failures a schedule stops firing. The card says so,
+names the error, and offers **Try it again**:
+
+```
+⏸ Paused after 43 failed runs
+item 1 of 1: container exceeded 30m0s and was stopped
+[ Try it again ]
+```
+
+Below the threshold the schedule line warns instead — "· 3 failed in a row"
+— so two in a row is visible before the fifth.
+
+The pause is *derived from run history*, not kept as its own state machine.
+History already survives a restart, so the pause does too: restarting the
+daemon is not a reason to spend another twenty hours proving the same
+point. The only thing stored is "the user pressed Try it again at time T"
+(`~/.nanobots/state/agents/schedule-resumed.json`), after which failures are
+counted afresh. A corrupt marker leaves schedules paused, which is the safe
+direction — it can never start one firing behind your back.
+
+One success anywhere in the streak clears it. This is for "never worked",
+not "sometimes fails". A manual swarm never reports as paused, since it has
+no schedule to stop — though its failure streak is still reported, because
+it is still true.
+
+`POST /api/swarms/{name}/schedule/resume` is the same thing from a script.
+It does not run the swarm: resuming a schedule and triggering a run are
+different intentions, and conflating them would mean you cannot un-pause
+something without also firing it.

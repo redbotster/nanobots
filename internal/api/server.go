@@ -19,6 +19,7 @@ import (
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/roles"
 	"github.com/redbotster/nanobots/internal/runner"
+	"github.com/redbotster/nanobots/internal/scheduler"
 	"github.com/redbotster/nanobots/internal/schema"
 	"github.com/redbotster/nanobots/internal/step"
 )
@@ -45,6 +46,12 @@ type Server struct {
 	// panic when they're unset.
 	Foundry     *foundry.Orchestrator
 	FoundryJobs *foundry.JobStore
+
+	// ScheduleBreaker is the scheduler's circuit breaker, shared so the
+	// swarm list can report a paused schedule and POST .../schedule/resume
+	// can clear it. nil means schedules are never paused — the behaviour
+	// before it existed, and what a test gets by default.
+	ScheduleBreaker *scheduler.Breaker
 
 	// EnvFilePath is where handleSetupOneClawKey writes ONECLAW_API_KEY —
 	// "" resolves to oneclaw.DefaultEnvFilePath(), the same file every
@@ -108,6 +115,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/swarms/export", s.handleExportSwarm)
 	mux.HandleFunc("POST /api/swarms/import", s.handleImportSwarm)
 	mux.HandleFunc("GET /api/swarms/{swarm}/webhook", s.handleWebhookDetails)
+	mux.HandleFunc("POST /api/swarms/{swarm}/schedule/resume", s.handleResumeSchedule)
 	mux.HandleFunc("POST /api/swarms/validate", s.handleValidateSwarm)
 	mux.HandleFunc("POST /api/swarms", s.handleSaveSwarm)
 	mux.HandleFunc("POST /api/compose", s.handleCompose)

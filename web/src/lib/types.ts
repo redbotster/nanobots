@@ -222,6 +222,16 @@ export interface SwarmSummary {
    * swarm with no trigger at all. Cron has always fired and webhooks now do
    * too, so `event:` is the last one left. */
   inert_trigger?: string;
+  /** True when this swarm's schedule has stopped firing because it kept
+   * failing. See internal/scheduler/breaker.go — a swarm whose Slack was
+   * never connected used to fail every 30 minutes forever. */
+  schedule_paused?: boolean;
+  /** Consecutive failed runs. Reported below the pause threshold too, so a
+   * card can warn on the way down rather than only once it has stopped. */
+  failure_streak?: number;
+  /** The most recent failure's message — a streak is nearly always the
+   * same fact repeated, so one line covers it. */
+  streak_error?: string;
 }
 
 /** Where to post to fire a webhook swarm, and what to send with it. Fetched

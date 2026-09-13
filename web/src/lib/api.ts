@@ -60,6 +60,10 @@ export const api = {
     req<SwarmFull>(`/api/swarms/full?path=${encodeURIComponent(path)}`),
   webhookDetails: (name: string) =>
     req<WebhookDetails>(`/api/swarms/${encodeURIComponent(name)}/webhook`),
+  resumeSchedule: (name: string) =>
+    req<{ ok: boolean }>(`/api/swarms/${encodeURIComponent(name)}/schedule/resume`, {
+      method: "POST",
+    }),
   importSwarm: (bundle: string, confirm: boolean) =>
     req<ImportResult>("/api/swarms/import", {
       method: "POST",
