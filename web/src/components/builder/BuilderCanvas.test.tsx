@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useEffect, useState } from "react";
 import { describe, expect, it } from "vitest";
 import { BuilderCanvas, type CanvasSnap, type PlacedBot } from "./BuilderCanvas";
@@ -85,5 +85,58 @@ describe("BuilderCanvas connectors", () => {
       />,
     );
     expect(connectorCount(container)).toBe(0);
+  });
+});
+
+describe("zoom", () => {
+  it("offers zoom controls and reports the level", () => {
+    render(<BuilderCanvas bots={BOTS} botDefs={DEFS} snaps={SNAPS} {...canvasProps} />);
+    expect(screen.getByRole("button", { name: "Zoom in" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Zoom out" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Fit" })).toBeTruthy();
+    expect(screen.getByText(/^\d+%$/)).toBeTruthy();
+  });
+
+  it("scales the content layer rather than the nodes one by one", () => {
+    // The whole design rests on this: one transformed layer, so every
+    // coordinate below it — including the SVG the connectors are drawn in —
+    // keeps thinking in unscaled content pixels.
+    const { container } = render(
+      <BuilderCanvas bots={BOTS} botDefs={DEFS} snaps={SNAPS} {...canvasProps} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+
+    const layer = container.querySelector<HTMLElement>('[style*="scale"]');
+    expect(layer).toBeTruthy();
+    expect(layer!.style.transformOrigin).toBe("0 0");
+    // Nodes keep their content coordinates; only the layer scales.
+    const node = [...container.querySelectorAll<HTMLElement>('[role="group"]')].find((n) =>
+      n.getAttribute("aria-label")?.startsWith("pdf"),
+    );
+    expect(node!.style.left).toBe("300px");
+  });
+
+  it("will not zoom past the readable floor or the 1.5x ceiling", () => {
+    render(<BuilderCanvas bots={BOTS} botDefs={DEFS} snaps={SNAPS} {...canvasProps} />);
+    const out = screen.getByRole("button", { name: "Zoom out" });
+    for (let i = 0; i < 20; i++) if (!out.hasAttribute("disabled")) fireEvent.click(out);
+    expect(Number(screen.getByText(/^\d+%$/).textContent!.replace("%", ""))).toBeGreaterThanOrEqual(20);
+
+    const inBtn = screen.getByRole("button", { name: "Zoom in" });
+    for (let i = 0; i < 20; i++) if (!inBtn.hasAttribute("disabled")) fireEvent.click(inBtn);
+    expect(Number(screen.getByText(/^\d+%$/).textContent!.replace("%", ""))).toBeLessThanOrEqual(150);
+  });
+
+  it("keeps the connector count across a zoom change", () => {
+    // Regression guard for the coordinate split: if measure() forgot to
+    // divide by the zoom, connectors would detach from their ports. They
+    // would still be *drawn*, so count alone is weak — but a crash or a
+    // dropped layer shows up here.
+    const { container } = render(
+      <BuilderCanvas bots={BOTS} botDefs={DEFS} snaps={SNAPS} {...canvasProps} />,
+    );
+    expect(connectorCount(container)).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    expect(connectorCount(container)).toBe(1);
   });
 });
