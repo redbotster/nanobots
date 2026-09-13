@@ -13,7 +13,7 @@ import { Button } from "./Button";
  *
  * A role is not a bot — one `reviewer` becomes a security engineer or a
  * designer depending on what it's handed (docs/supervisors.md) — which is
- * why this sits alongside the Fleet's tuned bots rather than inside them.
+ * why this sits alongside the Team's tuned bots rather than inside them.
  */
 function RoleRow({ role, onChanged }: { role: Role; onChanged: (lib: Library) => void }) {
   const [focus, setFocus] = useState(role.focus);

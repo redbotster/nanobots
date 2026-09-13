@@ -1,5 +1,5 @@
 import type {
-  Fleet,
+  Team,
   BotSummary,
   ComposeResult,
   ConnectableService,
@@ -93,7 +93,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ live }),
     }),
-  fleet: () => req<Fleet>("/api/fleet"),
+  team: () => req<Team>("/api/team"),
   roles: () => req<RoleLibrary>("/api/roles"),
   runFixtures: (runId: string) => req<RunFixtures>(`/api/runs/${runId}/fixtures`),
   pinFixtures: (runId: string, body: { bot?: string; files?: string[] }) =>

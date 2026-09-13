@@ -357,9 +357,9 @@ export interface SetProviderConnectionResult {
 }
 
 /** One bot whose behaviour you've changed, and where it works. The Bot
- * library is the catalog — every bot that exists. The Fleet is a different
+ * library is the catalog — every bot that exists. The Team is a different
  * question: who works for you, and how have you told them to behave. */
-export interface FleetMember {
+export interface TeamMember {
   bot_id: string;
   name: string;
   instructions: string;
@@ -369,8 +369,8 @@ export interface FleetMember {
   used_in: string[];
 }
 
-export interface Fleet {
-  members: FleetMember[];
+export interface Team {
+  members: TeamMember[];
 }
 
 /** One perspective a review team can be built from.

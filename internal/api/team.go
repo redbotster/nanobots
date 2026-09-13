@@ -12,9 +12,9 @@ import (
 	"github.com/redbotster/nanobots/internal/schema"
 )
 
-// The Fleet answers a different question from the bot library. The library
+// The Team answers a different question from the bot library. The library
 // is the catalog: every bot that exists, so you can see what can be snapped
-// into what. The Fleet is "who works for me, and how have I told them to
+// into what. The Team is "who works for me, and how have I told them to
 // behave" — only the bots whose instructions you've actually changed, and
 // the swarms they work in.
 //
@@ -29,23 +29,32 @@ type tunedRecord struct {
 	Shipped string `json:"shipped"`
 }
 
-// FleetStore persists which bots have been tuned. A plain JSON file next to
+// TeamStore persists which bots have been tuned. A plain JSON file next to
 // the other state this daemon owns — the same reasoning as run history:
 // small, written rarely, and readable with `cat`.
-type FleetStore struct {
+type TeamStore struct {
 	Path string
 
 	mu sync.Mutex
 }
 
-func (s *FleetStore) load() (map[string]tunedRecord, error) {
+func (s *TeamStore) load() (map[string]tunedRecord, error) {
 	out := map[string]tunedRecord{}
 	if s.Path == "" {
 		return out, nil
 	}
 	raw, err := os.ReadFile(s.Path)
 	if os.IsNotExist(err) {
-		return out, nil
+		// This file was called fleet.json before the tab was renamed to
+		// Team. Read the old name once so a rename doesn't quietly throw
+		// away every instruction someone had written — the whole point of
+		// recording what a bot shipped with is that a change can be undone,
+		// and losing the record loses that too.
+		legacy, lerr := os.ReadFile(filepath.Join(filepath.Dir(s.Path), "fleet.json"))
+		if lerr != nil {
+			return out, nil
+		}
+		raw, err = legacy, nil
 	}
 	if err != nil {
 		return out, err
@@ -58,7 +67,7 @@ func (s *FleetStore) load() (map[string]tunedRecord, error) {
 	return out, nil
 }
 
-func (s *FleetStore) save(m map[string]tunedRecord) error {
+func (s *TeamStore) save(m map[string]tunedRecord) error {
 	if s.Path == "" {
 		return nil
 	}
@@ -75,7 +84,7 @@ func (s *FleetStore) save(m map[string]tunedRecord) error {
 // RecordTuned notes that botID has been customised, keeping whatever it
 // shipped with. Only the first call records — the shipped value is the
 // original, not the previous edit.
-func (s *FleetStore) RecordTuned(botID, shipped string) error {
+func (s *TeamStore) RecordTuned(botID, shipped string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	m, _ := s.load()
@@ -86,8 +95,8 @@ func (s *FleetStore) RecordTuned(botID, shipped string) error {
 	return s.save(m)
 }
 
-// Forget drops a bot from the fleet, for when its instructions are put back.
-func (s *FleetStore) Forget(botID string) error {
+// Forget drops a bot from the team, for when its instructions are put back.
+func (s *TeamStore) Forget(botID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	m, _ := s.load()
@@ -95,7 +104,7 @@ func (s *FleetStore) Forget(botID string) error {
 	return s.save(m)
 }
 
-func (s *FleetStore) Shipped(botID string) (string, bool) {
+func (s *TeamStore) Shipped(botID string) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	m, _ := s.load()
@@ -103,8 +112,8 @@ func (s *FleetStore) Shipped(botID string) (string, bool) {
 	return r.Shipped, ok
 }
 
-// FleetMember is one tuned bot and where it works.
-type FleetMember struct {
+// TeamMember is one tuned bot and where it works.
+type TeamMember struct {
 	BotID string `json:"bot_id"`
 	Name  string `json:"name"`
 	// Instructions is what it does now; Shipped is what it came with, so
@@ -114,27 +123,27 @@ type FleetMember struct {
 	UsedIn       []string `json:"used_in"`
 }
 
-type fleetResponse struct {
-	Members []FleetMember `json:"members"`
+type teamResponse struct {
+	Members []TeamMember `json:"members"`
 }
 
-func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
-	if s.Fleet == nil {
-		writeJSON(w, http.StatusOK, fleetResponse{Members: []FleetMember{}})
+func (s *Server) handleTeam(w http.ResponseWriter, r *http.Request) {
+	if s.Team == nil {
+		writeJSON(w, http.StatusOK, teamResponse{Members: []TeamMember{}})
 		return
 	}
-	tuned, loadErr := s.Fleet.load()
+	tuned, loadErr := s.Team.load()
 
 	// Which swarms use which bot, so a tuned bot can say where it works.
 	usedIn := s.swarmMembership()
 
-	members := make([]FleetMember, 0, len(tuned))
+	members := make([]TeamMember, 0, len(tuned))
 	for botID, rec := range tuned {
 		nb, err := schema.LoadNanobot(filepath.Join(s.BotsDir, botID, "nanobot.yaml"))
 		if err != nil {
-			continue // a bot that's since been deleted isn't a fleet member
+			continue // a bot that's since been deleted isn't a team member
 		}
-		members = append(members, FleetMember{
+		members = append(members, TeamMember{
 			BotID:        botID,
 			Name:         nb.Metadata.Name,
 			Instructions: instructionsDefaultOf(nb),
@@ -145,15 +154,15 @@ func (s *Server) handleFleet(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(members, func(i, j int) bool { return members[i].BotID < members[j].BotID })
 
 	if loadErr != nil {
-		w.Header().Set("X-Fleet-Warning", loadErr.Error())
+		w.Header().Set("X-Team-Warning", loadErr.Error())
 	}
-	writeJSON(w, http.StatusOK, fleetResponse{Members: members})
+	writeJSON(w, http.StatusOK, teamResponse{Members: members})
 }
 
 // swarmMembership maps a bot id to the swarms it appears in, so a tuned
 // bot's card can say where the tuning actually takes effect.
 //
-// It used to also return every swarm and its members, for a third Fleet
+// It used to also return every swarm and its members, for a third Team
 // section listing "swarms containing a bot you've tuned" — which showed the
 // same relationship as the cards, from the other direction, read-only, and
 // duplicated what the Swarms page already does. Cut, and the API surface

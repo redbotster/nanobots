@@ -13,7 +13,7 @@
 // The shipped roster lives in roles/roles.yaml so a fresh clone has one.
 // Edits live in ~/.nanobots/state/roles.json, never in the repo file, so a
 // `git pull` doesn't fight a user's changes and every role can always say
-// what it shipped with — the same shipped-versus-tuned shape the Fleet
+// what it shipped with — the same shipped-versus-tuned shape the Team
 // already uses for bot instructions.
 package roles
 

@@ -62,11 +62,11 @@ type Server struct {
 	docker dockerProbe
 	vault  vaultProbe
 
-	// Fleet remembers which bots the user has tuned. nil disables the
-	// Fleet view rather than failing anything.
-	Fleet *FleetStore
+	// Team remembers which bots the user has tuned. nil disables the
+	// Team view rather than failing anything.
+	Team *TeamStore
 
-	// Roles is the review-role library shown in Fleet. nil leaves the
+	// Roles is the review-role library shown in Team. nil leaves the
 	// endpoints reporting an empty library rather than failing.
 	Roles *roles.Store
 
@@ -92,7 +92,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/bots", s.handleListBots)
 	mux.HandleFunc("POST /api/bots/{id}/services/{serviceId}/connection", s.handleSetBotServiceConnection)
 	mux.HandleFunc("POST /api/bots/{id}/instructions", s.handleSetBotInstructions)
-	mux.HandleFunc("GET /api/fleet", s.handleFleet)
+	mux.HandleFunc("GET /api/team", s.handleTeam)
 	mux.HandleFunc("GET /api/roles", s.handleListRoles)
 	mux.HandleFunc("POST /api/roles/{id}", s.handleSetRole)
 	mux.HandleFunc("POST /api/roles/{id}/reset", s.handleResetRole)

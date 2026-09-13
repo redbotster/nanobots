@@ -63,7 +63,7 @@ func TestListingRolesReturnsTheLibraryAndTheRealRoster(t *testing.T) {
 	}
 }
 
-// Edit, see it in the roster, put it back — the loop the Fleet page is for.
+// Edit, see it in the roster, put it back — the loop the Team page is for.
 func TestEditingARoleChangesTheRosterAndCanBeUndone(t *testing.T) {
 	srv := serverWithRoles(t)
 	before := callRoles(t, srv, http.MethodGet, "/api/roles", "")

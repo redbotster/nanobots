@@ -135,7 +135,7 @@ func Run(opts Options) error {
 		FoundryJobs:  foundry.NewJobStore(),
 		EnvFilePath:  opts.EnvFilePath,
 		VaultID:      svc.VaultID,
-		Fleet:        &api.FleetStore{Path: filepath.Join(paths.StateDir, "fleet.json")},
+		Team:         &api.TeamStore{Path: filepath.Join(paths.StateDir, "team.json")},
 		Shroud:       shroudProxy,
 		Roles:        roleStore,
 	}

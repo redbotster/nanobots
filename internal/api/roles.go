@@ -10,8 +10,8 @@ import (
 
 // The role library: the perspectives a review team is built from.
 //
-// Exposed as its own resource rather than folded into /api/fleet because a
-// role is not a bot. The Fleet's members are bots whose instructions you
+// Exposed as its own resource rather than folded into /api/team because a
+// role is not a bot. The Team's members are bots whose instructions you
 // changed; roles are a shared vocabulary the review bots draw on, and a
 // user with no tuned bots at all still has a library worth editing.
 //

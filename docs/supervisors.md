@@ -30,7 +30,7 @@ Team size is whatever the board decided for that run, not a number baked into th
 
 Before this existed, `review-board` invented its team fresh from a prompt on every run. The choices were good, but they were unrepeatable, invisible until after the run, and there was nowhere to record what *your* security reviewer actually cares about.
 
-Edit them in **Fleet → Roles**, not in the YAML. The UI writes overrides to `~/.nanobots/state/roles.json` and never touches the repo file, so a `git pull` doesn't fight your changes and every role can always say what it shipped with. You can add perspectives of your own ("Legal", "Support"), switch shipped ones off without losing their wording, and put any edit back.
+Edit them in **Team → Roles**, not in the YAML. The UI writes overrides to `~/.nanobots/state/roles.json` and never touches the repo file, so a `git pull` doesn't fight your changes and every role can always say what it shipped with. You can add perspectives of your own ("Legal", "Support"), switch shipped ones off without losing their wording, and put any edit back.
 
 The board is handed the live roster through `{{roles.roster}}`, a template variable resolved per run — so an edit changes the next review immediately, with no bot file rewritten and no restart. The page will show you the exact text the model receives, because "what will this actually look like" is the question someone editing a role is trying to answer.
 

@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { RoleLibrarySection } from "../components/RoleLibrary";
-import type { BotSummary, Fleet, FleetMember } from "../lib/types";
+import type { BotSummary, Team, TeamMember } from "../lib/types";
 
 /**
- * The Fleet answers a different question from the Bot library.
+ * The Team answers a different question from the Bot library.
  *
  * The library is the catalog: every bot that exists, so you can see what
- * snaps into what. The Fleet is "who works for me, and how have I told them
+ * snaps into what. The Team is "who works for me, and how have I told them
  * to behave" — only the bots whose instructions you've actually changed,
- * and where that takes effect. A fresh install has an empty Fleet, which is
+ * and where that takes effect. A fresh install has an empty one, which is
  * correct: you haven't told anyone anything yet.
  */
-function MemberRow({ member, onChanged }: { member: FleetMember; onChanged: () => void }) {
+function MemberRow({ member, onChanged }: { member: TeamMember; onChanged: () => void }) {
   const [text, setText] = useState(member.instructions);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,14 +85,14 @@ function MemberRow({ member, onChanged }: { member: FleetMember; onChanged: () =
 
 /** Start tuning a bot that hasn't been tuned yet.
  *
- * This is the entrance the Fleet never had. The page listed only bots whose
+ * This is the entrance this page never had. The page listed only bots whose
  * instructions you had already changed, and told you to change one "on its
  * card in the Bot library" — where no such control exists, and which is
  * hidden entirely in Basic mode. So the one documented way to shape how a
  * bot works was unreachable from the UI: a closed loop with no way in.
  *
  * The list stays what you've tuned rather than the whole catalog — that is
- * the point of a Fleet — so adding someone is a deliberate act, here. */
+ * the point of this page — so adding someone is a deliberate act, here. */
 function TuneAnother({
   tuned,
   onChanged,
@@ -155,7 +155,7 @@ function TuneAnother({
       {error && <p className="mt-2 text-[12px] text-danger">{error}</p>}
       {all !== null && tunable.length === 0 && (
         <p className="mt-2 text-[13px] text-muted">
-          Every bot that takes instructions is already in your fleet.
+          Every bot that takes instructions is already in your team.
         </p>
       )}
       <div className="mt-2 grid max-h-72 grid-cols-1 gap-1 overflow-auto sm:grid-cols-2">
@@ -175,21 +175,21 @@ function TuneAnother({
   );
 }
 
-export function FleetPage() {
-  const [fleet, setFleet] = useState<Fleet | null>(null);
+export function TeamPage() {
+  const [team, setTeam] = useState<Team | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(() => {
     api
-      .fleet()
-      .then(setFleet)
+      .team()
+      .then(setTeam)
       .catch((e) => setError(String(e)));
   }, []);
   useEffect(reload, [reload]);
 
   return (
     <div className="h-full overflow-auto p-5 sm:p-6">
-      <h1 className="font-display text-xl font-medium text-ink">Fleet</h1>
+      <h1 className="font-display text-xl font-medium text-ink">Team</h1>
       <p className="mt-1 hidden max-w-2xl text-sm text-muted sm:block">
         How your team works — two separate things. Below: the bots you've told
         how to do their job, each showing what it shipped with so you can put
@@ -199,15 +199,15 @@ export function FleetPage() {
 
       {error && (
         <div className="mt-6 rounded border border-danger/40 bg-danger/5 px-4 py-3 text-sm text-danger">
-          Couldn't load the fleet: {error}
+          Couldn't load the team: {error}
         </div>
       )}
 
-      {fleet === null && !error && (
+      {team === null && !error && (
         <p className="mt-5 text-sm text-muted/60">Loading…</p>
       )}
 
-      {fleet !== null && fleet.members.length === 0 && (
+      {team !== null && team.members.length === 0 && (
         <div className="mt-6 max-w-xl rounded-lg border border-edge bg-panel/40 p-5">
           <p className="text-sm text-ink">You haven't told anyone how to work yet.</p>
           <p className="mt-1.5 text-[13px] leading-snug text-muted">
@@ -219,16 +219,16 @@ export function FleetPage() {
         </div>
       )}
 
-      {fleet !== null && fleet.members.length > 0 && (
+      {team !== null && team.members.length > 0 && (
         <div className="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {fleet.members.map((m) => (
+          {team.members.map((m) => (
             <MemberRow key={m.bot_id} member={m} onChanged={reload} />
           ))}
         </div>
       )}
 
       <TuneAnother
-        tuned={new Set((fleet?.members ?? []).map((m) => m.bot_id))}
+        tuned={new Set((team?.members ?? []).map((m) => m.bot_id))}
         onChanged={reload}
       />
 

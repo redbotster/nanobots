@@ -68,7 +68,7 @@ func (s *Server) handleSetBotInstructions(w http.ResponseWriter, r *http.Request
 	}
 
 	// Read the current default before overwriting it. What it shipped with
-	// is what lets the Fleet say "you changed this" and offer to put it
+	// is what lets the Team say "you changed this" and offer to put it
 	// back. The record itself is written after a successful save, below, so
 	// a failed write can't leave a record of a change that never happened.
 	previous := ""
@@ -99,12 +99,12 @@ func (s *Server) handleSetBotInstructions(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if s.Fleet != nil {
-		if shipped, known := s.Fleet.Shipped(filepath.Base(botID)); known && shipped == text {
+	if s.Team != nil {
+		if shipped, known := s.Team.Shipped(filepath.Base(botID)); known && shipped == text {
 			// Put back to what it shipped with — it's no longer tuned.
-			_ = s.Fleet.Forget(filepath.Base(botID))
+			_ = s.Team.Forget(filepath.Base(botID))
 		} else if text != previous {
-			_ = s.Fleet.RecordTuned(filepath.Base(botID), previous)
+			_ = s.Team.RecordTuned(filepath.Base(botID), previous)
 		}
 	}
 
