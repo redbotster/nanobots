@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
-import type { BotSummary, ConnectableService, ConnectionStatus, StatusResponse } from "../lib/types";
+import type {
+  BotSummary,
+  ConnectableService,
+  ConnectionStatus,
+  SpendResponse,
+  StatusResponse,
+} from "../lib/types";
 import { StatusDot } from "../components/StatusDot";
 import { AppearanceSection } from "../components/settings/AppearanceSection";
 import { OneClawKeySetup } from "../components/settings/OneClawKeySetup";
@@ -106,6 +112,7 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
             <code className="text-ink">ONECLAW_API_KEY</code> switches to it.
           </p>
         )}
+        <SpendLine />
       </section>
 
       <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-4">
@@ -252,6 +259,51 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
           own OAuth registry.
         </p>
       </section>
+    </div>
+  );
+}
+
+/** What the model calls have cost so far.
+ *
+ * Only 1Claw can answer this. On a direct provider key the spend is between
+ * you and that provider, and this says so rather than showing a confident
+ * $0.00 that actually means "no idea" — which is the worse answer, because
+ * it looks like information.
+ *
+ * Fetched here rather than folded into /api/status: status is polled on a
+ * timer by every screen, and this one costs a round trip to 1Claw. */
+function SpendLine() {
+  const [spend, setSpend] = useState<SpendResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    api
+      .spend()
+      .then(setSpend)
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }, []);
+
+  if (error) {
+    return <p className="mt-1.5 text-[12px] text-muted">Couldn't reach 1Claw for a spend figure: {error}</p>;
+  }
+  if (!spend) return null;
+  if (!spend.metered) {
+    return (
+      <p className="mt-1.5 text-[12px] leading-snug text-muted">
+        Model spend isn't metered here — it's between you and your provider.
+      </p>
+    );
+  }
+  return (
+    <div className="mt-2 text-[12px] leading-snug text-muted">
+      <span className="text-ink">
+        {spend.known ? `$${spend.spent_usd.toFixed(2)}` : "Nothing metered yet"}
+      </span>{" "}
+      this billing period
+      {spend.known && spend.period_from && <span> · since {spend.period_from}</span>}
+      {!!spend.credit_usd && (
+        <span> · ${spend.credit_usd.toFixed(2)} credit left</span>
+      )}
+      {spend.warning && <p className="mt-1 text-warn">{spend.warning}</p>}
     </div>
   );
 }

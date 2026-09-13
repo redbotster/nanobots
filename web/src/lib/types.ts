@@ -450,3 +450,18 @@ export interface ImportResult {
   imported: boolean;
   path?: string;
 }
+
+/** What the model calls have cost. Only 1Claw can answer this — on a direct
+ * provider key `metered` is false and the spend is between the user and
+ * that provider. See internal/api/spend.go. */
+export interface SpendResponse {
+  metered: boolean;
+  /** Distinguishes "$0.00 so far" from "nothing metered yet". */
+  known: boolean;
+  spent_usd: number;
+  period_from?: string;
+  credit_usd?: number;
+  credit_used_usd?: number;
+  /** 1Claw's own words — a budget nearly spent, a balance running out. */
+  warning?: string;
+}

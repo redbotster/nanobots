@@ -120,3 +120,17 @@ line, and rendering that as $0.00 claims a measurement nobody made. An
 account not on token billing at all gets told so, rather than a zero that
 reads as free: spend on a direct provider key is between you and that
 provider, and nothing here can see it.
+
+## Seeing what it cost
+
+`nanobots spend` prints the figure, and the Model section of Settings shows
+the same one. Both read 1Claw's token-billing status, so they cannot
+disagree.
+
+Only 1Claw can answer this. On a direct provider key — Gemini, Anthropic,
+an OpenAI-shaped gateway — the spend is between you and that provider and
+nothing here can see it. That case says "not metered here" rather than
+showing $0.00: a confident zero that actually means "no idea" looks like
+information, which makes it worse than saying nothing.
+
+"Nothing metered yet" and "$0.00" are also kept apart, for the same reason.

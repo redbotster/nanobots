@@ -21,6 +21,7 @@ import type {
   RunFixtures,
   WebhookDetails,
   ImportResult,
+  SpendResponse,
 } from "./types";
 
 async function reqText(path: string): Promise<string> {
@@ -79,6 +80,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ message }),
     }),
+  spend: () => req<SpendResponse>("/api/spend"),
   listConnections: () => req<ConnectionStatus[]>("/api/connections"),
   connectToken: (service: ConnectableService, token: string) =>
     req<ConnectionStatus>(`/api/connections/${service}`, {
