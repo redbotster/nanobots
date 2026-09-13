@@ -15,8 +15,21 @@ import { Button } from "./Button";
  * and shows what arrived; only Add it writes anything. A one-click import
  * that saves first and warns afterwards would have thrown that away.
  */
-export function ImportSwarm({ onImported }: { onImported: () => void }) {
-  const [open, setOpen] = useState(false);
+export function ImportSwarmButton({ onClick }: { onClick: () => void }) {
+  return (
+    <Button variant="ghost" onClick={onClick}>
+      Add a shared swarm
+    </Button>
+  );
+}
+
+export function ImportSwarm({
+  onImported,
+  onClose,
+}: {
+  onImported: () => void;
+  onClose: () => void;
+}) {
   const [text, setText] = useState("");
   const [preview, setPreview] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -28,10 +41,10 @@ export function ImportSwarm({ onImported }: { onImported: () => void }) {
     try {
       const res = await api.importSwarm(text, confirm);
       if (res.imported) {
-        setOpen(false);
         setText("");
         setPreview(null);
         onImported();
+        onClose();
         return;
       }
       setPreview(res);
@@ -42,16 +55,8 @@ export function ImportSwarm({ onImported }: { onImported: () => void }) {
     }
   };
 
-  if (!open) {
-    return (
-      <Button variant="ghost" onClick={() => setOpen(true)}>
-        Add a shared swarm
-      </Button>
-    );
-  }
-
   return (
-    <div className="mt-3 w-full rounded-lg border border-edge bg-panel/40 p-3">
+    <div className="w-full rounded-lg border border-edge bg-panel/40 p-3">
       <p className="text-[12px] text-muted">
         Paste a swarm bundle — the file someone got from <span className="text-ink">Share</span>.
       </p>
@@ -109,14 +114,7 @@ export function ImportSwarm({ onImported }: { onImported: () => void }) {
             {busy ? "Reading…" : "Read it"}
           </Button>
         )}
-        <Button
-          variant="ghost"
-          onClick={() => {
-            setOpen(false);
-            setPreview(null);
-            setError(null);
-          }}
-        >
+        <Button variant="ghost" onClick={onClose}>
           Cancel
         </Button>
       </div>

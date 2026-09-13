@@ -29,3 +29,6 @@ npm-debug.log*
 
 # Claude Code project state
 .claude/
+
+# gstack browse/QA reports — screenshots from a local verification pass
+.gstack/

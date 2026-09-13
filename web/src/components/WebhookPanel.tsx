@@ -21,6 +21,10 @@ export function WebhookPanel({ swarm }: { swarm: SwarmSummary }) {
   const [details, setDetails] = useState<WebhookDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // One reveal for the whole panel. Masking the token in its own field
+  // while printing it in full in the curl line two rows below is not
+  // masking, it is decoration.
+  const [shown, setShown] = useState(false);
 
   const reveal = async () => {
     setLoading(true);
@@ -34,13 +38,27 @@ export function WebhookPanel({ swarm }: { swarm: SwarmSummary }) {
     }
   };
 
+  const mask = "•".repeat(32);
+
   return (
     <div className="mt-3 rounded-lg border border-edge bg-panel/40 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-[12px] text-muted">
           ⚡ Runs when something posts to it — a form, another tool, a script.
         </p>
-        {!details && (
+        {details ? (
+          // Collapsible, so getting the URL doesn't cost you the swarm
+          // graph and the Run button for the rest of the visit.
+          <button
+            onClick={() => {
+              setDetails(null);
+              setShown(false);
+            }}
+            className="shrink-0 rounded border border-edge px-2 py-0.5 text-[11px] text-muted transition-colors hover:border-tron hover:text-ink"
+          >
+            Hide
+          </button>
+        ) : (
           <button
             onClick={reveal}
             disabled={loading}
@@ -56,16 +74,25 @@ export function WebhookPanel({ swarm }: { swarm: SwarmSummary }) {
       {details && (
         <div className="mt-2.5 space-y-2">
           <Field label="Post to" value={details.url} />
-          <Field label="Bearer token" value={details.token} secret />
+          <Field
+            label="Bearer token"
+            value={details.token}
+            display={shown ? details.token : mask}
+            onToggle={() => setShown((v) => !v)}
+            shown={shown}
+          />
           <div>
             <div className="mb-1 flex items-center justify-between gap-2">
               <span className="font-display text-[10px] uppercase tracking-wide text-muted/70">
                 Try it
               </span>
+              {/* Copy takes the real command even while it is masked on
+                  screen — you paste it into a terminal, you don't read it
+                  off the page. */}
               <CopyButton text={details.curl} label="copy command" />
             </div>
             <pre className="overflow-x-auto rounded bg-void px-2.5 py-2 text-[11px] leading-relaxed text-ink">
-              {details.curl}
+              {shown ? details.curl : details.curl.replace(details.token, mask)}
             </pre>
           </div>
           <p className="text-[11px] text-muted/70">
@@ -79,20 +106,23 @@ export function WebhookPanel({ swarm }: { swarm: SwarmSummary }) {
   );
 }
 
-/** One copyable value. A token renders masked until asked for: the URL is
- * the thing you paste into a config screen and the token is the thing you
- * paste into a password field, and they should not look alike. */
+/** One copyable value. `display` differs from `value` for a secret: the URL
+ * is what you paste into a config screen and the token is what you paste
+ * into a password field, and they should not look alike on screen. Copy
+ * always takes the real value. */
 function Field({
   label,
   value,
-  secret,
+  display,
+  shown,
+  onToggle,
 }: {
   label: string;
   value: string;
-  secret?: boolean;
+  display?: string;
+  shown?: boolean;
+  onToggle?: () => void;
 }) {
-  const [shown, setShown] = useState(false);
-  const masked = secret && !shown;
   return (
     <div>
       <div className="mb-1 flex items-center justify-between gap-2">
@@ -100,9 +130,9 @@ function Field({
           {label}
         </span>
         <div className="flex items-center gap-1.5">
-          {secret && (
+          {onToggle && (
             <button
-              onClick={() => setShown((s) => !s)}
+              onClick={onToggle}
               className="shrink-0 rounded border border-edge px-1.5 py-0.5 text-[10px] text-muted transition-colors hover:border-tron hover:text-ink"
             >
               {shown ? "hide" : "show"}
@@ -112,7 +142,7 @@ function Field({
         </div>
       </div>
       <div className="overflow-x-auto whitespace-nowrap rounded bg-void px-2.5 py-1.5 font-mono text-[11px] text-ink">
-        {masked ? "•".repeat(32) : value}
+        {display ?? value}
       </div>
     </div>
   );

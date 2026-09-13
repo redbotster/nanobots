@@ -6,7 +6,6 @@ import { api } from "../lib/api";
 afterEach(() => vi.restoreAllMocks());
 
 function paste(text: string) {
-  fireEvent.click(screen.getByRole("button", { name: /Add a shared swarm/ }));
   fireEvent.change(screen.getByRole("textbox"), { target: { value: text } });
 }
 
@@ -18,7 +17,7 @@ describe("ImportSwarm", () => {
       connects: ["google"],
       imported: false,
     });
-    render(<ImportSwarm onImported={() => {}} />);
+    render(<ImportSwarm onImported={() => {}} onClose={() => {}} />);
     paste("format: 1\nname: get-paid\n");
     fireEvent.click(screen.getByRole("button", { name: "Read it" }));
 
@@ -38,7 +37,7 @@ describe("ImportSwarm", () => {
       missing: ["no-such-bot@9.9.9"],
       imported: false,
     });
-    render(<ImportSwarm onImported={() => {}} />);
+    render(<ImportSwarm onImported={() => {}} onClose={() => {}} />);
     paste("format: 1\nname: needs-more\n");
     fireEvent.click(screen.getByRole("button", { name: "Read it" }));
 
@@ -52,7 +51,7 @@ describe("ImportSwarm", () => {
     vi.spyOn(api, "importSwarm").mockRejectedValue(
       new Error("this is not a swarm bundle — if it is a plain swarm YAML, copy it into examples/swarms/ instead"),
     );
-    render(<ImportSwarm onImported={() => {}} />);
+    render(<ImportSwarm onImported={() => {}} onClose={() => {}} />);
     paste("kind: Nanoswarm\n");
     fireEvent.click(screen.getByRole("button", { name: "Read it" }));
 

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { ImportSwarm } from "../components/ImportSwarm";
+import { ImportSwarm, ImportSwarmButton } from "../components/ImportSwarm";
 import { api } from "../lib/api";
 import { GettingStarted } from "../components/GettingStarted";
 import type { StatusResponse, ComposeGap, SaveSwarmRequest, SwarmSummary } from "../lib/types";
@@ -32,6 +32,7 @@ const RUN_TONE: Record<string, "ok" | "warn" | "danger" | "muted"> = {
 
 type Mode =
   | { kind: "list" }
+  | { kind: "import" }
   | { kind: "view"; swarm: SwarmSummary }
   | { kind: "build"; swarm?: SwarmSummary; composedDraft?: SaveSwarmRequest }
   | { kind: "gap"; request: string; gap: ComposeGap }
@@ -267,7 +268,7 @@ export function SwarmsPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <ImportSwarm onImported={reload} />
+          <ImportSwarmButton onClick={() => setMode({ kind: "import" })} />
           {uiMode === "advanced" && (
             <Button variant="ghost" onClick={() => setMode({ kind: "build" })}>
               Build manually
@@ -277,7 +278,12 @@ export function SwarmsPage({
       </div>
 
       <div className="mt-4">
-        {mode.kind === "gap" ? (
+        {mode.kind === "import" ? (
+          <ImportSwarm
+            onImported={reload}
+            onClose={() => setMode({ kind: "list" })}
+          />
+        ) : mode.kind === "gap" ? (
           <GapPanel
             gap={mode.gap}
             onDismiss={() => setMode({ kind: "list" })}

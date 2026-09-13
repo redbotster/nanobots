@@ -49,6 +49,42 @@ describe("WebhookPanel", () => {
     expect(screen.getByText("s3cret-token-value")).toBeTruthy();
   });
 
+  it("does not print the token in the curl line while it is masked", async () => {
+    vi.spyOn(api, "webhookDetails").mockResolvedValue({
+      swarm: "lead-to-meeting",
+      url: "http://localhost:8848/webhooks/lead-to-meeting",
+      token: "s3cret-token-value",
+      curl: "curl -X POST http://localhost:8848/webhooks/lead-to-meeting -H 'Authorization: Bearer s3cret-token-value'",
+    });
+    const { container } = render(<WebhookPanel swarm={swarm} />);
+    fireEvent.click(screen.getByRole("button", { name: /Show the URL/ }));
+    await waitFor(() => expect(screen.getByText(/curl -X POST/)).toBeTruthy());
+
+    // Masking the token in its own field while printing it in full two rows
+    // below is not masking, it is decoration. Nothing on screen may carry
+    // it until it is revealed.
+    expect(container.textContent).not.toContain("s3cret-token-value");
+
+    fireEvent.click(screen.getByRole("button", { name: "show" }));
+    expect(container.textContent).toContain("s3cret-token-value");
+  });
+
+  it("can be collapsed again, so the URL does not cost you the swarm graph", async () => {
+    vi.spyOn(api, "webhookDetails").mockResolvedValue({
+      swarm: "lead-to-meeting",
+      url: "http://localhost:8848/webhooks/lead-to-meeting",
+      token: "tok",
+      curl: "curl …",
+    });
+    render(<WebhookPanel swarm={swarm} />);
+    fireEvent.click(screen.getByRole("button", { name: /Show the URL/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Hide" })).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide" }));
+    expect(screen.queryByText(/Post to/)).toBeNull();
+    expect(screen.getByRole("button", { name: /Show the URL/ })).toBeTruthy();
+  });
+
   it("says so when the daemon refuses, instead of showing an empty box", async () => {
     vi.spyOn(api, "webhookDetails").mockRejectedValue(
       new Error("webhook triggers are not enabled on this daemon"),
