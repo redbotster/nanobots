@@ -433,3 +433,20 @@ export interface RunFixtures {
   bots: Record<string, FixturePreview[]>;
   error?: string;
 }
+
+/** What a bundle turns out to contain, and — once confirmed — where it
+ * landed. The preview call reports everything but `imported`/`path`. */
+export interface ImportResult {
+  name: string;
+  requires?: string[];
+  connects?: string[];
+  /** What this swarm can write to when it runs. The one thing to read
+   * before running a stranger's automation, and the reason import is two
+   * steps rather than one. */
+  acts?: string[];
+  /** Catalog bots this machine doesn't have. Non-empty means nothing was
+   * written, confirmed or not. */
+  missing?: string[];
+  imported: boolean;
+  path?: string;
+}

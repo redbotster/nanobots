@@ -137,11 +137,24 @@ export function SwarmView({
               </p>
             )}
           </div>
-          {onEdit && (
-            <Button variant="ghost" onClick={onEdit} disabled={isBusy}>
-              Edit
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {/* A download rather than a fetch-then-blob: the response is
+                already a file with a Content-Disposition on it, and the
+                browser does this better than we would. */}
+            <a
+              href={`/api/swarms/export?path=${encodeURIComponent(swarm.path)}`}
+              download
+              className="rounded-lg border border-edge px-3 py-1.5 font-display text-sm text-muted transition-colors hover:border-tron hover:text-ink"
+              title="Download this swarm as a bundle you can send to someone — the file, the bots it needs, and what it can write to when it runs"
+            >
+              Share
+            </a>
+            {onEdit && (
+              <Button variant="ghost" onClick={onEdit} disabled={isBusy}>
+                Edit
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="mt-3 flex items-center gap-3">

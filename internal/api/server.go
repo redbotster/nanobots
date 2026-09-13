@@ -105,6 +105,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/swarms/plan", s.handlePlan)
 	mux.HandleFunc("GET /api/swarms/yaml", s.handleSwarmYAML)
 	mux.HandleFunc("GET /api/swarms/full", s.handleGetSwarmFull)
+	mux.HandleFunc("GET /api/swarms/export", s.handleExportSwarm)
+	mux.HandleFunc("POST /api/swarms/import", s.handleImportSwarm)
 	mux.HandleFunc("GET /api/swarms/{swarm}/webhook", s.handleWebhookDetails)
 	mux.HandleFunc("POST /api/swarms/validate", s.handleValidateSwarm)
 	mux.HandleFunc("POST /api/swarms", s.handleSaveSwarm)

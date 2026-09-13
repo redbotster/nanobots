@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
+import { ImportSwarm } from "../components/ImportSwarm";
 import { api } from "../lib/api";
 import { GettingStarted } from "../components/GettingStarted";
 import type { StatusResponse, ComposeGap, SaveSwarmRequest, SwarmSummary } from "../lib/types";
@@ -265,11 +266,14 @@ export function SwarmsPage({
             Saved graphs of bots snapped together — pick one to see it run, live.
           </p>
         </div>
-        {uiMode === "advanced" && (
-          <Button variant="ghost" onClick={() => setMode({ kind: "build" })}>
-            Build manually
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <ImportSwarm onImported={reload} />
+          {uiMode === "advanced" && (
+            <Button variant="ghost" onClick={() => setMode({ kind: "build" })}>
+              Build manually
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="mt-4">

@@ -752,12 +752,6 @@ func catalogLookup(botsDir string) func(string) (*schema.Nanobot, error) {
 	}
 }
 
-// runExport bundles a swarm so it can be handed to someone else.
-//
-// A swarm you build has been stuck on the machine that built it: the
-// catalog was the only way to get one. The bundle carries the file itself,
-// which bots it needs, which accounts the recipient will have to connect,
-// and — the part worth surfacing — what it can write to when it runs.
 // runWebhook prints where to post to fire a swarm.
 //
 // Reads the token file and the swarm directly rather than asking a running
@@ -839,6 +833,12 @@ func findSwarmByName(dir, name string) (string, *schema.Nanoswarm, error) {
 	return "", nil, fmt.Errorf("no swarm called %q in %s", name, dir)
 }
 
+// runExport bundles a swarm so it can be handed to someone else.
+//
+// A swarm you build has been stuck on the machine that built it: the
+// catalog was the only way to get one. The bundle carries the file itself,
+// which bots it needs, which accounts the recipient will have to connect,
+// and — the part worth surfacing — what it can write to when it runs.
 func runExport(args []string) error {
 	var swarmPath, out string
 	for i := 0; i < len(args); i++ {

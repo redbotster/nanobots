@@ -20,6 +20,7 @@ import type {
   RoleLibrary,
   RunFixtures,
   WebhookDetails,
+  ImportResult,
 } from "./types";
 
 async function reqText(path: string): Promise<string> {
@@ -58,6 +59,11 @@ export const api = {
     req<SwarmFull>(`/api/swarms/full?path=${encodeURIComponent(path)}`),
   webhookDetails: (name: string) =>
     req<WebhookDetails>(`/api/swarms/${encodeURIComponent(name)}/webhook`),
+  importSwarm: (bundle: string, confirm: boolean) =>
+    req<ImportResult>("/api/swarms/import", {
+      method: "POST",
+      body: JSON.stringify({ bundle, confirm }),
+    }),
   validateSwarm: (draft: ValidateSwarmRequest) =>
     req<PlanResult>("/api/swarms/validate", {
       method: "POST",

@@ -16,6 +16,31 @@ nanobots import get-paid.bundle.yaml
 
 Export with no `-o` writes to stdout, so it pipes.
 
+## From the app, not just a terminal
+
+The person most likely to want to hand a swarm to someone else is the one
+who just built it in the visual builder, and they are not in a terminal.
+Open a swarm and press **Share**: the browser downloads
+`<name>.nanoswarm.yaml`. **Add a shared swarm** on the Swarms page takes one
+back.
+
+Both go through the same `share.Export`/`share.Parse` the CLI calls, so a
+bundle made in the app and one made at a prompt are the same file — verified
+by exporting from the app and importing with `nanobots import`, and the
+other way around.
+
+Importing in the app is two steps, and that is not friction for its own
+sake. A swarm is executable; the bundle format carries `acts` precisely so
+that what it will do to the outside world is legible *before* it runs.
+Pasting shows what arrived — its name, what it can write to, which accounts
+it wants, and any bots you don't have. Only **Add it** writes anything. A
+one-click import that saves first and warns afterwards would have thrown
+away the reason the field exists.
+
+A bundle naming a bot this machine doesn't have is refused with the bot
+named, and nothing is written either way — a swarm that looks saved and
+fails at run time is the worse order.
+
 ## What a bundle contains
 
 The swarm file **verbatim** — comments and all. Every catalog swarm's
