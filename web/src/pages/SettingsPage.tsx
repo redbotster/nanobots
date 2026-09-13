@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { Children, useEffect, useState } from "react";
+import type React from "react";
 import { api } from "../lib/api";
 import type {
   BotSummary,
@@ -58,103 +59,112 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
 
       <AppearanceSection />
 
+      {/* One block, four rows. These were four separate cards with four
+          headings, which spent about 360px of a 720px screen saying
+          "everything is fine" six times. A status list should be quiet when
+          nothing is wrong and loud when something is — so the explanations
+          and controls below only render when they apply. */}
       <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-4">
-        <h2 className="font-display text-sm font-semibold text-ink">1Claw</h2>
-        <div className="mt-3 flex items-center gap-2 text-sm">
-          <StatusDot tone={status?.oneclaw_configured ? "ok" : "warn"} />
-          {status?.oneclaw_configured
-            ? "Connected — bots run live wherever their services allow it"
-            : "No key configured — everything runs in demo mode"}
-        </div>
-        {!status?.oneclaw_configured && <OneClawKeySetup />}
-        {status?.oneclaw_configured && (
-          <div className="mt-2 flex items-center gap-2 text-sm">
-            <StatusDot tone={status.vault_locked ? "warn" : "ok"} />
-            {status.vault_locked
-              ? `Vault locked — ${status.vault_reason || "unlock it with your passkey"}`
-              : "Vault unlocked — connected credentials are readable"}
-          </div>
-        )}
-      </section>
+        <h2 className="font-display text-sm font-semibold text-ink">System</h2>
+        <div className="mt-2 flex flex-col divide-y divide-edge">
+          <StatusRow
+            tone={status?.oneclaw_configured ? "ok" : "warn"}
+            label="1Claw"
+            detail={
+              status?.oneclaw_configured
+                ? "Connected — bots run live wherever their services allow it"
+                : "No key configured — everything runs in demo mode"
+            }
+          >
+            {!status?.oneclaw_configured && <OneClawKeySetup />}
+          </StatusRow>
 
-      <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-4">
-        <h2 className="font-display text-sm font-semibold text-ink">Model</h2>
-        <div className="mt-3 flex items-center gap-2 text-sm">
-          <StatusDot
-            tone={
-              !status || status.llm_backend === "none"
-                ? "warn"
-                : status.llm_guardrails
-                  ? "ok"
-                  : "muted"
+          {status?.oneclaw_configured && (
+            <StatusRow
+              tone={status.vault_locked ? "warn" : "ok"}
+              label="Vault"
+              detail={
+                status.vault_locked
+                  ? `Locked — ${status.vault_reason || "unlock it with your passkey"}`
+                  : "Unlocked — connected credentials are readable"
+              }
+            />
+          )}
+
+          <StatusRow
+            tone={!status || status.llm_backend === "none" ? "warn" : status.llm_guardrails ? "ok" : "muted"}
+            label="Model"
+            detail={
+              status
+                ? status.llm_backend === "none"
+                  ? "No model configured — bots produce their demo output"
+                  : status.llm_backend
+                : "Checking…"
+            }
+          >
+            {status && status.llm_backend === "none" && (
+              <p className="text-[12px] leading-snug text-muted">
+                Every ai.generate step returns canned fixture text until there's a
+                model behind it. Set <code className="text-ink">ONECLAW_API_KEY</code>{" "}
+                for 1Claw token billing, or any one of{" "}
+                <code className="text-ink">ANTHROPIC_API_KEY</code>,{" "}
+                <code className="text-ink">OPENAI_API_KEY</code> or{" "}
+                <code className="text-ink">GEMINI_API_KEY</code> — see docs/llm.md.
+              </p>
+            )}
+            {status && status.llm_backend !== "none" && !status.llm_guardrails && (
+              <p className="text-[12px] leading-snug text-muted">
+                Prompts go straight to the provider. No spend ceiling, no PII
+                redaction and no injection screening — 1Claw adds those, and{" "}
+                <code className="text-ink">ONECLAW_API_KEY</code> switches to it.
+              </p>
+            )}
+            <SpendLine />
+          </StatusRow>
+
+          <StatusRow
+            tone={status?.memory_recall ? "ok" : "muted"}
+            label="Memory"
+            detail={
+              status
+                ? status.memory_recall
+                  ? `${status.memory_backend} — bots can remember and be asked about it`
+                  : `${status.memory_backend} — stores values by key`
+                : "Checking…"
+            }
+          >
+            {status && !status.memory_recall && (
+              <p className="text-[12px] leading-snug text-muted">
+                {status.memory_recall_bots.length > 0 ? (
+                  <>
+                    <span className="text-ink">
+                      {status.memory_recall_bots.join(", ")}
+                    </span>{" "}
+                    {status.memory_recall_bots.length === 1 ? "asks" : "ask"} memory
+                    what happened before, and{" "}
+                    {status.memory_recall_bots.length === 1 ? "is" : "are"} running
+                    without an answer — falling back to static rules instead of what
+                    you've actually done. Runs still succeed; they're just worse.{" "}
+                  </>
+                ) : (
+                  <>No bot currently asks memory a question. </>
+                )}
+                Set <code className="text-ink">NANOBOTS_MEMORY=honcho</code> with a{" "}
+                <code className="text-ink">HONCHO_URL</code> to change it — see
+                docs/memory.md.
+              </p>
+            )}
+          </StatusRow>
+
+          <StatusRow
+            tone={status?.docker_available ? "ok" : "warn"}
+            label="Docker"
+            detail={
+              status?.docker_available
+                ? "Running — every bot gets its own container"
+                : `${status?.docker_reason ?? "Checking…"} — bots run in containers, so nothing runs until it's up`
             }
           />
-          {status
-            ? status.llm_backend === "none"
-              ? "No model configured — bots produce their demo output"
-              : status.llm_backend
-            : "Checking…"}
-        </div>
-        {status && status.llm_backend === "none" && (
-          <p className="mt-1.5 text-[12px] leading-snug text-muted">
-            Every ai.generate step returns canned fixture text until there's a
-            model behind it. Set <code className="text-ink">ONECLAW_API_KEY</code>{" "}
-            for 1Claw token billing, or any one of{" "}
-            <code className="text-ink">ANTHROPIC_API_KEY</code>,{" "}
-            <code className="text-ink">OPENAI_API_KEY</code> or{" "}
-            <code className="text-ink">GEMINI_API_KEY</code> — see docs/llm.md.
-          </p>
-        )}
-        {status && status.llm_backend !== "none" && !status.llm_guardrails && (
-          <p className="mt-1.5 text-[12px] leading-snug text-muted">
-            Prompts go straight to the provider. No spend ceiling, no PII
-            redaction and no injection screening — 1Claw adds those, and{" "}
-            <code className="text-ink">ONECLAW_API_KEY</code> switches to it.
-          </p>
-        )}
-        <SpendLine />
-      </section>
-
-      <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-4">
-        <h2 className="font-display text-sm font-semibold text-ink">Memory</h2>
-        <div className="mt-3 flex items-center gap-2 text-sm">
-          <StatusDot tone={status?.memory_recall ? "ok" : "muted"} />
-          {status
-            ? status.memory_recall
-              ? `${status.memory_backend} — bots can remember and be asked about it`
-              : `${status.memory_backend} — stores values by key`
-            : "Checking…"}
-        </div>
-        {status && !status.memory_recall && (
-          <p className="mt-1.5 text-[12px] leading-snug text-muted">
-            {status.memory_recall_bots.length > 0 ? (
-              <>
-                <span className="text-ink">
-                  {status.memory_recall_bots.join(", ")}
-                </span>{" "}
-                {status.memory_recall_bots.length === 1 ? "asks" : "ask"} memory
-                what happened before, and{" "}
-                {status.memory_recall_bots.length === 1 ? "is" : "are"} running
-                without an answer — falling back to static rules instead of what
-                you've actually done. Runs still succeed; they're just worse.{" "}
-              </>
-            ) : (
-              <>No bot currently asks memory a question. </>
-            )}
-            Set <code className="text-ink">NANOBOTS_MEMORY=honcho</code> with a{" "}
-            <code className="text-ink">HONCHO_URL</code> to change it — see
-            docs/memory.md.
-          </p>
-        )}
-      </section>
-
-      <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-4">
-        <h2 className="font-display text-sm font-semibold text-ink">Docker</h2>
-        <div className="mt-3 flex items-center gap-2 text-sm">
-          <StatusDot tone={status?.docker_available ? "ok" : "warn"} />
-          {status?.docker_available
-            ? "Running — every bot gets its own container"
-            : `${status?.docker_reason ?? "Checking…"} — bots run in containers, so nothing runs until it's up`}
         </div>
       </section>
 
@@ -304,6 +314,39 @@ function SpendLine() {
         <span> · ${spend.credit_usd.toFixed(2)} credit left</span>
       )}
       {spend.warning && <p className="mt-1 text-warn">{spend.warning}</p>}
+    </div>
+  );
+}
+
+/** One line of system status: a dot, what it is, and how it is.
+ *
+ * `children` is the escape hatch for the cases that need more than a line —
+ * a key-entry form, a paragraph about why memory is degraded — and renders
+ * nothing at all when they don't apply, which is most of the time. That is
+ * the whole point: the block should be four quiet lines when everything
+ * works, and grow only where something is actually wrong. */
+function StatusRow({
+  tone,
+  label,
+  detail,
+  children,
+}: {
+  tone: "ok" | "warn" | "muted" | "danger";
+  label: string;
+  detail: string;
+  children?: React.ReactNode;
+}) {
+  const extra = Children.toArray(children).filter(Boolean);
+  return (
+    <div className="py-2 first:pt-1 last:pb-1">
+      <div className="flex items-baseline gap-2 text-sm">
+        <span className="translate-y-[-1px]">
+          <StatusDot tone={tone} />
+        </span>
+        <span className="w-16 shrink-0 text-muted">{label}</span>
+        <span className="min-w-0 text-ink">{detail}</span>
+      </div>
+      {extra.length > 0 && <div className="ml-[5.5rem] mt-1.5 space-y-1.5">{extra}</div>}
     </div>
   );
 }

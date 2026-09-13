@@ -143,34 +143,73 @@ function GapPanel({
  * swarm that quietly emails you every weekday at 7 should not be a surprise.
  * A swarm with no cron trigger renders nothing rather than "manual only",
  * which would be noise on every card that has one. */
-function ScheduleLine({ swarm, onResume }: { swarm: SwarmSummary; onResume: () => void }) {
-  // A paused schedule outranks everything else this line could say. It is
-  // the difference between "runs every 30 minutes" and "hasn't run since
-  // Tuesday and won't", and the card used to render those identically.
-  if (swarm.schedule_paused) {
+
+/** How real this swarm is right now.
+ *
+ * This used to read "0/4 live" on every card. On a fresh install nothing is
+ * connected, so every one of fifteen cards showed a different-looking zero
+ * — a scoreboard where every score is nil, which reads as "everything is
+ * broken" while telling you nothing that distinguishes one card from
+ * another. A fraction is only worth showing once it discriminates.
+ *
+ * So: nothing connected says "demo", quietly, because that is a state and
+ * not a failure. Some connected shows the fraction, because now it is the
+ * interesting number. All connected says "live". */
+function ConnectionBadge({ swarm }: { swarm: SwarmSummary }) {
+  const { services_live: live, services_total: total } = swarm;
+  if (live === 0) {
     return (
-      <div className="mt-2.5 rounded border border-warn/40 bg-warn/5 px-2 py-1.5">
-        <div className="text-[11px] font-medium text-warn">
-          ⏸ Paused after {swarm.failure_streak} failed runs
-        </div>
-        {swarm.streak_error && (
-          <div className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted">
-            {swarm.streak_error}
-          </div>
-        )}
-        <button
-          onClick={(e) => {
-            // The card itself opens the swarm; this button does not.
-            e.stopPropagation();
-            onResume();
-          }}
-          className="mt-1.5 rounded border border-edge bg-panel px-2 py-0.5 text-[11px] text-muted transition-colors hover:border-tron hover:text-ink"
-        >
-          Try it again
-        </button>
-      </div>
+      <span
+        className="shrink-0 rounded-full border border-edge px-2 py-0.5 text-[10px] text-muted/70"
+        title={`This swarm's ${total} service${total === 1 ? "" : "s"} all run on example data. Connect an account in Settings to make it real.`}
+      >
+        demo
+      </span>
     );
   }
+  const all = live === total;
+  return (
+    <span
+      className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] ${
+        all ? "border-ok/40 text-ok" : "border-warn/40 text-warn"
+      }`}
+      title={`${live} of ${total} services connected to a real account`}
+    >
+      {all ? "live" : `${live}/${total} live`}
+    </span>
+  );
+}
+
+/** A schedule that has stopped firing, and the one control that restarts it.
+ *
+ * A sibling of the card's own button rather than a child of it: a button
+ * inside a button is invalid HTML, and stopPropagation only papers over
+ * what that does to keyboard and assistive-tech users. */
+function PausedNotice({ swarm, onResume }: { swarm: SwarmSummary; onResume: () => void }) {
+  return (
+    <div className="mx-4 mb-4 rounded border border-warn/40 bg-warn/5 px-2 py-1.5">
+      <div className="text-[11px] font-medium text-warn">
+        ⏸ Paused after {swarm.failure_streak} failed runs
+      </div>
+      {swarm.streak_error && (
+        <div className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted">
+          {swarm.streak_error}
+        </div>
+      )}
+      <button
+        onClick={onResume}
+        className="mt-1.5 rounded border border-edge bg-panel px-2 py-0.5 text-[11px] text-muted transition-colors hover:border-tron hover:text-ink"
+      >
+        Try it again
+      </button>
+    </div>
+  );
+}
+
+function ScheduleLine({ swarm }: { swarm: SwarmSummary }) {
+  // A paused schedule outranks everything else this line could say — the
+  // card renders PausedNotice below instead, so this stays quiet.
+  if (swarm.schedule_paused) return null;
   if (swarm.schedule_error) {
     return (
       <div
@@ -348,47 +387,43 @@ export function SwarmsPage({
 
       <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {swarms?.map((s) => (
-          <button
+          <div
             key={s.path}
-            onClick={() => setMode({ kind: "view", swarm: s })}
-            className="fade-in rounded-lg border border-edge-strong bg-panel p-4 text-left transition-shadow hover:border-tron hover:shadow-glow-sm"
+            className="fade-in group flex flex-col rounded-lg border border-edge-strong bg-panel transition-shadow focus-within:border-tron hover:border-tron hover:shadow-glow-sm"
           >
-            <div className="flex items-start justify-between gap-2">
-              <h2 className="font-display text-base font-semibold text-ink">
-                {s.name}
-              </h2>
-              {s.services_total > 0 && (
-                <span
-                  className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] ${
-                    s.services_live === 0
-                      ? "border-edge text-muted"
-                      : s.services_live === s.services_total
-                        ? "border-ok/40 text-ok"
-                        : "border-warn/40 text-warn"
-                  }`}
-                  title={`${s.services_live} of ${s.services_total} services connected to a real account`}
-                >
-                  {s.services_live}/{s.services_total} live
-                </span>
-              )}
-            </div>
-            <p className="mt-1.5 text-[13px] leading-snug text-muted">
-              {s.description}
-            </p>
-            <ScheduleLine
-              swarm={s}
-              onResume={() => api.resumeSchedule(s.name).then(reload).catch((e) => setError(String(e)))}
-            />
-            {s.last_run_status ? (
-              <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted">
-                <StatusDot tone={RUN_TONE[s.last_run_status] ?? "muted"} />
-                last ran {relativeTime(s.last_run_at!)}
-                {s.last_run_trigger === "schedule" && " · scheduled"}
+            <button
+              onClick={() => setMode({ kind: "view", swarm: s })}
+              className="flex-1 p-4 text-left outline-none"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <h2 className="font-display text-base font-semibold text-ink">
+                  {s.name}
+                </h2>
+                {s.services_total > 0 && <ConnectionBadge swarm={s} />}
               </div>
-            ) : (
-              <div className="mt-1 text-[11px] text-muted/60">never run yet</div>
+              <p className="mt-1.5 text-[13px] leading-snug text-muted">
+                {s.description}
+              </p>
+              <ScheduleLine swarm={s} />
+              {s.last_run_status ? (
+                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted">
+                  <StatusDot tone={RUN_TONE[s.last_run_status] ?? "muted"} />
+                  last ran {relativeTime(s.last_run_at!)}
+                  {s.last_run_trigger === "schedule" && " · scheduled"}
+                </div>
+              ) : (
+                <div className="mt-1 text-[11px] text-muted/60">never run yet</div>
+              )}
+            </button>
+            {s.schedule_paused && (
+              <PausedNotice
+                swarm={s}
+                onResume={() =>
+                  api.resumeSchedule(s.name).then(reload).catch((e) => setError(String(e)))
+                }
+              />
             )}
-          </button>
+          </div>
         ))}
       </div>
 
