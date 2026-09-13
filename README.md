@@ -42,6 +42,7 @@ This repo implements the full 28-brick, 12-swarm launch catalog from `context/NA
 - **Demo data never passes for real**: every bot ships on `connection: demo`, so the default run succeeds with plausible invented output. The log marks each such call, and the run says which services were answered from example data with a button to connect an account (`docs/connections.md`). A convincing fake that looks exactly like a real result is the worst thing this product could quietly do.
 - **A real run can become a bot's test data**: fixtures are what `nanobots conform` replays offline, and they're hand-written — a guess at what a model returns, which drifts. A succeeded run offers back exactly what it got, marked new or replacing, side by side with what's committed (`docs/fixtures.md`). Approvals are never recorded, because a pinned "approved" would turn a gate into a rubber stamp.
 - **A failure at the edge doesn't lose the run**: a bot can be marked `on_error: continue`, and everything downstream of it is skipped rather than run against missing inputs (`docs/error-policy.md`). `get-paid` used to send every reminder and *then* fail the whole run because it couldn't post a Slack summary; now it finishes, and says plainly that one step didn't. Never silent — a tolerated failure is recorded on the run and rendered as a warning with the same one-click fix a real failure gets.
+- **It survives a reboot**: `nanobots service install` writes a per-user LaunchAgent so nanobotd keeps running, which is what makes fourteen cron triggers more than aspiration (`docs/scheduler.md`). It prints what it wrote and leaves loading it to you; missed runs deliberately don't fire late.
 - **A real scheduler**: every catalog swarm's `trigger: {type: cron, ...}` now actually fires — see `docs/scheduler.md`. Previously nothing in this build ever executed one; every run was a human clicking Run.
 - **Run history that survives a restart**: every finished run is kept as a JSON file under `~/.nanobots/history/`, capped at 200 — see `docs/run-history.md`. A failed run shows *why* it failed and offers to run the same swarm again. A run killed mid-flight by a restart is restored as failed rather than sitting in the list as "running" forever.
 
@@ -256,7 +257,7 @@ Per the project's own working style, expensive verification is a single consolid
 go build ./... && go vet ./... && go test ./...
 ```
 
-486 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
+492 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
 - `internal/contract`'s `TestRunConformanceOnLaunchBots` — auto-discovers and conformance-tests all 30 bots under `bots/` against their own fixtures, no Docker or network.
 - `internal/planner`'s `TestPlanAllExampleSwarms` — auto-discovers and type-checks all 14 swarms under `examples/swarms/`.
 - httptest-mocked 1Claw/Google/Slack/GitHub/Stripe/HubSpot/X/LinkedIn API clients, built against each provider's real, documented endpoint shapes (verified against `@1claw/openapi-spec` and each provider's own docs, not guessed).

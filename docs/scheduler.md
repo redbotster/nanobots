@@ -58,3 +58,53 @@ They used to render identically to a swarm with no trigger at all, which reads a
 ```
 
 This is disclosure, not a fix: those swarms still only run when someone clicks Run.
+
+## Making it survive a reboot
+
+Fourteen of the fifteen catalog swarms carry a cron trigger, and this
+scheduler fires them — but only while nanobotd is running. Until now that
+meant a terminal window someone remembered to leave open. Close the laptop
+and the morning brief doesn't happen. A catalog written entirely in the
+future tense has to survive a reboot.
+
+```sh
+go build -o bin/nanobots ./cmd/nanobots
+./bin/nanobots service install       # writes a LaunchAgent, runs nothing
+launchctl load -w ~/Library/LaunchAgents/dev.nanobots.nanobotd.plist
+```
+
+`service status` says whether one is installed and where; `service
+uninstall` removes it. Deliberately three steps rather than one: this
+writes a file into your LaunchAgents and the install command prints exactly
+what it wrote, what it will run, where the logs go, and how to undo it —
+then leaves loading it to you.
+
+A few decisions worth knowing:
+
+- **Per-user, not system-wide.** It goes in `~/Library/LaunchAgents`, not
+  `/Library/LaunchDaemons`. nanobotd holds one person's credentials and runs
+  their automations; it has no business running as root for everyone on the
+  machine.
+- **`RunAtLoad` and `KeepAlive`.** At login, and restarted if it dies — a
+  scheduler that stops on the first crash is one nobody can rely on, and
+  "every morning" has to survive a bad night.
+- **The working directory is part of the job.** nanobotd resolves `bots/`,
+  `examples/swarms/` and the harness Dockerfiles relative to it, so a job
+  with the wrong one starts cleanly and finds nothing to run.
+- **It refuses to install a `go run` binary**, which would work until the
+  next reboot and then not, in a way nobody would connect back to this.
+- **Docker still has to be running.** A bot is a container; a scheduler that
+  survives a reboot and a Docker that doesn't gets you a run that fails at
+  the first bot. Docker Desktop has its own "start at login".
+
+### Missed runs don't fire late
+
+A trigger that came due while nanobotd was off does not run when it starts:
+each schedule's next occurrence is computed forward from now. That is
+deliberate — a laptop opened after a week away should send one morning
+brief, not seven — but it is not what everyone assumes, and assuming wrong
+means quietly missing a run.
+
+macOS only in this build. The plist generation is pure and tested against
+`plutil`; a systemd unit is a small amount of work and belongs to someone
+who can actually run it.
