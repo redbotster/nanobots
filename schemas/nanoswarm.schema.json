@@ -58,6 +58,9 @@
               "path": {
                 "type": "string"
               },
+              "retry": {
+                "type": "integer"
+              },
               "use": {
                 "type": "string"
               }

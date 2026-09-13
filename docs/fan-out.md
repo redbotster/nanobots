@@ -168,3 +168,19 @@ Two things had to change. The prompt gained the vocabulary, and the catalog
 it is shown gained the *fields* inside each json output port — a snap can
 drill into one, and a model shown `drafted:list<json>` with no field list
 has no choice but to guess.
+
+## One shape it can't express yet
+
+Fanning a bot out over another *fanned-out* bot's outputs — "for each idea
+write posts, then for each set of posts publish them" — doesn't type-check:
+
+```
+FAIL writer.posts.* -> publisher.posts: port "posts" is json, not a list
+```
+
+A fanned bot's outputs are typed `list<T>` only when the snap names the
+whole port; the `.*` marker is treated as having already consumed that
+level, which is right for `sender.message_id.0` and wrong here. Nothing in
+the catalog needs it — `content-engine` deliberately takes one idea, because
+publishing ten posts at once is a burst rather than the "scheduled across
+the week" it is modelling — so it is recorded rather than built.

@@ -588,3 +588,68 @@ func TestWithoutOneClawApprovalIsLocalOnly(t *testing.T) {
 		}
 	}
 }
+
+// A transient failure — a flaky service call, a container that lost its
+// network for a second — should not need a human to press Run again.
+func TestABotCanBeRetried(t *testing.T) {
+	var attempts int
+	o := &Orchestrator{runBotFn: func(_ *Run, _ *planner.ResolvedSwarm, _ string, _ *planner.ResolvedBot) error {
+		attempts++
+		if attempts < 3 {
+			return fmt.Errorf("connection reset")
+		}
+		return nil
+	}}
+	rs := swarmWith([]schema.BotRef{{ID: "flaky", Retry: 3}}, nil)
+
+	run := NewRun("probe")
+	if err := o.runLevels(run, rs, [][]string{{"flaky"}}); err != nil {
+		t.Fatalf("gave up on a retryable failure: %v", err)
+	}
+	if attempts != 3 {
+		t.Errorf("attempts = %d, want 3", attempts)
+	}
+	// Each retry is visible: a bot quietly succeeding on its third go is
+	// something worth knowing about the service behind it.
+	var said int
+	for _, l := range run.LogEntries() {
+		if strings.Contains(l.Msg, "retrying") {
+			said++
+		}
+	}
+	if said != 2 {
+		t.Errorf("%d retry lines, want 2", said)
+	}
+}
+
+func TestNoRetryByDefault(t *testing.T) {
+	var attempts int
+	o := &Orchestrator{runBotFn: func(_ *Run, _ *planner.ResolvedSwarm, _ string, _ *planner.ResolvedBot) error {
+		attempts++
+		return fmt.Errorf("boom")
+	}}
+	if err := o.runLevels(NewRun("probe"), swarmWith([]schema.BotRef{{ID: "b"}}, nil),
+		[][]string{{"b"}}); err == nil {
+		t.Fatal("expected a failure")
+	}
+	if attempts != 1 {
+		t.Errorf("attempts = %d, want 1 — retry must be opt-in", attempts)
+	}
+}
+
+// Asking again until someone says yes is not a retry, it is wearing them
+// down. A declined approval is a decision and must stand.
+func TestADeclinedApprovalIsNeverRetried(t *testing.T) {
+	var attempts int
+	o := &Orchestrator{runBotFn: func(_ *Run, _ *planner.ResolvedSwarm, _ string, _ *planner.ResolvedBot) error {
+		attempts++
+		return fmt.Errorf(`step "gate": not approved (decided_by=cli)`)
+	}}
+	if err := o.runLevels(NewRun("probe"), swarmWith([]schema.BotRef{{ID: "sender", Retry: 3}}, nil),
+		[][]string{{"sender"}}); err == nil {
+		t.Fatal("expected a failure")
+	}
+	if attempts != 1 {
+		t.Errorf("a declined approval was asked %d times", attempts)
+	}
+}

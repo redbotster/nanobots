@@ -153,3 +153,42 @@ func CheckSnapAndValueCollision(rs *ResolvedSwarm) []error {
 	}
 	return out
 }
+
+// maxRetry is a ceiling on retry, not a policy. Three attempts rides out a
+// blip; thirty is a bot hammering someone's API while a human watches a
+// spinner.
+const maxRetry = 3
+
+// CheckRetry rejects a retry count that isn't sane, and refuses one on a
+// bot that writes somewhere.
+//
+// A retry re-runs the *entire bot*. A bot that sent an email and then
+// failed on its last step will send that email again — so retry on a bot
+// declaring guardrails.writes_allowed is a duplicate-send waiting to
+// happen, and the swarm author almost certainly did not mean it. Refused at
+// plan time rather than warned about at 3am.
+func CheckRetry(rs *ResolvedSwarm) []error {
+	var out []error
+	for _, b := range rs.Swarm.Spec.Bots {
+		if b.Retry == 0 {
+			continue
+		}
+		if b.Retry < 0 || b.Retry > maxRetry {
+			out = append(out, fmt.Errorf("bot %q has retry: %d — it must be between 0 and %d",
+				b.ID, b.Retry, maxRetry))
+			continue
+		}
+		rb, ok := rs.Bots[b.ID]
+		if !ok || rb.Nanobot == nil {
+			continue
+		}
+		if w := rb.Nanobot.Spec.Guardrails.WritesAllowed; len(w) > 0 {
+			out = append(out, fmt.Errorf(
+				"bot %q has retry: %d, but it writes to %s — a retry re-runs the whole bot, so a"+
+					" failure after the write sends it again. Remove the retry, or split the write"+
+					" into its own bot that isn't retried",
+				b.ID, b.Retry, strings.Join(w, ", ")))
+		}
+	}
+	return out
+}

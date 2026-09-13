@@ -202,6 +202,17 @@ type BotRef struct {
 	//
 	// See docs/error-policy.md.
 	OnError string `json:"on_error,omitempty" yaml:"on_error,omitempty"`
+	// Retry re-runs this bot up to N more times if it fails. 0 (the
+	// default) never retries.
+	//
+	// Opt-in per instance, and the hazard is the whole reason: a retry
+	// re-runs the *entire bot*, including anything it already did. A bot
+	// that sent an email and then failed on its last step will send that
+	// email again. Only mark a bot that is safe to run twice.
+	//
+	// An approval decline is never retried — that is a decision, not a
+	// fault, and asking again until someone says yes is not a retry.
+	Retry int `json:"retry,omitempty" yaml:"retry,omitempty"`
 }
 
 // OnError values.

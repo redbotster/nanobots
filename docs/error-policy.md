@@ -81,6 +81,36 @@ The AI composer sets it too — a trailing notification in a composed swarm
 comes back marked `continue` (`docs/fan-out.md` covers the rest of what it
 now writes).
 
+## Retrying a bot
+
+```yaml
+bots:
+  - id: watch
+    use: competitor-watch@0.1.0
+    retry: 2        # 0 (default) never retries; 3 is the ceiling
+```
+
+For a transient failure — a flaky service call, a container that lost its
+network for a second — where pressing Run again is all a human would do.
+
+**A retry re-runs the entire bot**, including anything it already did. A bot
+that sent an email and then failed on its last step sends that email again.
+So a retry on a bot declaring `guardrails.writes_allowed` is refused at plan
+time rather than warned about at 3am:
+
+```
+FAIL bot "sender" has retry: 2, but it writes to gmail — a retry re-runs the
+whole bot, so a failure after the write sends it again. Remove the retry, or
+split the write into its own bot that isn't retried.
+```
+
+**A declined approval is never retried.** Asking again until someone says
+yes is not a retry; it is wearing them down. Nor is a run that ended
+underneath the bot — there is nothing left to run into.
+
+Every retry is logged. A bot quietly succeeding on its third attempt every
+night is worth knowing about the service behind it.
+
 ## When to use it
 
 Use `continue` for work at the edge of a swarm that nothing else reads —

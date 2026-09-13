@@ -230,10 +230,60 @@ func (o *Orchestrator) runLevels(run *Run, rs *planner.ResolvedSwarm, levels [][
 }
 
 func (o *Orchestrator) runOneBot(run *Run, rs *planner.ResolvedSwarm, botID string) error {
-	if o.runBotFn != nil {
-		return o.runBotFn(run, rs, botID, rs.Bots[botID])
+	attempt := func() error {
+		if o.runBotFn != nil {
+			return o.runBotFn(run, rs, botID, rs.Bots[botID])
+		}
+		return o.runBot(run, rs, botID, rs.Bots[botID])
 	}
-	return o.runBot(run, rs, botID, rs.Bots[botID])
+
+	tries := retriesFor(rs, botID)
+	var err error
+	for i := 0; i <= tries; i++ {
+		if i > 0 {
+			run.Log(botID, "", "retrying (%d of %d) after: %v", i, tries, err)
+		}
+		err = attempt()
+		if err == nil || !worthRetrying(err) {
+			return err
+		}
+	}
+	return err
+}
+
+// worthRetrying keeps a retry from turning a decision into a loop.
+//
+// A declined approval is the clearest case: asking again until someone says
+// yes is not a retry, it is wearing them down. A run that ended underneath
+// this bot is not retryable either — there is nothing left to run into.
+func worthRetrying(err error) bool {
+	msg := err.Error()
+	for _, decision := range []string{
+		"not approved",
+		"the run ended before",
+	} {
+		if strings.Contains(msg, decision) {
+			return false
+		}
+	}
+	return true
+}
+
+// retriesFor reads the bot instance's declared retry count, and says
+// something the first time it matters if the bot also writes somewhere.
+func retriesFor(rs *planner.ResolvedSwarm, botID string) int {
+	if rs.Swarm == nil {
+		return 0
+	}
+	for _, b := range rs.Swarm.Spec.Bots {
+		if b.ID == botID {
+			if b.Retry < 0 {
+				return 0
+			}
+			return b.Retry
+		}
+	}
+	return 0
 }
 
 // upstreamMissing reports whether any bot this one reads from never

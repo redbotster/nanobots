@@ -210,3 +210,61 @@ func TestAPortCannotBeBothSnappedAndGivenAValue(t *testing.T) {
 		t.Errorf("a value on a different port was reported: %v", res.Invalid)
 	}
 }
+
+// A retry re-runs the *entire bot*. A bot that sent an email and then
+// failed on its last step will send that email again — so retry on a bot
+// that writes somewhere is a duplicate-send waiting to happen, and almost
+// certainly not what the author meant. Refused at plan time rather than
+// discovered at 3am.
+func TestRetryIsRefusedOnABotThatWrites(t *testing.T) {
+	res := planYAML(t, unfedHeader+`  bots:
+    - id: sender
+      use: email-send-approved@0.1.0
+      retry: 2
+      inputs:
+        draft_id: d1
+        summary: s
+  snaps: []
+`)
+	if res.OK() {
+		t.Fatal("retry on a sending bot planned OK")
+	}
+	var found bool
+	for _, e := range res.Invalid {
+		if strings.Contains(e.Error(), "sender") && strings.Contains(e.Error(), "re-runs the whole bot") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("not refused for the right reason: %v", res.Invalid)
+	}
+}
+
+// A bot that only reads is exactly what retry is for.
+func TestRetryIsFineOnABotThatOnlyReads(t *testing.T) {
+	res := planYAML(t, unfedHeader+`  bots:
+    - id: watch
+      use: competitor-watch@0.1.0
+      retry: 2
+      inputs:
+        urls: ["https://example.com"]
+  snaps: []
+`)
+	for _, e := range res.Invalid {
+		t.Errorf("a read-only bot was refused a retry: %v", e)
+	}
+}
+
+func TestAnAbsurdRetryCountIsRefused(t *testing.T) {
+	res := planYAML(t, unfedHeader+`  bots:
+    - id: watch
+      use: competitor-watch@0.1.0
+      retry: 30
+      inputs:
+        urls: ["https://example.com"]
+  snaps: []
+`)
+	if res.OK() {
+		t.Fatal("retry: 30 planned OK")
+	}
+}

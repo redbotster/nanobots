@@ -64,6 +64,7 @@ func PlanSwarm(sw *schema.Nanoswarm, botsDir string) (*PlanResult, error) {
 	result.Snaps = TypeCheckSnaps(resolved)
 	result.Unfed = CheckRequiredInputs(resolved)
 	result.Invalid = append(CheckOnError(resolved), CheckSnapAndValueCollision(resolved)...)
+	result.Invalid = append(result.Invalid, CheckRetry(resolved)...)
 	dag, err := BuildDAG(resolved)
 	result.DAG = dag
 	result.DAGErr = err
