@@ -35,6 +35,15 @@ func BuildDeps(run *Run, botID string, nb *schema.Nanobot, oc *oneclaw.Client, a
 	if !hasOneClaw && gen == nil {
 		d := step.NewDemoDeps(fixturesDir, blobs)
 		d.Approver = approver
+		// Same note the live path makes. Without it, a fresh install — no
+		// 1Claw, no model, every single call a fixture — produced runs that
+		// claimed no demo services at all and so rendered no banner, which
+		// is exactly backwards.
+		d.OnServiceCall = func(svc schema.Service, _ string, demo bool) {
+			if demo {
+				run.NoteDemoService(botID, svc.ID)
+			}
+		}
 		return d
 	}
 	ld := step.NewLiveDeps(oc, oneclaw.NewShroudClient(agentID, agentAPIKey), agentID, fixturesDir, blobs)

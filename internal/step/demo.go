@@ -50,7 +50,13 @@ type DemoDeps struct {
 	// `nanobots conform` / `go test` stay hermetic and don't depend on
 	// whatever state the host's Chrome happens to be in.
 	SkipRealRender bool
-	memory         map[string]map[string]string
+	// OnServiceCall reports each service call, so a run can record that it
+	// was served from fixtures. LiveDeps has always had this; DemoDeps did
+	// not, so the one configuration where *everything* is demo — a fresh
+	// install with no keys at all — was the one that never showed the
+	// "DEMO DATA" banner. Nil is fine.
+	OnServiceCall func(svc schema.Service, op string, demo bool)
+	memory        map[string]map[string]string
 }
 
 func NewDemoDeps(fixturesDir string, blobs BlobStore) *DemoDeps {
@@ -77,6 +83,11 @@ func (d *DemoDeps) loadFixture(name string) (any, error) {
 }
 
 func (d *DemoDeps) ServiceCall(svc schema.Service, op string, params map[string]any) (any, error) {
+	// Unconditionally demo: that is what these Deps are. LiveDeps has to
+	// decide per call; here there is nothing to decide.
+	if d.OnServiceCall != nil {
+		d.OnServiceCall(svc, op, true)
+	}
 	return d.loadFixture(fmt.Sprintf("%s.%s.json", svc.ID, op))
 }
 
