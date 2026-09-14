@@ -92,6 +92,13 @@ func (o *Orchestrator) executeSwarm(swarmPath string, triggerPayload any) (*Run,
 
 	go func() {
 		if err := o.runLevels(run, result.Resolved, levels); err != nil {
+			// A run someone stopped reports that, not the wreckage of the
+			// stopping. "2 bots in the same wave failed — meetings:
+			// stopped; triage: stopped" is accurate and reads like
+			// something went wrong; it did not, you asked.
+			if run.WasStoppedByUser() {
+				err = ErrStopped
+			}
 			// SetError before SetStatus, not after: the terminal status is
 			// what makes a run final, and RunStore snapshots it to history
 			// right then. Setting the error afterwards persisted failed
@@ -231,7 +238,13 @@ func (o *Orchestrator) runLevels(run *Run, rs *planner.ResolvedSwarm, levels [][
 				gone[botID] = "the bot it needed failed, and this swarm was told to continue without it"
 				continue
 			}
-			run.Log(botID, "", "FAILED: %v", err)
+			if errors.Is(err, ErrStopped) {
+				// "FAILED: stopped from the app" contradicts itself. This
+				// bot did not fail; it was cut short on purpose.
+				run.Log(botID, "", "stopped")
+			} else {
+				run.Log(botID, "", "FAILED: %v", err)
+			}
 			fatal[botID] = err
 		}
 		if len(fatal) > 0 {
@@ -531,7 +544,7 @@ func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID str
 
 	maxRuntime := time.Duration(nb.Spec.Guardrails.MaxRuntimeSecs) * time.Second
 	// Exit code and stderr are both already inside RunContainer's error.
-	_, _, err = RunContainer(ContainerSpec{
+	_, _, err = RunContainer(run.Context(), ContainerSpec{
 		Image: image, User: user,
 		BotDir: nb.SourcePath, RunDir: runDir, BlobDir: o.BlobDir,
 		Env: map[string]string{

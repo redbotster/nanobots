@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -162,12 +163,21 @@ func dockerRunArgs(spec ContainerSpec, name string) []string {
 // (defaulting to 5 minutes if unset — comfortably above any example bot's
 // own max_runtime_secs guardrail, since that guardrail is the bot's own
 // promise, not the outer safety net).
-func RunContainer(spec ContainerSpec) (exitCode int, stderr string, err error) {
+//
+// parent lets a caller stop the container early. Until it existed, a hung
+// bot held its container for the entire ceiling — up to 30 minutes — and
+// the only thing anyone could do was watch. Cancelling goes down the same
+// road the timeout already takes, because killing the docker CLI does not
+// touch the container (see below).
+func RunContainer(parent context.Context, spec ContainerSpec) (exitCode int, stderr string, err error) {
 	timeout := spec.MaxRuntime
 	if timeout == 0 {
 		timeout = 5 * time.Minute
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 
 	name := "nanobot-" + uuid.NewString()
@@ -175,6 +185,17 @@ func RunContainer(spec ContainerSpec) (exitCode int, stderr string, err error) {
 	var errBuf bytes.Buffer
 	cmd.Stderr = &errBuf
 	runErr := cmd.Run()
+
+	// Cancelled by the caller rather than timed out. Same physical problem —
+	// the container outlives the CLI — so the same fix, but a different
+	// thing to say afterwards: nothing went wrong here, someone asked.
+	if parent.Err() != nil && ctx.Err() == context.Canceled {
+		if killErr := killContainer(name); killErr != nil {
+			return -1, errBuf.String(), fmt.Errorf(
+				"stopping the container failed (%v) — it may still be running as %s", killErr, name)
+		}
+		return -1, errBuf.String(), ErrStopped
+	}
 
 	if ctx.Err() == context.DeadlineExceeded {
 		// exec.CommandContext SIGKILLs the docker *CLI*, which does nothing
@@ -187,9 +208,7 @@ func RunContainer(spec ContainerSpec) (exitCode int, stderr string, err error) {
 		//
 		// Stopping it needs a separate command against the daemon, on its
 		// own context since the original one is already expired.
-		killCtx, killCancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer killCancel()
-		killErr := exec.CommandContext(killCtx, "docker", "kill", name).Run()
+		killErr := killContainer(name)
 		if killErr != nil {
 			return -1, errBuf.String(), fmt.Errorf(
 				"container exceeded %s, and stopping it failed (%v) — it may still be running as %s",
@@ -204,6 +223,46 @@ func RunContainer(spec ContainerSpec) (exitCode int, stderr string, err error) {
 		return -1, errBuf.String(), fmt.Errorf("run container: %w", runErr)
 	}
 	return 0, errBuf.String(), nil
+}
+
+// ErrStopped is what a container cancelled by its caller returns. A
+// sentinel rather than a string match, so the layers above can tell "a
+// person stopped this" from "this broke" — the two look identical in a log
+// and mean opposite things.
+var ErrStopped = errors.New("stopped from the app")
+
+// killContainer stops a container by name, on its own context: the caller's
+// is already cancelled or expired by the time we get here, and a dead
+// context cannot run the command that does the killing.
+//
+// Necessary because exec.CommandContext SIGKILLs the docker *CLI*, which
+// does nothing to the container the daemon is running — verified against
+// Docker 29.2.1: the container is still Up seconds after the client dies.
+//
+// "No such container" and "is not running" are successes, not failures.
+// Containers run with --rm, so cancelling races their own cleanup: the
+// common case for a stop is that the container is already gone by the time
+// we ask. Treating a non-zero exit as failure made a clean stop report
+// "stopping the container failed — it may still be running as nanobot-…",
+// which was both alarming and false, verified against a real stopped run
+// where `docker ps` showed nothing.
+func killContainer(name string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "docker", "kill", name)
+	var errBuf bytes.Buffer
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		msg := strings.ToLower(errBuf.String())
+		if strings.Contains(msg, "no such container") || strings.Contains(msg, "is not running") {
+			return nil
+		}
+		if errBuf.Len() > 0 {
+			return fmt.Errorf("%w: %s", err, strings.TrimSpace(errBuf.String()))
+		}
+		return err
+	}
+	return nil
 }
 
 // agentSourceHash fingerprints everything that ends up in the agent binary:

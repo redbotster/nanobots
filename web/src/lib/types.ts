@@ -102,32 +102,19 @@ export interface PendingApproval {
   writes?: string[];
 }
 
-/** What GET /api/runs returns per run: everything a list renders, and
- * nothing it doesn't. The full Run (with log and outputs) comes from
- * GET /api/runs/{id} — see internal/api/runs.go's runSummaryToJSON for why
- * they're different shapes. */
-export interface RunSummary {
+/** The facts every view of a run needs, wherever it came from.
+ *
+ * Extracted because Run and RunSummary each declared their own copy of
+ * these eight fields, and they drifted the moment one of them gained
+ * `stopped_by_user`: the Runs list knew a run had been stopped and the run
+ * detail page did not. One declaration, two shapes that extend it. */
+export interface RunCore {
   id: string;
   swarm_name: string;
   status: RunStatus;
   started_at: string;
   finished_at?: string;
   error?: string;
-  triggered_by: "manual" | "schedule";
-  swarm_path?: string;
-  pending_approval_count: number;
-}
-
-export interface Run {
-  id: string;
-  swarm_name: string;
-  status: RunStatus;
-  started_at: string;
-  finished_at?: string;
-  error?: string;
-  log: LogEntry[];
-  pending_approvals: PendingApproval[] | null;
-  outputs: Record<string, Record<string, unknown>>;
   /** "manual" (a human clicked Run) or "schedule" (internal/scheduler
    * fired it) — see docs/scheduler.md. Lets the Runs page explain a run
    * nobody remembers starting. */
@@ -136,6 +123,26 @@ export interface Run {
    * absent on a foundry job (which embeds a Run but has no swarm file).
    * It's what makes "Run it again" possible from the run itself. */
   swarm_path?: string;
+  /** Set when someone stopped this run on purpose. The status is still
+   * "failed" — it did not finish — but a run you ended yourself should not
+   * look like one that broke. */
+  stopped_by_user?: boolean;
+}
+
+/** What GET /api/runs returns per run: everything a list renders, and
+ * nothing it doesn't. The full Run (with log and outputs) comes from
+ * GET /api/runs/{id} — see internal/api/runs.go's runSummaryToJSON for why
+ * they're different shapes. */
+export interface RunSummary extends RunCore {
+  /** A count, not the approvals themselves — enough for a badge and for
+   * "N runs are waiting on you", which is all a list needs. */
+  pending_approval_count: number;
+}
+
+export interface Run extends RunCore {
+  log: LogEntry[];
+  pending_approvals: PendingApproval[] | null;
+  outputs: Record<string, Record<string, unknown>>;
   tolerated?: ToleratedFailure[];
   /** "<bot>.<service>" pairs this run reached through fixtures rather than
    * a real account. A run made of demo data succeeds and looks exactly like

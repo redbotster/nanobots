@@ -30,6 +30,34 @@ async function reqText(path: string): Promise<string> {
   return res.text();
 }
 
+/** Unchanged is what a conditional GET returns when the server says 304.
+ * Distinct from `undefined` so a caller can tell "nothing changed" from
+ * "there is no data". */
+export const Unchanged = Symbol("unchanged");
+
+/** A GET that skips the work when nothing has changed.
+ *
+ * The runs list is 91KB and polled every two seconds; almost every poll is
+ * byte-identical to the last. With an ETag the server answers 304 with no
+ * body, and — the part that matters more than bandwidth — the caller can
+ * skip parsing it and skip the React state update, so an idle Runs page
+ * stops re-rendering itself twice a second.
+ *
+ * The caller owns the tag rather than the browser: see writeJSONCached for
+ * why the responses are no-store.
+ */
+export async function getIfChanged<T>(
+  path: string,
+  etag: string | null,
+): Promise<{ data: T; etag: string | null } | typeof Unchanged> {
+  const res = await fetch(path, {
+    headers: etag ? { "If-None-Match": etag } : undefined,
+  });
+  if (res.status === 304) return Unchanged;
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return { data: (await res.json()) as T, etag: res.headers.get("ETag") };
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
@@ -85,6 +113,8 @@ export const api = {
       body: JSON.stringify({ message }),
     }),
   spend: () => req<SpendResponse>("/api/spend"),
+  cancelRun: (id: string) =>
+    req<{ ok: boolean }>(`/api/runs/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
   listConnections: () => req<ConnectionStatus[]>("/api/connections"),
   connectToken: (service: ConnectableService, token: string) =>
     req<ConnectionStatus>(`/api/connections/${service}`, {

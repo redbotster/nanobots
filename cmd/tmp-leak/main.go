@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -11,7 +12,7 @@ import (
 
 func main() {
 	// A bot that ignores its budget: sleeps far past MaxRuntime.
-	_, _, err := runner.RunContainer(runner.ContainerSpec{
+	_, _, err := runner.RunContainer(context.Background(), runner.ContainerSpec{
 		Image:      "nanobots-hang-probe:local",
 		User:       "0:0",
 		BotDir:     "/tmp",

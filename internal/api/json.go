@@ -1,8 +1,11 @@
 package api
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"strings"
 )
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -30,4 +33,59 @@ func nonNil[T any](s []T) []T {
 		return []T{}
 	}
 	return s
+}
+
+// writeJSONCached is writeJSON plus a conditional GET.
+//
+// The Runs page and the approval poller both fetch GET /api/runs every two
+// seconds. On a machine with 199 runs that response is 91KB, and it is
+// byte-identical between polls almost every time — 45KB/s of JSON marshalled
+// on the server, sent over the wire, and parsed by the browser, to tell it
+// nothing changed. An open tab left alone for an hour costs about 160MB.
+//
+// So: hash the body, hand it back as an ETag, and answer 304 with no body
+// when the caller says it already has that one. Standard HTTP, nothing
+// invented, and it works for any list endpoint.
+//
+// Cache-Control is no-store rather than no-cache on purpose. With no-cache
+// the browser may satisfy a revalidation from its own cache and hand
+// JavaScript a 200 with a body — saving the bytes but not the parse or the
+// re-render. no-store keeps the browser out of it entirely: our explicit
+// If-None-Match goes up, a real 304 comes back, and the client can skip
+// updating state at all.
+func writeJSONCached(w http.ResponseWriter, r *http.Request, status int, v any) {
+	body, err := json.Marshal(v)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	sum := sha256.Sum256(body)
+	etag := `"` + hex.EncodeToString(sum[:16]) + `"`
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Cache-Control", "no-store")
+	if match := r.Header.Get("If-None-Match"); match != "" && etagMatches(match, etag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.WriteHeader(status)
+	_, _ = w.Write(append(body, '\n'))
+}
+
+// etagMatches handles the comma-separated list form of If-None-Match, and
+// the weak-comparison "W/" prefix a proxy may add. Not doing this would
+// silently disable the whole thing the moment anything sat in front of the
+// daemon.
+func etagMatches(header, etag string) bool {
+	for _, candidate := range strings.Split(header, ",") {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "*" {
+			return true
+		}
+		if strings.TrimPrefix(candidate, "W/") == strings.TrimPrefix(etag, "W/") {
+			return true
+		}
+	}
+	return false
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api } from "./api";
+import { getIfChanged, Unchanged } from "./api";
 import type { RunSummary } from "./types";
 
 /**
@@ -25,12 +25,18 @@ const listeners = new Set<Listener>();
 let timer: ReturnType<typeof setInterval> | null = null;
 let latest: RunSummary[] | null = null;
 let visibilityBound = false;
+let etag: string | null = null;
 
 async function fetchOnce() {
   try {
-    const runs = await api.listRuns();
-    latest = runs;
-    for (const fn of listeners) fn(runs);
+    const res = await getIfChanged<RunSummary[]>("/api/runs", etag);
+    // 304: same bytes as last time. Returning here is the whole win — no
+    // parse, no new array, no listener call, so an idle Runs page stops
+    // re-rendering itself every two seconds over data that did not move.
+    if (res === Unchanged) return;
+    etag = res.etag;
+    latest = res.data;
+    for (const fn of listeners) fn(res.data);
   } catch {
     // A failed poll is not an event — nanobotd restarting shouldn't blank
     // the list. The next tick recovers.
@@ -76,5 +82,9 @@ export function useRuns(): RunSummary[] | null {
 /** Forces an immediate refetch — for right after starting or approving
  * something, where waiting up to two seconds to see it feels broken. */
 export function refreshRuns() {
+  // Drop the tag first: this is called right after an action the user took,
+  // and the point is to see its effect immediately rather than to confirm
+  // nothing changed.
+  etag = null;
   void fetchOnce();
 }

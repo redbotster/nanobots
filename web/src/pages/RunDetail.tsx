@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useRun } from "../lib/useRun";
+import { refreshRuns } from "../lib/runsFeed";
 import { api } from "../lib/api";
 import { Tabs } from "../components/Tabs";
 import { RunLog } from "../components/RunLog";
@@ -197,6 +198,21 @@ export function RunDetail({
   const [rerunError, setRerunError] = useState<string | null>(null);
 
   const finished = run?.status === "failed" || run?.status === "succeeded";
+  const [stopping, setStopping] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
+  const stop = async () => {
+    if (!run) return;
+    setStopping(true);
+    setStopError(null);
+    try {
+      await api.cancelRun(run.id);
+      refreshRuns();
+    } catch (e) {
+      setStopError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setStopping(false);
+    }
+  };
   const canRerun = finished && !!run?.swarm_path;
 
   const rerun = async () => {
@@ -228,8 +244,8 @@ export function RunDetail({
           </h1>
           {run && (
             <span className="flex items-center gap-1.5 text-xs text-muted">
-              <StatusDot tone={tone[run.status] ?? "muted"} />
-              {run.status.replace("_", " ")}
+              <StatusDot tone={run.stopped_by_user ? "muted" : (tone[run.status] ?? "muted")} />
+              {run.stopped_by_user ? "stopped" : run.status.replace("_", " ")}
             </span>
           )}
           {run?.triggered_by === "schedule" && (
@@ -239,6 +255,19 @@ export function RunDetail({
             >
               ⏰ scheduled
             </span>
+          )}
+          {!finished && run && (
+            // A running swarm holds a container until it finishes or hits
+            // its ceiling — up to thirty minutes. Watching was the only
+            // option before this.
+            <button
+              onClick={() => void stop()}
+              disabled={stopping}
+              className="ml-auto shrink-0 rounded border border-edge-strong px-2.5 py-1 font-display text-xs text-muted transition-colors hover:border-danger hover:text-danger disabled:opacity-50"
+              title="Stop this run and its container now"
+            >
+              {stopping ? "Stopping…" : "■ Stop"}
+            </button>
           )}
           {canRerun && (
             <button
@@ -252,10 +281,11 @@ export function RunDetail({
           )}
         </div>
         <p className="mt-1 text-[11px] text-muted">{runId}</p>
+        {stopError && <p className="mt-1 text-[12px] text-danger">Couldn't stop it: {stopError}</p>}
 
         {/* The backend has always sent this; nothing rendered it, so a failed
             run said "failed" and made you read the whole log to find out why. */}
-        {run?.status === "failed" && run.error && (
+        {run?.status === "failed" && run.error && !run.stopped_by_user && (
           <FailureBanner error={run.error} onOpenSettings={onOpenSettings} />
         )}
         {/* A run that finished with a hole in it. Rendered as a warning

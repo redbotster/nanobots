@@ -203,7 +203,7 @@ func (s *Server) handleListSwarms(w http.ResponseWriter, r *http.Request) {
 		}
 		swarms = append(swarms, summary)
 	}
-	writeJSON(w, http.StatusOK, nonNil(swarms))
+	writeJSONCached(w, r, http.StatusOK, nonNil(swarms))
 }
 
 // handleResumeSchedule starts a paused schedule firing again.

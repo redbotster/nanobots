@@ -6,6 +6,7 @@
 package runner
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"sync"
@@ -77,6 +78,14 @@ type Run struct {
 	// *do* need synchronized access). Exists so the Runs page can show a
 	// run nobody clicked "why did this happen" instead of a mystery entry.
 	TriggeredBy string `json:"triggered_by"`
+	// StoppedByUser marks a run someone stopped on purpose. The status is
+	// still "failed" — it did not finish, and inventing a sixth RunStatus
+	// would mean auditing every switch, tone map and terminal check for a
+	// distinction the error message already carries. But the scheduler's
+	// circuit breaker has to know: five runs you stopped by hand are not a
+	// swarm that is broken, and pausing its schedule over them would be the
+	// app misreading you.
+	StoppedByUser bool `json:"stopped_by_user,omitempty"`
 	// SwarmPath is the file this run was planned from — the one fact needed
 	// to run the same thing again. Set once by ExecuteSwarm and never
 	// mutated (same safety argument as TriggeredBy). Empty for a foundry
@@ -98,9 +107,17 @@ type Run struct {
 	approvals     map[string]*PendingApproval
 	subscribers   map[chan LogEntry]bool
 	onTerminalFns []func(*Run)
+	// ctx/cancel are the run's lifetime — see Context and Stop.
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 func NewRun(swarmName string) *Run {
+	// Every run carries its own cancellable lifetime, so Stop has something
+	// to pull. Background rather than a request's context on purpose: a run
+	// outlives the HTTP call that started it, and tying it to that would end
+	// the run the moment the browser tab navigated away.
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Run{
 		ID:          uuid.NewString(),
 		SwarmName:   swarmName,
@@ -110,7 +127,56 @@ func NewRun(swarmName string) *Run {
 		outputs:     map[string]map[string]any{},
 		approvals:   map[string]*PendingApproval{},
 		subscribers: map[chan LogEntry]bool{},
+		ctx:         ctx,
+		cancel:      cancel,
 	}
+}
+
+// Context is the run's lifetime. Everything that can block — a container, a
+// step callback — should take it, so Stop actually stops rather than
+// politely asking and waiting out the ceiling.
+func (r *Run) Context() context.Context {
+	if r.ctx == nil {
+		// A Run built as a bare struct literal (some tests do) has no
+		// context. Never nil to a caller: a nil context panics deep inside
+		// exec, a long way from the line that forgot to use the constructor.
+		return context.Background()
+	}
+	return r.ctx
+}
+
+// Stop asks the run to end now. Idempotent, and safe to call on a run that
+// has already finished — the second Stop of a run that is already stopping
+// is a double-click, not an error.
+//
+// Returns false when there was nothing to stop, so the API can answer 409
+// rather than pretending it did something.
+func (r *Run) Stop() bool {
+	r.mu.Lock()
+	if r.Status == StatusSucceeded || r.Status == StatusFailed {
+		r.mu.Unlock()
+		return false
+	}
+	r.StoppedByUser = true
+	cancel := r.cancel
+	r.mu.Unlock()
+
+	r.Log("", "", "stopping — asked from the app")
+	if cancel != nil {
+		cancel()
+	}
+	// An approval gate is not waiting on the context, it is waiting on a
+	// human. Releasing those is what lets a run parked at a gate actually
+	// end rather than sit there until the approval times out.
+	r.releaseApprovals()
+	return true
+}
+
+// WasStoppedByUser reports whether someone stopped this run on purpose.
+func (r *Run) WasStoppedByUser() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.StoppedByUser
 }
 
 func (r *Run) Log(bot, step, format string, a ...any) {
@@ -458,6 +524,26 @@ func (r *Run) Decide(approvalID string, approved bool, decidedBy string) error {
 	}
 	pa.decision <- approvalDecision{approved: approved, decidedBy: decidedBy}
 	return nil
+}
+
+// releaseApprovals unblocks anything waiting on a human.
+//
+// Cancelling the context does not reach an approval gate: it is waiting on
+// pa.decision and its own timeout, not on the run's context. Without this,
+// stopping a run parked at "Approval needed" would cancel the containers
+// that are not running and leave the one thing that is — a wait for a
+// person — to sit there for the rest of its thirty-minute window.
+//
+// Closing rather than sending false: the receiver already distinguishes the
+// two (see RequestApproval's `if !ok`), and a closed channel says "nobody is
+// going to answer this" where a false would say "someone said no".
+func (r *Run) releaseApprovals() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, pa := range r.approvals {
+		delete(r.approvals, id)
+		close(pa.decision)
+	}
 }
 
 func (r *Run) PendingApprovals() []*PendingApproval {

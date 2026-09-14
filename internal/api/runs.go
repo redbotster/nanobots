@@ -1,7 +1,9 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
+	"sort"
 
 	"github.com/redbotster/nanobots/internal/runner"
 )
@@ -35,11 +37,22 @@ func (s *Server) handleStartRun(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 	runs := s.Runs.List()
+	// Newest first, and sorted at all: RunStore.List ranges over a map, so
+	// the order was whatever Go felt like that iteration. Every client
+	// re-sorted anyway, but an unstable order also means an unstable
+	// response body — which would defeat the conditional GET below by
+	// producing a different ETag every poll for identical data.
+	sort.Slice(runs, func(i, j int) bool {
+		if runs[i].StartedAt.Equal(runs[j].StartedAt) {
+			return runs[i].ID < runs[j].ID // a tiebreak, so ties are stable too
+		}
+		return runs[i].StartedAt.After(runs[j].StartedAt)
+	})
 	out := make([]any, len(runs))
 	for i, run := range runs {
 		out[i] = runSummaryToJSON(run)
 	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSONCached(w, r, http.StatusOK, out)
 }
 
 // runSummaryToJSON is what the list endpoint returns: everything a run list
@@ -53,7 +66,7 @@ func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
 // way to tens of MB a minute. GET /api/runs/{id} still returns the whole
 // thing; that's the endpoint that has a reader for it.
 func runSummaryToJSON(run *runner.Run) map[string]any {
-	return map[string]any{
+	out := map[string]any{
 		"id":           run.ID,
 		"swarm_name":   run.SwarmName,
 		"status":       run.GetStatus(),
@@ -66,6 +79,13 @@ func runSummaryToJSON(run *runner.Run) map[string]any {
 		// for "N runs are waiting on you", which is all a list needs.
 		"pending_approval_count": len(run.PendingApprovals()),
 	}
+	// Only when true. This list is polled every two seconds and the field
+	// is false for almost every run ever; a key per row to say "no" is the
+	// kind of thing that turns a lean summary back into a fat one.
+	if run.WasStoppedByUser() {
+		out["stopped_by_user"] = true
+	}
+	return out
 }
 
 func (s *Server) handleGetRun(w http.ResponseWriter, r *http.Request) {
@@ -108,13 +128,17 @@ func runToJSON(run *runner.Run) map[string]any {
 	pending := make([]*runner.PendingApproval, len(approvals))
 	copy(pending, approvals)
 	return map[string]any{
-		"id":                run.ID,
-		"swarm_name":        run.SwarmName,
-		"status":            run.GetStatus(),
-		"started_at":        run.StartedAt,
-		"finished_at":       run.GetFinishedAt(),
-		"error":             run.GetError(),
-		"triggered_by":      run.TriggeredBy,
+		"id":           run.ID,
+		"swarm_name":   run.SwarmName,
+		"status":       run.GetStatus(),
+		"started_at":   run.StartedAt,
+		"finished_at":  run.GetFinishedAt(),
+		"error":        run.GetError(),
+		"triggered_by": run.TriggeredBy,
+		// Whether someone stopped this on purpose. Without it a run you
+		// ended yourself is indistinguishable from one that broke — same
+		// red dot, same "failed".
+		"stopped_by_user":   run.WasStoppedByUser(),
 		"swarm_path":        run.SwarmPath,
 		"log":               run.LogEntries(),
 		"pending_approvals": pending,
@@ -128,4 +152,27 @@ func runToJSON(run *runner.Run) map[string]any {
 		// a real one, and that is the default.
 		"demo_services": run.DemoServices(),
 	}
+}
+
+// handleCancelRun stops a run that is still going.
+//
+// Until this existed there was no way to stop anything. A bot that hangs
+// holds its container for the whole max_runtime ceiling — up to thirty
+// minutes — and the only available action was to watch. On one real machine
+// that ceiling was hit 41 times by a single swarm.
+//
+// Answers 409 rather than 200 for a run that has already finished: "stopped"
+// and "it was already over" are different outcomes and the caller may care.
+func (s *Server) handleCancelRun(w http.ResponseWriter, r *http.Request) {
+	run, err := s.Runs.Get(r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	if !run.Stop() {
+		writeError(w, http.StatusConflict, fmt.Errorf(
+			"run %s already finished (%s)", run.ID, run.GetStatus()))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": run.ID})
 }

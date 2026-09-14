@@ -94,6 +94,12 @@ func (b *Breaker) Check(swarmName string, runs []*runner.Run) Status {
 		if r.SwarmName != swarmName || !r.StartedAt.After(after) {
 			continue
 		}
+		// A run you stopped by hand is not the swarm failing. Five of those
+		// in a row should not pause a schedule — that would be the app
+		// misreading a deliberate act as a fault.
+		if r.WasStoppedByUser() {
+			continue
+		}
 		switch r.GetStatus() {
 		case runner.StatusSucceeded, runner.StatusFailed:
 			mine = append(mine, r)
