@@ -118,6 +118,125 @@ cd web && npm install && npm run dev
 
 Once the WebUI is running, in **basic mode** (the default): type what you want automated into the box at the top of Swarms, review the draft that opens, and hit Save — or just pick one of the ready-made swarms in the gallery below it and click **Run**. Flip the header toggle to **Advanced** for the bot library and the manual canvas builder. **Settings** connects a real account — click **Connect** on Google (real OAuth consent screen) or paste a Slack/GitHub/Stripe/HubSpot token directly; every credential lands in a 1Claw vault secret, never on this machine's disk, and connecting an account never changes a bot's behavior by itself — each bot ships on `connection: demo` until you deliberately switch a specific service to a live connection in its `nanobot.yaml`.
 
+## Setup: going from demo data to real accounts
+
+Everything below is optional. With nothing configured at all, `nanobots up` runs
+the whole catalog against fixtures — a fresh clone can run a four-bot swarm to
+success before you have set up anything. This section is about making it real.
+
+There are three layers, and each is useful on its own.
+
+### 1. A model — makes bots think
+
+Without one, every `ai.generate` step returns its canned fixture text. Any one
+of these in `~/.secrets/nanobots.env` is enough:
+
+```sh
+ONECLAW_API_KEY=...     # best: per-agent budget, PII redaction, injection screening
+ANTHROPIC_API_KEY=...   # or
+OPENAI_API_KEY=...      # or (any chat-completions gateway, with OPENAI_BASE_URL)
+GEMINI_API_KEY=...      # or
+```
+
+Restart `nanobotd` after editing the file; it is read at startup only, and is
+never written into this repo, logged, or handed to a bot container. Settings
+shows which backend is live and whether guardrails are on.
+
+### 2. 1Claw — holds the credentials
+
+`ONECLAW_API_KEY` does double duty: it is a model backend *and* the vault every
+connected account lands in. Without it you can still run bots against a model,
+but there is nowhere safe to put a Gmail token, so real service calls stay off.
+
+One thing to watch: this repo gives **every distinct bot name its own 1Claw
+agent**, and plans cap how many an account can hold. Settings → System → Posture
+shows the count against your plan (`25/50 agents`) and turns amber at 80%. Past
+the cap, a run that needs a new bot fails with `Agent limit reached`
+(`docs/oneclaw-bridge.md`).
+
+### 3. Connect an account — makes bots act
+
+All of this happens in **Settings → Connect a service**. Two kinds, very
+different effort.
+
+**Paste a token.** No OAuth app, about a minute each:
+
+| Provider | Where to get it | Scope |
+|---|---|---|
+| GitHub | a personal access token | `repo`, or `public_repo` for public repos only |
+| Slack | api.slack.com/apps → bot token (`xoxb-…`) | `chat:write` |
+| Stripe | dashboard.stripe.com/apikeys | a secret key |
+| HubSpot | a private app token | `crm.objects.contacts.read`, `.write` |
+
+**Register your own OAuth app.** Longer, and the client id goes in
+`~/.secrets/nanobots.env` before the Connect button will do anything:
+
+| Provider | Env var | Scopes it asks for |
+|---|---|---|
+| Google | `GOOGLE_OAUTH_CLIENT_ID` | Gmail read/send/compose/modify, Drive file+readonly, Calendar readonly |
+| X | `X_OAUTH_CLIENT_ID` | `tweet.read`, `tweet.write`, `users.read`, `offline.access` |
+| LinkedIn | `LINKEDIN_OAUTH_CLIENT_ID` | `openid`, `profile`, `w_member_social` |
+
+No client secret: all three use OAuth2 + PKCE as a public client
+(`internal/oauth2pkce`).
+
+**Register it as a "Desktop app" / native client.** The redirect is a loopback
+URL on an **ephemeral port** — `http://127.0.0.1:<random>/` — because the flow
+starts a throwaway local listener. Google's Desktop-app client type accepts any
+loopback port, which is the path this build is tested on. A provider console
+that demands one exact redirect URI does not fit that, and X and LinkedIn have
+not been taken through registration here — treat those two as implemented but
+unverified end to end.
+
+1Claw's connector presets (`nanobots connectors`, `docs/connectors.md`) do **not**
+remove this step. 1Claw ships no shared OAuth apps, so you still register your
+own app once — with 1Claw rather than with this repo.
+
+### What each swarm needs
+
+Connecting nothing is fine; those swarms run on fixtures. This is the cost of
+making each one real:
+
+| Swarm | Needs connected | Your own OAuth app? |
+|---|---|---|
+| `supervisor-review` | nothing | no |
+| `github-digest-to-slack` | github, slack | no |
+| `daily-email-recap` | google | google |
+| `inbox-autopilot` | google | google |
+| `listen-and-reply` | x | x |
+| `never-drop-a-thread` | google | google |
+| `weekly-client-report` | google | google |
+| `bookkeeping-assistant` | google, slack | google |
+| `daily-inbox-recap` | google, slack | google |
+| `meeting-to-action` | google, slack | google |
+| `morning-brief` | google, slack | google |
+| `support-desk-lite` | google, slack | google |
+| `get-paid` | google, slack, stripe | google |
+| `lead-to-meeting` | google, hubspot, slack | google |
+| `content-engine` | linkedin, x | linkedin, x |
+| `repurpose-everything` | google, linkedin, x | google, linkedin, x |
+
+`supervisor-review` needs nothing because it only reasons. **`github-digest-to-slack`
+is the cheapest real automation**: two pasted tokens, no OAuth app, and it is
+already on a weekday-morning cron. Google is the widest unlock: one OAuth app
+turns on twelve of the sixteen.
+
+`review-responder` declares `google_business_profile`, for which no client exists
+yet; that bot stays on fixtures whatever you connect (`docs/connections.md`).
+
+### Checking it worked
+
+```sh
+nanobots conform bots     # all 39 bots against their fixtures
+nanobots plan             # all 16 swarms type-check
+nanobots webhook <swarm>  # the URL and token for a webhook swarm
+nanobots spend            # what the models have cost
+```
+
+A run tells you which services were fixtures and which were real: the run detail
+page shows a **DEMO DATA** banner naming them, and each log line says
+`-> ok (demo data — not your real google)` when it was a fixture.
+
 ## The catalog
 
 **39 bots** (`bots/`) — 33 job bricks plus 6 utility bricks (`approve`, `notify`, `render-pdf`, `drive-save`, `drive-watch`, `form-to-sheet`), all at `0.1.0`:
