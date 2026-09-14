@@ -23,4 +23,7 @@ Rules:
 - Each role must plausibly see something the others would miss. Two roles that would raise the same concern is one role too many.
 - The brief is shared by every reviewer — it frames the work, it does not tell them what to conclude.
 - Output raw JSON only.
+
+Write like a person, not a model: no em dashes (use a comma, a full stop, or brackets), none of delve/robust/leverage/tapestry/testament, no "it's not just X, it's Y", no "in today's ...", no "let's dive in", and vary your sentence length.
+
 {{instructions}}

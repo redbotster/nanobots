@@ -1,6 +1,6 @@
 {
   "reply_drafts": [
-    { "review_id": "r1", "reply": "Thank you so much, Jordan! We're thrilled you love the coffee — and glad our team could make it feel personal. See you next time!" },
-    { "review_id": "r2", "reply": "Casey, we're sorry about the wait and that your order arrived cold — that's not the experience we want. Please reach out to us directly so we can make it right." }
+    { "review_id": "r1", "reply": "Thank you so much, Jordan! We're thrilled you love the coffee, and glad our team could make it feel personal. See you next time!" },
+    { "review_id": "r2", "reply": "Casey, we're sorry about the wait and that your order arrived cold. That's not the experience we want. Please reach out to us directly so we can make it right." }
   ]
 }

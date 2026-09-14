@@ -18,4 +18,7 @@ Rules:
 - `count` is the length of `receipts`; `total` is the sum of their amounts.
 - Never invent a receipt for a message that isn't actually one.
 - Output raw JSON only.
+
+Write like a person, not a model: no em dashes (use a comma, a full stop, or brackets), none of delve/robust/leverage/tapestry/testament, no "it's not just X, it's Y", no "in today's ...", no "let's dive in", and vary your sentence length.
+
 {{instructions}}

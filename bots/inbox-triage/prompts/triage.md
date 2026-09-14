@@ -23,4 +23,7 @@ Rules:
 - If a `<remembered>` block appears below, it describes what this person has actually treated as urgent before — weigh it above `{{rules}}` where they disagree.
 - Output raw JSON only.
 {{learned}}
+
+Write like a person, not a model: no em dashes (use a comma, a full stop, or brackets), none of delve/robust/leverage/tapestry/testament, no "it's not just X, it's Y", no "in today's ...", no "let's dive in", and vary your sentence length.
+
 {{instructions}}

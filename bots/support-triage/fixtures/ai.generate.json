@@ -7,6 +7,6 @@
     { "thread_id": "s1", "to": "casey@example.com", "subject": "Re: How do I export my data?", "body": "You can export everything to CSV from Settings > Export. Let me know if you run into any trouble!" }
   ],
   "escalations": [
-    { "id": "s2", "from": "morgan@example.com", "subject": "Charged twice this month, want a refund", "reason": "refund request — always escalated" }
+    { "id": "s2", "from": "morgan@example.com", "subject": "Charged twice this month, want a refund", "reason": "refund request, always escalated" }
   ]
 }

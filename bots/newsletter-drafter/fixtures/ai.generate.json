@@ -2,7 +2,7 @@
   "subject": "The dashboard launch, and a pricing experiment that worked",
   "intro": "Two updates this week: what we learned shipping late, and a pricing test worth stealing.",
   "sections": [
-    { "heading": "We shipped the dashboard three months late", "body": "Activation is up 18% since launch — the migration cost was the part we underestimated, not the feature itself.", "link": "https://example.com/posts/q3-launch" },
+    { "heading": "We shipped the dashboard three months late", "body": "Activation is up 18% since launch. The migration cost was the part we underestimated, not the feature itself.", "link": "https://example.com/posts/q3-launch" },
     { "heading": "Usage-based pricing beat the flat tier 2:1", "body": "We ran a simple A/B test on the add-on pricing page. The usage-based option won by a wide margin.", "link": "https://example.com/posts/pricing-experiment" }
   ]
 }

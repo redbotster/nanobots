@@ -1,12 +1,12 @@
 {
   "concerns": [
     {
-      "issue": "No description of how the token is transmitted from the settings page to the vault — if it travels over the wire or through an intermediate service in plaintext, or is logged at any point in that path, the vault storage is irrelevant.",
+      "issue": "No description of how the token is transmitted from the settings page to the vault. If it travels over the wire or through an intermediate service in plaintext, or is logged at any point in that path, the vault storage is irrelevant.",
       "severity": "blocker",
       "why": "A single log line, a debug trace, or an unencrypted transport hop exposes the full token to anyone with access to that infrastructure, making the vault protection meaningless."
     },
     {
-      "issue": "Showing the last four characters is not verified to be the only retrieval path — if any API endpoint or internal service can return the full token value, the masking is cosmetic.",
+      "issue": "Showing the last four characters is not verified to be the only retrieval path. If any API endpoint or internal service can return the full token value, the masking is cosmetic.",
       "severity": "blocker",
       "why": "An attacker who compromises the application layer or an internal caller can exfiltrate all stored tokens regardless of what the UI displays."
     },
@@ -16,7 +16,7 @@
       "why": "Storing attacker-controlled data verbatim in a vault can enable injection attacks against vault query interfaces or downstream systems that consume the token."
     }
   ],
-  "one_line": "The transmission path and full-token retrieval surface are unspecified — the vault is only as good as the weakest link we haven't described yet.",
+  "one_line": "The transmission path and full-token retrieval surface are unspecified. The vault is only as good as the weakest link we haven't described yet.",
   "recommendation": "do-not-ship",
   "role": "Security engineer"
 }

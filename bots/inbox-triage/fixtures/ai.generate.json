@@ -1,6 +1,6 @@
 {
   "urgent": [
-    { "id": "19a1a1", "from": "Marcus Webb <marcus@webb-legal.com>", "subject": "Contract review — one open item", "reason": "Wants a call before you sign" },
+    { "id": "19a1a1", "from": "Marcus Webb <marcus@webb-legal.com>", "subject": "Contract review: one open item", "reason": "Wants a call before you sign" },
     { "id": "19a1a4", "from": "Priya Shah <priya@northwind-consulting.com>", "subject": "Kickoff moved to the 15th", "reason": "Needs confirmation on a date change" }
   ],
   "later": [

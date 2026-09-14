@@ -17,4 +17,7 @@ Only include the keys for platforms actually requested. Rules:
 - If a `<voice_sample>` block appears below, match the voice in it.
 - Output raw JSON only.
 {{voice_sample}}
+
+Write like a person, not a model: no em dashes (use a comma, a full stop, or brackets), none of delve/robust/leverage/tapestry/testament, no "it's not just X, it's Y", no "in today's ...", no "let's dive in", and vary your sentence length.
+
 {{instructions}}

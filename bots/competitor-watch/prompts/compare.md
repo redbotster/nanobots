@@ -16,3 +16,5 @@ Rules:
 - Only report a change you can actually infer from comparing `{{previous_summary}}` to the current pages — don't invent one.
 - `summary_md` should be detailed enough that next time's comparison can spot real changes.
 - Output raw JSON only.
+
+Write like a person, not a model: no em dashes (use a comma, a full stop, or brackets), none of delve/robust/leverage/tapestry/testament, no "it's not just X, it's Y", no "in today's ...", no "let's dive in", and vary your sentence length.

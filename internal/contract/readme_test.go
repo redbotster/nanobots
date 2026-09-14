@@ -298,3 +298,64 @@ func stripFences(s string) string {
 	}
 	return out.String()
 }
+
+// No bot's demo output may contain an em dash.
+//
+// Those fixtures are what a bot is shown to produce, and on a fresh install
+// they are the only output anyone sees. Twenty-two of them had one, across
+// twelve bots, while the `tone` bot existed specifically to remove them —
+// the catalog was demonstrating the habit it ships a tool to fix.
+//
+// inputs.json and service fixtures are deliberately not checked: those
+// stand in for text a person or a third-party API wrote, and people use em
+// dashes.
+func TestNoBotDemoOutputUsesAnEmDash(t *testing.T) {
+	root := repoRoot(t)
+	entries, err := os.ReadDir(filepath.Join(root, "bots"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		path := filepath.Join(root, "bots", e.Name(), "fixtures", "ai.generate.json")
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			continue // not every bot generates
+		}
+		if n := strings.Count(string(raw), "—"); n > 0 {
+			t.Errorf("%s/fixtures/ai.generate.json has %d em dash(es) — this is demo output, "+
+				"and the catalog should not model the habit `tone` exists to remove", e.Name(), n)
+		}
+	}
+}
+
+// Every prose bot must tell the model the house voice, or it learns the
+// habit from the prompt's own style. Only the four bots written alongside
+// `tone` said anything; the other twenty-three said nothing.
+func TestEveryProsePromptStatesTheHouseVoice(t *testing.T) {
+	root := repoRoot(t)
+	entries, err := os.ReadDir(filepath.Join(root, "bots"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		spec, err := os.ReadFile(filepath.Join(root, "bots", e.Name(), "nanobot.yaml"))
+		if err != nil || !strings.Contains(string(spec), "type: ai.generate") {
+			continue
+		}
+		prompts, _ := filepath.Glob(filepath.Join(root, "bots", e.Name(), "prompts", "*.md"))
+		var all strings.Builder
+		for _, p := range prompts {
+			raw, _ := os.ReadFile(p)
+			all.Write(raw)
+		}
+		if !strings.Contains(strings.ToLower(all.String()), "no em dashes") {
+			t.Errorf("%s generates prose but no prompt tells it the house voice", e.Name())
+		}
+	}
+}
