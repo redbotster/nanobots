@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -57,11 +58,44 @@ func testServerWithFoundry(t *testing.T, agent foundry.Agent) *Server {
 	botsDir := t.TempDir()
 	srv.BotsDir = botsDir
 	srv.Foundry = &foundry.Orchestrator{Config: foundry.Config{
-		RepoRoot: repoRoot(t), BotsDir: botsDir, WorkDir: t.TempDir(),
+		// A throwaway repo, not this one. RepoRoot used to be repoRoot(t),
+		// so every run of this test did `git worktree add -b foundry/<uuid>`
+		// against the developer's actual checkout and left the branch behind
+		// — removeWorktree only cleans up after a successful promote, which
+		// is right for a real job and wrong for a test. Found one still
+		// registered and prunable weeks later.
+		RepoRoot: throwawayRepo(t), BotsDir: botsDir, WorkDir: t.TempDir(),
 		Agent: agent,
 	}}
 	srv.FoundryJobs = foundry.NewJobStore()
 	return srv
+}
+
+// throwawayRepo makes a git repo with one commit in a temp dir, which is
+// all `git worktree add` needs. Mirrors internal/foundry's own
+// newTestRepo; this package cannot import that one because it lives in a
+// _test.go file over there.
+func throwawayRepo(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "bots"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "bots", ".keep"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	git("init", "-q")
+	git("-c", "user.name=test", "-c", "user.email=test@test.local", "add", "-A")
+	git("-c", "user.name=test", "-c", "user.email=test@test.local", "commit", "-q", "-m", "init")
+	return root
 }
 
 func TestHandleStartFoundryJobRejectsWhenFoundryNotConfigured(t *testing.T) {

@@ -2,7 +2,6 @@ package runner
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -164,16 +163,6 @@ func prune(dir string, runs []*Run, keep int) {
 	for _, r := range runs[min(keep, len(runs)):] {
 		os.Remove(filepath.Join(dir, r.ID+".json"))
 	}
-}
-
-// DefaultHistoryDir is where nanobotd keeps run history — a sibling of the
-// blobs/ and runs/ (container scratch) directories it already owns.
-func DefaultHistoryDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("locate home directory for run history: %w", err)
-	}
-	return filepath.Join(home, ".nanobots", "history"), nil
 }
 
 // maxCapturedFixture bounds one recorded fixture on disk. A fixture is
