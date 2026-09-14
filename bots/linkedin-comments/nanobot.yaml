@@ -1,0 +1,54 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: linkedin-comments
+  version: 0.1.0
+  description: Fetch the comments on one of your LinkedIn posts.
+  tags: [social, linkedin, listening]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: bare
+    entrypoint: ./bot.md
+
+  services:
+    - id: linkedin
+      provider: linkedin
+      connection: demo
+
+  ports:
+    inputs:
+      - name: post_urn
+        type: string
+        required: true
+        description: "The post to read, e.g. urn:li:share:7123456789. post-publisher returns this id when it publishes."
+      - name: max_results
+        type: string
+        required: false
+        default: "20"
+    outputs:
+      - name: comments
+        type: list<json>
+        schema: ./schemas/comments.json
+
+  steps:
+    - name: fetch
+      type: service.call
+      service: linkedin
+      op: comments.list
+      params: { post_urn: "{{inputs.post_urn}}", max_results: "{{inputs.max_results}}" }
+      outputs:
+        comments: "{{steps.fetch.output.comments}}"
+
+  guardrails:
+    pii: allow
+    injection_threshold: 0.7
+    max_runtime_secs: 60
+    writes_allowed: []
+
+  resources:
+    preset: small
+    memory: 128Mi
+    cpu: 100m

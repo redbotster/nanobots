@@ -1,0 +1,67 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: comment-responder
+  version: 0.1.0
+  description: Draft replies to comments on your posts, and say which ones deserve no reply.
+  tags: [social, support, writing]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: llm
+    entrypoint: ./bot.md
+
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    max_tokens: 2000
+    temperature: 0.4
+
+  ports:
+    inputs:
+      # Provider-agnostic on purpose. Whatever fetched the comments —
+      # x-mentions, linkedin-comments, a paste — this bot only needs the
+      # comments themselves, so it does not need an API of its own and
+      # cannot be blocked by one.
+      - name: comments
+        type: list<json>
+        required: true
+        description: "Comments to consider, each with at least id, author and text."
+      - name: context
+        type: string
+        required: false
+        default: ""
+        description: "What the original post said, so a reply can be about the actual thing rather than the comment in isolation."
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "Reply like a person, not a brand account. Sound human, not like AI. No em dashes. Never thank someone for their 'valuable feedback'."
+    outputs:
+      - name: replies
+        type: list<json>
+        schema: ./schemas/replies.json
+      - name: summary
+        type: string
+        description: "One line: how many got a draft, how many were left alone, and why."
+
+  steps:
+    - name: draft
+      type: ai.generate
+      prompt_file: ./prompts/draft.md
+      inputs: { comments: "{{inputs.comments}}", context: "{{inputs.context}}", instructions: "{{inputs.instructions}}" }
+      outputs:
+        replies: "{{steps.draft.output.replies}}"
+        summary: "{{steps.draft.output.summary}}"
+
+  guardrails:
+    pii: allow
+    injection_threshold: 0.7
+    max_runtime_secs: 90
+
+  resources:
+    preset: small
+    memory: 256Mi
+    cpu: 250m

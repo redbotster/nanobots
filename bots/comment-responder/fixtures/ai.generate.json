@@ -1,0 +1,9 @@
+{
+  "replies": [
+    { "comment_id": "c1", "author": "@dana", "reply": "Yes, private repos work the same way. The rollout is keyed on your own traffic, not on anything public.", "why": "a real question the post's setup answers" },
+    { "comment_id": "c2", "author": "@marcus", "reply": "", "why": "praise with no question, nothing to add" },
+    { "comment_id": "c3", "author": "@priya", "reply": "You're right, 2.3. Thanks for the correction.", "why": "factual correction, concede it plainly" },
+    { "comment_id": "c4", "author": "@growthguy", "reply": "", "why": "self-promotion, not a comment on the post" }
+  ],
+  "summary": "Drafted 2 of 4: one question answered and one correction conceded. Left praise and a newsletter plug alone."
+}

@@ -1,0 +1,9 @@
+{
+  "comments": [
+    { "id": "c1", "author": "@dana", "text": "Does this work if the repo is private?" },
+    { "id": "c2", "author": "@marcus", "text": "Great post!" },
+    { "id": "c3", "author": "@priya", "text": "Small correction: the flag was added in 2.3, not 2.4." },
+    { "id": "c4", "author": "@growthguy", "text": "Check out my newsletter for more tips like this 👇" }
+  ],
+  "context": "We deleted our staging environment and replaced it with feature flags and 2% traffic rollouts."
+}

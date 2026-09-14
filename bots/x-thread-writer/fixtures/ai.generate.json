@@ -1,0 +1,10 @@
+{
+  "thread": [
+    "We deleted our staging environment last month. It was catching about one bug a quarter and costing four figures a month in cloud spend and maintenance.",
+    "The problem with staging is that it is never actually like production. Different data, different scale, different traffic. Bugs that matter do not show up there.",
+    "What replaced it: feature flags, and shipping to 2% of real traffic first. Same safety, real data, and we find things staging never would have.",
+    "The migration took a week. Most of it was moving the two integration tests that genuinely needed a full environment into ephemeral containers in CI.",
+    "If your staging environment catches real bugs, keep it. Ours had quietly stopped years ago and nobody had checked."
+  ],
+  "preview": "1/ We deleted our staging environment last month. It was catching about one bug a quarter and costing four figures a month in cloud spend and maintenance.\n\n2/ The problem with staging is that it is never actually like production. Different data, different scale, different traffic. Bugs that matter do not show up there.\n\n3/ What replaced it: feature flags, and shipping to 2% of real traffic first. Same safety, real data, and we find things staging never would have.\n\n4/ The migration took a week. Most of it was moving the two integration tests that genuinely needed a full environment into ephemeral containers in CI.\n\n5/ If your staging environment catches real bugs, keep it. Ours had quietly stopped years ago and nobody had checked."
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanobots.dev/bots/comment-responder/schemas/replies.json",
+  "title": "Replies",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["comment_id", "author", "reply", "why"],
+    "properties": {
+      "comment_id": { "type": "string", "description": "The id of the comment being replied to, carried through so a publisher knows where to put it." },
+      "author": { "type": "string" },
+      "reply": { "type": "string", "description": "The drafted reply. Empty when this comment should not get one." },
+      "why": { "type": "string", "description": "One line on why this reply, or why none. The part a human reads when deciding to send." }
+    }
+  }
+}

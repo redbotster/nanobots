@@ -2,6 +2,8 @@ package step
 
 import (
 	"errors"
+	"github.com/redbotster/nanobots/internal/linkedin"
+	"strings"
 	"testing"
 )
 
@@ -12,6 +14,16 @@ type fakeLinkedInAPI struct {
 	gotText string
 	id      string
 	postErr error
+
+	gotCommentURN string
+	gotMax        int
+	comments      []linkedin.Comment
+	commentsErr   error
+}
+
+func (f *fakeLinkedInAPI) Comments(postURN string, max int) ([]linkedin.Comment, error) {
+	f.gotCommentURN, f.gotMax = postURN, max
+	return f.comments, f.commentsErr
 }
 
 func (f *fakeLinkedInAPI) UserInfo() (string, error) { return f.urn, f.urnErr }
@@ -60,5 +72,35 @@ func TestLinkedInClientErrorsWhenNotConfigured(t *testing.T) {
 	l := &LiveDeps{}
 	if _, err := l.linkedinClient(); err == nil {
 		t.Fatal("expected an error when LinkedInConfig is unset")
+	}
+}
+
+func TestDispatchLinkedInCommentsListFlattensForAListJSONPort(t *testing.T) {
+	f := &fakeLinkedInAPI{comments: []linkedin.Comment{
+		{ID: "urn:li:comment:1", Text: "does this work for private pages?", Author: "urn:li:person:abc", At: "2026-09-14T10:00:00Z"},
+	}}
+	out, err := dispatchLinkedIn(f, "comments.list",
+		map[string]any{"post_urn": "urn:li:share:7", "max_results": "5"})
+	if err != nil {
+		t.Fatalf("dispatchLinkedIn: %v", err)
+	}
+	if f.gotCommentURN != "urn:li:share:7" || f.gotMax != 5 {
+		t.Errorf("urn=%q max=%d — params did not reach the client", f.gotCommentURN, f.gotMax)
+	}
+	first := out.(map[string]any)["comments"].([]any)[0].(map[string]any)
+	if first["text"] != "does this work for private pages?" {
+		t.Errorf("comment = %#v", first)
+	}
+}
+
+// The 403 this returns is the normal state for an app without Community
+// Management approval, so it must arrive as an explanation rather than a
+// bare status code.
+func TestLinkedInCommentsErrorReachesTheCaller(t *testing.T) {
+	f := &fakeLinkedInAPI{commentsErr: errors.New("linkedin: reading comments needs the Community Management API product")}
+	if _, err := dispatchLinkedIn(f, "comments.list", map[string]any{"post_urn": "urn:li:share:7"}); err == nil {
+		t.Fatal("expected the client's error to propagate")
+	} else if !strings.Contains(err.Error(), "Community Management") {
+		t.Errorf("error lost its explanation: %v", err)
 	}
 }

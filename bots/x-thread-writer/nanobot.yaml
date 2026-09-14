@@ -1,0 +1,65 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: x-thread-writer
+  version: 0.1.0
+  description: Turn one idea into an X thread that reads like a person wrote it.
+  tags: [content, social, x, writing]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: llm
+    entrypoint: ./bot.md
+
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    max_tokens: 2000
+    temperature: 0.6
+
+  ports:
+    inputs:
+      - name: idea
+        type: json
+        required: true
+        description: "What the thread is about. Snaps from content-ideas or repurposer.thread — an object with at least a title and an angle."
+      - name: max_posts
+        type: string
+        required: false
+        default: "7"
+        description: "Upper bound on the thread length. A thread that needs more than this is usually two threads."
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "Write the way I talk: plain, specific, no hype. Sound human, not like AI. No em dashes."
+    outputs:
+      # Ordered: post 1 is the hook, the last is the close. list<string> so it
+      # snaps straight into x.posts.publish_thread, and so a downstream bot
+      # can fan out over it with `.*` if it wants to act per post.
+      - name: thread
+        type: list<string>
+      - name: preview
+        type: string
+        description: "The whole thread as one block of text, numbered. For an approval gate or a Slack message, where a list of strings reads badly."
+
+  steps:
+    - name: write
+      type: ai.generate
+      prompt_file: ./prompts/write.md
+      inputs: { idea: "{{inputs.idea}}", max_posts: "{{inputs.max_posts}}", instructions: "{{inputs.instructions}}" }
+      outputs:
+        thread: "{{steps.write.output.thread}}"
+        preview: "{{steps.write.output.preview}}"
+
+  guardrails:
+    pii: allow
+    injection_threshold: 0.7
+    max_runtime_secs: 90
+
+  resources:
+    preset: small
+    memory: 256Mi
+    cpu: 250m

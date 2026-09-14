@@ -99,6 +99,7 @@ func (ts *linkedinTokenSource) Token() (string, error) {
 type linkedinAPI interface {
 	UserInfo() (string, error)
 	PostShare(personURN, text string) (string, error)
+	Comments(postURN string, max int) ([]linkedin.Comment, error)
 }
 
 func (l *LiveDeps) linkedinClient() (linkedinAPI, error) {
@@ -128,6 +129,19 @@ func dispatchLinkedIn(c linkedinAPI, op string, params map[string]any) (any, err
 			return nil, err
 		}
 		return map[string]any{"id": id}, nil
+	case "comments.list":
+		urn, _ := params["post_urn"].(string)
+		cs, err := c.Comments(urn, atoiParam(params["max_results"], 20))
+		if err != nil {
+			return nil, err
+		}
+		out := make([]any, 0, len(cs))
+		for _, cm := range cs {
+			out = append(out, map[string]any{
+				"id": cm.ID, "text": cm.Text, "author": cm.Author, "created_at": cm.At,
+			})
+		}
+		return map[string]any{"comments": out}, nil
 	default:
 		return nil, fmt.Errorf("linkedin: unsupported op %q", op)
 	}

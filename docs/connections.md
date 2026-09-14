@@ -135,3 +135,43 @@ with no direct integration fails with a message naming what this build
 *can* do, from the registry itself rather than from a list maintained
 beside it. Before, that path fell through to a nil 1Claw client and
 panicked.
+
+## Reading from X and LinkedIn
+
+The catalog could publish to both and read from neither, so every content
+swarm was write-only: `repurpose-everything` posts and then goes silent.
+`x-mentions` and `linkedin-comments` are the read side. They have very
+different prospects, and it is worth being blunt about which.
+
+### X mentions: real, and metered
+
+`GET /2/users/{id}/mentions` works with the OAuth connection this repo
+already sets up. X removed its free tier in February 2026 and moved to
+pay-per-use, billing per post read and charging least when an account reads
+its own mentions. So `max_results` on `x-mentions` is a budget rather than a
+page size, and `since_id` is how you avoid paying twice for the same post:
+carry the newest id from one run into the next.
+
+### LinkedIn comments: real, behind an approval
+
+Reading comments uses the **Community Management API**. That is a separate
+product you add to your LinkedIn app, and LinkedIn reviews and approves it
+per app; it is not part of the default "Sign In with LinkedIn" scopes an
+OAuth connect gives you. Without it the API answers 403, and
+`internal/linkedin` turns that into a sentence naming the product to apply
+for rather than surfacing a bare status code.
+
+### LinkedIn messages: no path, and not a todo
+
+`linkedin-dm-triage` takes messages as `list<json>` input and does not
+declare a `services:` entry, because there is nothing honest to declare.
+LinkedIn's Messages API is write-only: it can send to a first-degree
+connection or reply into a thread, and there is no endpoint for listing
+conversations or reading history. Reading a member's mailbox exists only
+through the Compliance Events API, restricted to FINRA/SEC-registered
+archiving vendors. Products advertising "read your LinkedIn inbox" do it by
+driving a real logged-in session, against LinkedIn's terms.
+
+This is the one gap in this file that is not a todo. If LinkedIn ever opens
+the endpoint, a fetcher bot snaps into `linkedin-dm-triage.messages` and
+nothing about the bot changes.

@@ -1,0 +1,74 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: linkedin-dm-triage
+  version: 0.1.0
+  description: Sort LinkedIn messages into leads, reply-today, later and ignore.
+  tags: [linkedin, sales, triage]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: llm
+    entrypoint: ./bot.md
+
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    max_tokens: 2000
+    temperature: 0.2
+
+  ports:
+    inputs:
+      # Messages come in as data, not from an API, and that is not a
+      # shortcut. LinkedIn has no public endpoint that reads a personal
+      # account's inbox: the Messages API is write-only, and reading is
+      # restricted to FINRA/SEC compliance archiving. Every product that
+      # claims otherwise drives a logged-in session against the ToS. So this
+      # bot takes what you have — an export, a paste, a forwarded feed — and
+      # does the part that is actually hard.
+      - name: messages
+        type: list<json>
+        required: true
+        description: "Messages to sort, each with at least id, from and text. See bot.md on where these come from."
+      - name: icp
+        type: string
+        required: false
+        default: "Companies of 10-200 people whose ops still run on spreadsheets."
+        description: "Who counts as a lead. Anything outside this is not one, however friendly."
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "Recruiters and agency pitches are ignore unless they name a real budget. Sound human, not like AI. No em dashes."
+    outputs:
+      - name: triaged
+        type: list<json>
+        schema: ./schemas/triaged.json
+      - name: leads
+        type: list<json>
+        description: "Just the lead bucket, so a downstream bot can act on those alone without filtering."
+      - name: brief
+        type: string
+        description: "A few lines a person can read in the morning: what came in, what needs them today."
+
+  steps:
+    - name: triage
+      type: ai.generate
+      prompt_file: ./prompts/triage.md
+      inputs: { messages: "{{inputs.messages}}", icp: "{{inputs.icp}}", instructions: "{{inputs.instructions}}" }
+      outputs:
+        triaged: "{{steps.triage.output.triaged}}"
+        leads: "{{steps.triage.output.leads}}"
+        brief: "{{steps.triage.output.brief}}"
+
+  guardrails:
+    pii: allow
+    injection_threshold: 0.7
+    max_runtime_secs: 90
+
+  resources:
+    preset: small
+    memory: 256Mi
+    cpu: 250m

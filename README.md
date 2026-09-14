@@ -116,16 +116,17 @@ Once the WebUI is running, in **basic mode** (the default): type what you want a
 
 ## The catalog
 
-**34 bots** (`bots/`) — 28 job bricks plus 6 utility bricks (`approve`, `notify`, `render-pdf`, `drive-save`, `drive-watch`, `form-to-sheet`), all at `0.1.0`:
+**39 bots** (`bots/`) — 33 job bricks plus 6 utility bricks (`approve`, `notify`, `render-pdf`, `drive-save`, `drive-watch`, `form-to-sheet`), all at `0.1.0`:
 
 | Busy-person / solo-founder story (hero path) | SMB ops story (advanced) |
 |---|---|
 | `inbox-triage`, `draft-replies`, `follow-up-chaser`, `email-send-approved` | `lead-enricher`, `lead-router`, `quote-builder` |
 | `meeting-prep`, `calendar-scheduler`, `meeting-notes-filer` | `invoice-chaser`, `receipt-filer`, `sheet-reporter` |
-| `content-ideas`, `post-writer`, `post-publisher`, `repurposer`, `newsletter-drafter`, `tone` | `support-triage`, `review-responder`, `competitor-watch` |
+| `content-ideas`, `post-writer`, `x-thread-writer`, `post-publisher`, `repurposer`, `newsletter-drafter`, `tone` | `support-triage`, `review-responder`, `competitor-watch` |
+| `x-mentions`, `linkedin-comments`, `comment-responder` (read what came back, draft replies) | `linkedin-dm-triage` |
 | `recap-emails-to-pdf`, `email-drive-file`, `github-issues-digest` | `review-board`, `reviewer`, `review-synthesis` (a supervisor team — `docs/supervisors.md`) |
 
-**15 swarms** (`examples/swarms/`), each with a header comment documenting any place it simplifies the catalog's own aspirational diagram (usually: a downstream bot acts on the first item where fanning out would multiply container starts — see `docs/fan-out.md`):
+**16 swarms** (`examples/swarms/`), each with a header comment documenting any place it simplifies the catalog's own aspirational diagram (usually: a downstream bot acts on the first item where fanning out would multiply container starts — see `docs/fan-out.md`):
 
 | Swarm | What it does |
 |---|---|
@@ -136,6 +137,7 @@ Once the WebUI is running, in **basic mode** (the default): type what you want a
 | `never-drop-a-thread` | Find sent threads that never got a reply, draft and send a nudge for every one. |
 | `content-engine` | Brainstorm post ideas, write up the first one, publish it once approved. |
 | `repurpose-everything` | Turn a new Drive file into posts across formats, publish once approved. |
+| `listen-and-reply` | Pull new X mentions every weekday, draft replies to the ones worth answering, and send the list. |
 | `lead-to-meeting` | Log, enrich, and route a new lead; draft a scheduling reply once approved. |
 | `support-desk-lite` | Triage support mail, flag anything urgent to Slack, send every drafted reply once approved. |
 | `bookkeeping-assistant` | File today's receipts and produce a spend report with a chart. |
@@ -270,7 +272,7 @@ Per the project's own working style, expensive verification is a single consolid
 go build ./... && go vet ./... && go test ./...
 ```
 
-560 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
+564 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
 - `internal/contract`'s `TestRunConformanceOnLaunchBots` — auto-discovers and conformance-tests all 30 bots under `bots/` against their own fixtures, no Docker or network.
 - `internal/planner`'s `TestPlanAllExampleSwarms` — auto-discovers and type-checks all 14 swarms under `examples/swarms/`.
 - httptest-mocked 1Claw/Google/Slack/GitHub/Stripe/HubSpot/X/LinkedIn API clients, built against each provider's real, documented endpoint shapes (verified against `@1claw/openapi-spec` and each provider's own docs, not guessed).

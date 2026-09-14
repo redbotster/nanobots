@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -118,4 +119,74 @@ func truncate(b []byte) string {
 		return s[:max] + "…"
 	}
 	return s
+}
+
+// Comment is one comment on a post.
+type Comment struct {
+	ID     string `json:"id"`
+	Text   string `json:"text"`
+	Author string `json:"author"` // the commenter's URN
+	At     string `json:"created_at"`
+}
+
+// Comments returns comments on one post, newest first.
+//
+// This needs the Community Management API, which is not part of the default
+// "Sign In with LinkedIn" product: it is a separate product you add to your
+// app and LinkedIn approves per-app. Until that approval lands, this
+// returns LinkedIn's own 403 and the bot stays on demo fixtures. That is
+// the honest state, not a bug to work around — see bots/linkedin-comments.
+//
+// postURN is the full URN of the post, e.g. "urn:li:share:7123456789".
+func (c *Client) Comments(postURN string, max int) ([]Comment, error) {
+	if postURN == "" {
+		return nil, fmt.Errorf("linkedin: comments need a post urn")
+	}
+	if max <= 0 {
+		max = 20
+	}
+	endpoint := fmt.Sprintf("%s/socialActions/%s/comments?count=%d",
+		c.BaseURL, url.PathEscape(postURN), max)
+	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	c.authed(req)
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("linkedin: comments: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode == http.StatusForbidden {
+		return nil, fmt.Errorf("linkedin: reading comments needs the Community Management API product, "+
+			"which LinkedIn approves per app — this account's app does not have it yet (403): %s", truncate(raw))
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("linkedin: comments rejected (%d): %s", resp.StatusCode, truncate(raw))
+	}
+	var out struct {
+		Elements []struct {
+			ID      string `json:"id"`
+			Actor   string `json:"actor"`
+			Created struct {
+				Time int64 `json:"time"`
+			} `json:"created"`
+			Message struct {
+				Text string `json:"text"`
+			} `json:"message"`
+		} `json:"elements"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("linkedin: parse comments: %w", err)
+	}
+	cs := make([]Comment, 0, len(out.Elements))
+	for _, e := range out.Elements {
+		at := ""
+		if e.Created.Time > 0 {
+			at = time.UnixMilli(e.Created.Time).UTC().Format(time.RFC3339)
+		}
+		cs = append(cs, Comment{ID: e.ID, Text: e.Message.Text, Author: e.Actor, At: at})
+	}
+	return cs, nil
 }

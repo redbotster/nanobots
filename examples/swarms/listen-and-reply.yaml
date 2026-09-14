@@ -1,0 +1,42 @@
+# Listen and reply: the other half of the content pipeline.
+#
+# Every content swarm here published and then went silent — repurpose-everything
+# posts to X and LinkedIn and nothing ever read what came back. This closes the
+# loop: pull the mentions, draft replies to the ones that deserve one, and put
+# the drafts in front of a person before anything is sent.
+#
+# Nothing here posts. comment-responder drafts and notify reports; sending a
+# reply is still a human action. That is deliberate — an autoresponder on your
+# own account is the fastest way to sound like a bot in public.
+#
+# Simplification: this reads X mentions only. linkedin-comments needs a post URN
+# and LinkedIn's Community Management approval, so it is a separate swarm rather
+# than a second branch that fails for most people (see bots/linkedin-comments).
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanoswarm
+metadata:
+  name: listen-and-reply
+  description: Every morning, pull new X mentions, draft replies to the ones worth answering, and send me the list.
+spec:
+  trigger:
+    type: cron
+    expr: "0 8 * * 1-5"
+
+  bots:
+    - id: listener
+      use: x-mentions@0.1.0
+      inputs:
+        max_results: "25"
+    - id: responder
+      use: comment-responder@0.1.0
+    - id: notifier
+      use: notify@0.1.0
+      inputs:
+        channel: "#me"
+      on_error: continue
+
+  snaps:
+    - from: listener.mentions
+      to: responder.comments
+    - from: responder.summary
+      to: notifier.message

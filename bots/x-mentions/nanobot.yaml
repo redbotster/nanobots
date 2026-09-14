@@ -1,0 +1,60 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: x-mentions
+  version: 0.1.0
+  description: Fetch recent posts that mentioned you on X.
+  tags: [social, x, listening]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: bare
+    entrypoint: ./bot.md
+
+  services:
+    - id: x
+      provider: x
+      connection: demo
+
+  ports:
+    inputs:
+      # Every read is billed. X removed the free tier in February 2026 and
+      # charges per post read, cheapest when an account reads its own
+      # mentions. So this is a cost control the user sets, not a page size
+      # the bot picks.
+      - name: max_results
+        type: string
+        required: false
+        default: "25"
+        description: "How many mentions to pull, at most 100. Each one is a billed read."
+      - name: since_id
+        type: string
+        required: false
+        default: ""
+        description: "Only mentions newer than this post id. Carry the last run's newest id here to stop paying for the same posts twice."
+    outputs:
+      - name: mentions
+        type: list<json>
+        schema: ./schemas/mentions.json
+
+  steps:
+    - name: fetch
+      type: service.call
+      service: x
+      op: mentions.list
+      params: { max_results: "{{inputs.max_results}}", since_id: "{{inputs.since_id}}" }
+      outputs:
+        mentions: "{{steps.fetch.output.mentions}}"
+
+  guardrails:
+    pii: allow
+    injection_threshold: 0.7
+    max_runtime_secs: 60
+    writes_allowed: []
+
+  resources:
+    preset: small
+    memory: 128Mi
+    cpu: 100m

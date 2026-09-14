@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanobots.dev/bots/x-mentions/schemas/mentions.json",
+  "title": "Mentions",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "text", "author", "created_at"],
+    "properties": {
+      "id": { "type": "string" },
+      "text": { "type": "string" },
+      "author": { "type": "string", "description": "@handle, resolved from the author_id expansion." },
+      "created_at": { "type": "string" }
+    }
+  }
+}

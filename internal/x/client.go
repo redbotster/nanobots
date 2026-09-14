@@ -70,3 +70,113 @@ func truncate(b []byte) string {
 	}
 	return s
 }
+
+// Mention is one post that mentioned the connected account.
+type Mention struct {
+	ID       string `json:"id"`
+	Text     string `json:"text"`
+	AuthorID string `json:"author_id"`
+	Author   string `json:"author"` // @handle, resolved from the expansion
+	Created  string `json:"created_at"`
+}
+
+// Me returns the connected account's numeric user id, which every read
+// endpoint is keyed on. X has no "mentions of me" route that accepts a
+// handle; it wants the id.
+func (c *Client) Me() (string, error) {
+	var out struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := c.get("/users/me", nil, &out); err != nil {
+		return "", err
+	}
+	if out.Data.ID == "" {
+		return "", fmt.Errorf("x: /users/me returned no id")
+	}
+	return out.Data.ID, nil
+}
+
+// Mentions returns recent posts mentioning the connected account, newest
+// first. sinceID is exclusive and may be empty for "whatever the window
+// gives you".
+//
+// Reads are billed. X removed the free tier in February 2026 and charges
+// per post read — cheapest for an account reading its own mentions — so
+// max is a real cost control, not a page size. The caller passes what it
+// is willing to pay for.
+func (c *Client) Mentions(sinceID string, max int) ([]Mention, error) {
+	id, err := c.Me()
+	if err != nil {
+		return nil, err
+	}
+	if max <= 0 {
+		max = 10
+	}
+	if max > 100 {
+		max = 100 // the endpoint's own ceiling
+	}
+	q := map[string]string{
+		"max_results":  fmt.Sprint(max),
+		"tweet.fields": "created_at,author_id",
+		"expansions":   "author_id",
+		"user.fields":  "username",
+	}
+	if sinceID != "" {
+		q["since_id"] = sinceID
+	}
+	var out struct {
+		Data     []Mention `json:"data"`
+		Includes struct {
+			Users []struct {
+				ID       string `json:"id"`
+				Username string `json:"username"`
+			} `json:"users"`
+		} `json:"includes"`
+	}
+	if err := c.get("/users/"+id+"/mentions", q, &out); err != nil {
+		return nil, err
+	}
+	// author_id is a number nobody can read. The usernames come back in a
+	// separate expansion block, so stitch them on here rather than making
+	// every caller do it.
+	handle := map[string]string{}
+	for _, u := range out.Includes.Users {
+		handle[u.ID] = "@" + u.Username
+	}
+	for i := range out.Data {
+		out.Data[i].Author = handle[out.Data[i].AuthorID]
+	}
+	return out.Data, nil
+}
+
+// get performs an authenticated GET and decodes into v.
+func (c *Client) get(path string, query map[string]string, v any) error {
+	req, err := http.NewRequest(http.MethodGet, c.BaseURL+path, nil)
+	if err != nil {
+		return err
+	}
+	if len(query) > 0 {
+		q := req.URL.Query()
+		for k, val := range query {
+			q.Set(k, val)
+		}
+		req.URL.RawQuery = q.Encode()
+	}
+	req.Header.Set("Authorization", "Bearer "+c.AccessToken)
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("x: GET %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("x: GET %s rejected (%d): %s", path, resp.StatusCode, truncate(raw))
+	}
+	if err := json.Unmarshal(raw, v); err != nil {
+		return fmt.Errorf("x: parse %s response: %w", path, err)
+	}
+	return nil
+}

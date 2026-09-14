@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanobots.dev/bots/linkedin-comments/schemas/comments.json",
+  "title": "Comments",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": [
+      "id",
+      "text",
+      "author",
+      "created_at"
+    ],
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "text": {
+        "type": "string"
+      },
+      "author": {
+        "type": "string",
+        "description": "The commenter's URN. LinkedIn returns an id, not a name; resolving it to a display name needs a second call this bot deliberately does not make."
+      },
+      "created_at": {
+        "type": "string"
+      }
+    }
+  }
+}

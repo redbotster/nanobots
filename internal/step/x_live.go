@@ -2,6 +2,8 @@ package step
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -74,6 +76,7 @@ func (x2 *xTokenSource) Token() (string, error) {
 // dispatch is unit-testable with a fake instead of a real HTTP server.
 type xAPI interface {
 	PostTweet(text string) (string, error)
+	Mentions(sinceID string, max int) ([]x.Mention, error)
 }
 
 func (l *LiveDeps) xClient() (xAPI, error) {
@@ -99,7 +102,41 @@ func dispatchX(c xAPI, op string, params map[string]any) (any, error) {
 			return nil, err
 		}
 		return map[string]any{"id": id}, nil
+	case "mentions.list":
+		since, _ := params["since_id"].(string)
+		ms, err := c.Mentions(since, atoiParam(params["max_results"], 10))
+		if err != nil {
+			return nil, err
+		}
+		// A plain []map, not the struct: a service.call result crosses into
+		// the interpreter as JSON and a bot's list<json> port has to be able
+		// to read the fields by name.
+		out := make([]any, 0, len(ms))
+		for _, m := range ms {
+			out = append(out, map[string]any{
+				"id": m.ID, "text": m.Text, "author": m.Author, "created_at": m.Created,
+			})
+		}
+		return map[string]any{"mentions": out, "count": len(out)}, nil
 	default:
 		return nil, fmt.Errorf("x: unsupported op %q", op)
 	}
+}
+
+// atoiParam reads a numeric step param that may arrive as a string (from a
+// bot's `string` input port) or as a JSON number (from a snap). Falling back
+// to a default rather than erroring: a malformed page size should not fail
+// a run that was going to work.
+func atoiParam(v any, def int) int {
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case string:
+		if i, err := strconv.Atoi(strings.TrimSpace(n)); err == nil {
+			return i
+		}
+	}
+	return def
 }

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanobots.dev/bots/linkedin-dm-triage/schemas/triaged.json",
+  "title": "TriagedMessages",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "from", "bucket", "why"],
+    "properties": {
+      "id": { "type": "string" },
+      "from": { "type": "string" },
+      "bucket": { "type": "string", "enum": ["lead", "reply-today", "later", "ignore"] },
+      "why": { "type": "string", "description": "One line on why it landed in that bucket." },
+      "opener": { "type": "string", "description": "A one-line suggested opener, for a lead or a reply-today. Empty otherwise." }
+    }
+  }
+}

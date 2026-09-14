@@ -1,0 +1,12 @@
+{
+  "triaged": [
+    { "id": "m1", "from": "Dana Okoye, Ops Lead at Meridian Freight (85 people)", "bucket": "lead", "why": "85-person logistics firm running ops on spreadsheets, asked directly if you work with them", "opener": "We do. What's breaking first, the dispatch board or the handoff between shifts?" },
+    { "id": "m2", "from": "Recruiter at TalentBridge", "bucket": "ignore", "why": "recruiter, no budget or role detail named", "opener": "" },
+    { "id": "m3", "from": "Sam Ellery", "bucket": "reply-today", "why": "waiting on an intro you offered, and said no rush a week ago", "opener": "Sorry for the lag. Introducing you both now." },
+    { "id": "m4", "from": "Growth Agency", "bucket": "ignore", "why": "agency pitch selling to you", "opener": "" }
+  ],
+  "leads": [
+    { "id": "m1", "from": "Dana Okoye, Ops Lead at Meridian Freight (85 people)", "bucket": "lead", "why": "85-person logistics firm running ops on spreadsheets, asked directly if you work with them", "opener": "We do. What's breaking first, the dispatch board or the handoff between shifts?" }
+  ],
+  "brief": "4 messages, 1 lead.\n\nLead: Dana Okoye at Meridian Freight, 85-person logistics, spreadsheets breaking, asked if you work with logistics.\n\nToday: Sam Ellery is still waiting on the intro to Priya you offered last week.\n\nIgnored a recruiter and an agency pitch."
+}
