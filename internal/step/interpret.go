@@ -39,6 +39,17 @@ type Result struct {
 // got nothing, log.jsonl was never created, and the Runs page showed only
 // "starting" followed by the failure. The steps that ran are exactly the
 // context you need to know why the next one didn't.
+// LogStreamer is the optional half of Deps: a Deps that implements it gets
+// 每 log line the moment it happens, instead of only finding out from
+// Result.Log once every step has run.
+//
+// Optional rather than a Deps method so the four existing implementations
+// (demo, live, remote, recording) are untouched — only the agent, which is
+// the one that can do something useful with a line mid-run, opts in.
+type LogStreamer interface {
+	StreamLog(step, msg string)
+}
+
 func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, swarmVars map[string]any, deps Deps) (*Result, error) {
 	ctx := map[string]any{
 		"inputs":  resolvedInputs,
@@ -52,8 +63,16 @@ func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, swarmVars map[
 	outputsCtx := ctx["outputs"].(map[string]any)
 
 	res := &Result{Outputs: map[string]any{}}
+	// Accumulated for the Result, and handed to a streaming sink if the
+	// Deps wants one. Both: the slice is what a caller reads afterwards,
+	// the sink is what makes the run log live while a bot is still going.
+	streamer, _ := deps.(LogStreamer)
 	log := func(stepName, format string, a ...any) {
-		res.Log = append(res.Log, LogLine{Step: stepName, Msg: fmt.Sprintf(format, a...)})
+		msg := fmt.Sprintf(format, a...)
+		res.Log = append(res.Log, LogLine{Step: stepName, Msg: msg})
+		if streamer != nil {
+			streamer.StreamLog(stepName, msg)
+		}
 	}
 
 	var lastOutput any

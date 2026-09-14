@@ -544,6 +544,13 @@ func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID str
 
 	maxRuntime := time.Duration(nb.Spec.Guardrails.MaxRuntimeSecs) * time.Second
 	// Exit code and stderr are both already inside RunContainer's error.
+	// Follow the bot's log while it runs, rather than replaying it after.
+	// The agent flushes a line per step; this picks them up within a poll.
+	tail := newLogTail(run, botID, runDir)
+	stopTail := make(chan struct{})
+	go tail.follow(stopTail)
+	defer close(stopTail)
+
 	_, _, err = RunContainer(run.Context(), ContainerSpec{
 		Image: image, User: user,
 		BotDir: nb.SourcePath, RunDir: runDir, BlobDir: o.BlobDir,
@@ -558,7 +565,7 @@ func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID str
 		MaxRuntime: maxRuntime,
 	})
 
-	replayContainerLog(run, botID, runDir)
+	tail.drain()
 	if err != nil {
 		// RunContainer's error already carries the exit code and the
 		// container's stderr. Re-wrapping produced "container exited 1:
@@ -678,29 +685,81 @@ func orDefaultF(f, def float64) float64 {
 	return f
 }
 
-// replayContainerLog appends a bot's in-container step log (written by
-// cmd/nanobot-agent to <runDir>/log.jsonl, one line per step regardless of
-// type) to the run's aggregated log. This only happens once the container
-// exits — the one step that's visible *while* a bot is still running is
-// `approve`, because RunQueueApprover logs "awaiting approval" directly onto
-// the run the moment the callback arrives, before the container is unblocked
-// (see approver.go). Live per-step streaming for everything else is a
-// reasonable future enhancement, not attempted here.
+// logTail follows a bot's in-container step log (written by
+// cmd/nanobot-agent to <runDir>/log.jsonl, one line per step) and appends
+// new lines to the run as they appear.
+//
+// This used to be a single replay after the container exited, and the
+// product's own landing page said "every step streams to a run log in real
+// time". Measured, a three-bot swarm sat on three log lines for sixteen
+// seconds and then produced five at once: a bot's whole log arrived when it
+// finished. The one exception was `approve`, which RunQueueApprover logs
+// directly onto the run when the callback arrives.
+//
+// Reading the whole file each pass and emitting from `consumed` onward,
+// rather than holding an offset: the files are a handful of lines, and a
+// decoder that stops at the first error naturally ignores a line the agent
+// is halfway through writing. That line is picked up on the next pass.
+type logTail struct {
+	run   *Run
+	botID string
+	path  string
+
+	mu       sync.Mutex
+	consumed int
+}
+
+func newLogTail(run *Run, botID, runDir string) *logTail {
+	return &logTail{run: run, botID: botID, path: filepath.Join(runDir, "log.jsonl")}
+}
+
+// tailPoll is how often the log file is checked. Fast enough to read as
+// live, slow enough that a bot doing real work is not competing with a
+// stat loop.
+const tailPoll = 300 * time.Millisecond
+
+func (t *logTail) follow(stop <-chan struct{}) {
+	ticker := time.NewTicker(tailPoll)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			t.drain()
+		}
+	}
+}
+
+// drain appends whatever is in the file beyond what has already been
+// appended. Called on every poll and once more after the container exits,
+// so a line written between the last poll and exit is never lost.
 //
 // Best-effort: a missing or unreadable log file isn't a run failure.
-func replayContainerLog(run *Run, botID, runDir string) {
-	f, err := os.Open(filepath.Join(runDir, "log.jsonl"))
+func (t *logTail) drain() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	f, err := os.Open(t.path)
 	if err != nil {
 		return
 	}
 	defer f.Close()
+
+	var lines []struct{ Step, Msg string }
 	dec := json.NewDecoder(f)
 	for {
 		var line struct{ Step, Msg string }
 		if err := dec.Decode(&line); err != nil {
-			return
+			break // EOF, or a line still being written
 		}
-		run.Log(botID, line.Step, "%s", line.Msg)
+		lines = append(lines, line)
+	}
+	for _, line := range lines[min(t.consumed, len(lines)):] {
+		t.run.Log(t.botID, line.Step, "%s", line.Msg)
+	}
+	if len(lines) > t.consumed {
+		t.consumed = len(lines)
 	}
 }
 

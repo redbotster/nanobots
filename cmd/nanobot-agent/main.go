@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/redbotster/nanobots/internal/schema"
 	"github.com/redbotster/nanobots/internal/step"
@@ -71,6 +72,20 @@ func run() error {
 
 	deps := buildDeps(botDir, blobs)
 
+	// Stream each step to log.jsonl as it happens, so nanobotd can tail it
+	// and the run log is live while this bot is still working. Before this,
+	// every line was buffered here and written once on exit: a bot that
+	// took forty seconds showed "starting" and then nothing at all until it
+	// finished, which is not what "watch it run, live" means.
+	//
+	// Falling back to the end-of-run write if the file will not open: a log
+	// that arrives late beats no log.
+	streaming := newLogStream(runDir)
+	if streaming != nil {
+		defer streaming.Close()
+		deps = &streamingDeps{Deps: deps, stream: streaming}
+	}
+
 	swarmVars, err := readSwarmVars(runDir)
 	if err != nil {
 		return fmt.Errorf("read swarm_vars.json: %w", err)
@@ -78,10 +93,14 @@ func run() error {
 
 	result, err := step.Interpret(nb, inputs, swarmVars, deps)
 	if err != nil {
-		writeLog(runDir, result)
+		if streaming == nil {
+			writeLog(runDir, result)
+		}
 		return fmt.Errorf("bot %s: %w", nb.Metadata.Name, err)
 	}
-	writeLog(runDir, result)
+	if streaming == nil {
+		writeLog(runDir, result)
+	}
 
 	outDir := filepath.Join(runDir, "outputs")
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
@@ -159,3 +178,52 @@ func writeLog(runDir string, result *step.Result) {
 		enc.Encode(map[string]string{"step": line.Step, "msg": line.Msg})
 	}
 }
+
+// logStream appends one JSON line per step to <run>/log.jsonl, flushing
+// each one, so a reader outside the container sees a step the moment it
+// completes rather than when the container exits.
+type logStream struct {
+	mu sync.Mutex
+	f  *os.File
+}
+
+func newLogStream(runDir string) *logStream {
+	f, err := os.OpenFile(filepath.Join(runDir, "log.jsonl"),
+		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return nil
+	}
+	return &logStream{f: f}
+}
+
+func (s *logStream) write(step, msg string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	raw, err := json.Marshal(map[string]string{"step": step, "msg": msg})
+	if err != nil {
+		return
+	}
+	// One Write for the whole line including its newline. A reader tailing
+	// this file must never see half a line, and two writes could be split.
+	if _, err := s.f.Write(append(raw, '\n')); err != nil {
+		return
+	}
+	// Sync, because the point is that someone else reads this now. Cheap
+	// at a handful of lines per bot.
+	_ = s.f.Sync()
+}
+
+func (s *logStream) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.f.Close()
+}
+
+// streamingDeps is the bot's real Deps plus step.LogStreamer, which is how
+// the interpreter knows to hand over each line as it happens.
+type streamingDeps struct {
+	step.Deps
+	stream *logStream
+}
+
+func (d *streamingDeps) StreamLog(step, msg string) { d.stream.write(step, msg) }

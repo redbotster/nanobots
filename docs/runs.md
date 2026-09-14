@@ -74,3 +74,52 @@ Two details it depends on:
 
 `refreshRuns()` drops the tag first, so an action you just took shows its
 effect immediately instead of confirming nothing changed.
+
+## The run log is live now
+
+The landing page said "every step streams to a run log in real time". It
+did not. Measured on a three-bot swarm: the log sat on three lines for
+sixteen seconds and then produced five at once, because the agent buffered
+every line in memory and wrote `<run>/log.jsonl` once, on exit. The runner
+replayed that file after the container was already gone. `replayContainerLog`
+said so in its own comment: "live per-step streaming for everything else is
+a reasonable future enhancement, not attempted here."
+
+Two halves:
+
+- The agent flushes a line per step. `step.LogStreamer` is an *optional*
+  interface on `Deps` — implement it and the interpreter hands over each
+  line the moment it happens. Optional rather than a `Deps` method so the
+  four existing implementations (demo, live, remote, recording) are
+  untouched; only the agent, which can do something useful with a line
+  mid-run, opts in.
+- The runner follows the file while the container runs, every 300ms, and
+  drains once more after it exits so a line written between the last poll
+  and exit is never lost.
+
+It reads the whole file each pass and emits from `consumed` onward rather
+than holding a byte offset. The files are a handful of lines, and a decoder
+that stops at the first error naturally skips a line the agent is halfway
+through writing, picking it up whole on the next pass.
+
+### What the timings actually say
+
+With real per-step timestamps, a three-bot swarm on warm images:
+
+```
++ 1.52s  container start, first step
++ 6.60s  ai.generate
++ 5.58s  memory.recall
++ 9.60s  ai.generate
++ 2.58s  render to PDF
+= 27.1s  total
+```
+
+Roughly 16s of that is model round trips and 5.6s is a memory recall. A
+container starts in 0.5-0.8s. There is no orchestration overhead worth
+chasing here; the time is real work.
+
+An earlier reading of the same swarm showed 24 seconds before the first
+step. That was the harness image rebuilding because the Go source had just
+changed, not a startup cost. Worth knowing when timing anything in this
+repo: edit `internal/`, and the first run afterwards pays for a rebuild.
