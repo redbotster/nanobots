@@ -50,3 +50,28 @@ func (l *LiveDeps) slackClient() (slackAPI, error) {
 func slackChannelFrom(channel string) (target string, ok bool) {
 	return strings.CutPrefix(channel, "slack:")
 }
+
+// dispatchSlack serves a bot's `service.call` against Slack.
+//
+// One op, because one is what the catalog uses: lead-router posts an alert
+// to a channel. Adding more is a line each, and inventing them before a bot
+// wants one is how a client grows methods nothing calls.
+func dispatchSlack(c slackAPI, op string, params map[string]any) (any, error) {
+	switch op {
+	case "messages.post":
+		channel, _ := params["channel"].(string)
+		text, _ := params["text"].(string)
+		if channel == "" {
+			return nil, fmt.Errorf("slack: messages.post needs a channel")
+		}
+		ts, err := c.PostMessage(channel, text)
+		if err != nil {
+			return nil, err
+		}
+		// "ts" is Slack's own name for a message id, and it is what a
+		// downstream bot would need to thread a reply.
+		return map[string]any{"ts": ts, "channel": channel}, nil
+	default:
+		return nil, fmt.Errorf("slack: unsupported op %q", op)
+	}
+}

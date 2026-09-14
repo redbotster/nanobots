@@ -84,6 +84,19 @@ var serviceDispatchers = map[string]serviceDispatcher{
 		}
 		return dispatchX(c, op, params)
 	},
+	// Slack was reachable only through the `notify` step, whose channel
+	// syntax is "slack:#name". lead-router does not notify — it calls
+	// `service.call` with service: slack, op: messages.post — so connecting
+	// Slack in Settings, which the app offers, still left that bot failing
+	// with "this build has no direct slack integration". Everything it
+	// needed was already here: the client, the vault token, the connect row.
+	"slack": func(l *LiveDeps, _ schema.Service, op string, params map[string]any) (any, error) {
+		c, err := l.slackClient()
+		if err != nil {
+			return nil, err
+		}
+		return dispatchSlack(c, op, params)
+	},
 	"linkedin": func(l *LiveDeps, _ schema.Service, op string, params map[string]any) (any, error) {
 		c, err := l.linkedinClient()
 		if err != nil {

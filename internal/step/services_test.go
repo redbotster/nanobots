@@ -1,6 +1,8 @@
 package step
 
 import (
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -12,7 +14,7 @@ import (
 // is that it still covers exactly what the chain did — no provider quietly
 // lost on the way, none added that nothing implements.
 func TestEveryProviderTheCatalogUsesLiveHasADispatcher(t *testing.T) {
-	want := []string{"github", "google", "hubspot", "linkedin", "stripe", "x"}
+	want := []string{"github", "google", "hubspot", "linkedin", "slack", "stripe", "x"}
 	got := LiveServiceProviders()
 	sort.Strings(got)
 	if strings.Join(got, ",") != strings.Join(want, ",") {
@@ -91,4 +93,66 @@ func TestServiceConfigsCarriesEveryProviderInOneValue(t *testing.T) {
 	if l.Services.VaultID != "vault-1" {
 		t.Error("the shared vault id is part of the same value")
 	}
+}
+
+// Every provider a bot declares must have a dispatcher, or connecting it
+// achieves nothing and the bot fails at the moment it finally runs for real.
+func TestEveryProviderTheCatalogDeclaresCanBeDispatched(t *testing.T) {
+	supported := map[string]bool{}
+	for _, p := range LiveServiceProviders() {
+		supported[p] = true
+	}
+	// google_business_profile is the known exception: review-responder
+	// declares it and no client exists yet (docs/connections.md).
+	known := map[string]bool{"google_business_profile": true}
+
+	declared, err := declaredProviders("../../bots")
+	if err != nil {
+		t.Skipf("bots/ not readable from here: %v", err)
+	}
+	for _, p := range declared {
+		if !supported[p] && !known[p] {
+			t.Errorf("bots declare provider %q with no dispatcher — connecting it would do nothing", p)
+		}
+	}
+}
+
+// declaredProviders lists every provider named in a services: block across
+// the catalog. Reading the YAML directly rather than importing the schema
+// loader keeps this test independent of whether that loader is working.
+func declaredProviders(botsDir string) ([]string, error) {
+	entries, err := os.ReadDir(botsDir)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	inServices := false
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(botsDir, e.Name(), "nanobot.yaml"))
+		if err != nil {
+			continue
+		}
+		inServices = false
+		for _, line := range strings.Split(string(raw), "\n") {
+			switch {
+			case strings.HasPrefix(line, "  services:"):
+				inServices = true
+			case inServices && strings.HasPrefix(line, "  ") && !strings.HasPrefix(line, "   "):
+				inServices = false // next top-level spec key
+			case inServices:
+				if _, p, ok := strings.Cut(strings.TrimSpace(line), "provider: "); ok {
+					seen[strings.TrimSpace(p)] = true
+				}
+			}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for p := range seen {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out, nil
 }

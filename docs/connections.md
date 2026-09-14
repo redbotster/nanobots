@@ -175,3 +175,23 @@ driving a real logged-in session, against LinkedIn's terms.
 This is the one gap in this file that is not a todo. If LinkedIn ever opens
 the endpoint, a fetcher bot snaps into `linkedin-dm-triage.messages` and
 nothing about the bot changes.
+
+## Slack was connectable and unreachable
+
+Settings offered a Slack bot-token row, `internal/slack` had a working
+client, and the `notify` step used it for channels written as
+`slack:#name`. But `lead-router` does not notify: it calls `service.call`
+with `service: slack, op: messages.post`, and `serviceDispatchers` had no
+`slack` entry. So connecting Slack in the app changed nothing for that bot,
+which still failed with "this build has no direct slack integration (it
+has: [github google hubspot linkedin stripe x])" — while the client it
+needed sat one function away.
+
+The dispatcher is registered now, with one op, because one is what the
+catalog uses. `TestEveryProviderTheCatalogDeclaresCanBeDispatched` reads
+every `services:` block in `bots/` and fails if a declared provider has no
+dispatcher, so the next one cannot be offered-but-unreachable in the same
+way.
+
+`google_business_profile` is the remaining exception and is listed as such
+in that test: `review-responder` declares it and no client exists yet.
