@@ -1,7 +1,7 @@
 import type { BotSummary } from "./types";
 
 /** A provider slug as a person would write it. */
-function prettyProvider(slug: string): string {
+export function prettyProvider(slug: string): string {
   const special: Record<string, string> = {
     github: "GitHub",
     linkedin: "LinkedIn",

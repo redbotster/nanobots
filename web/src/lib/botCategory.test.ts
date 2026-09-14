@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { categoryOf } from "./botCategory";
+import { categoryOf, prettyProvider } from "./botCategory";
 import type { BotSummary } from "./types";
 
 function bot(providers: string[]): BotSummary {
@@ -44,5 +44,16 @@ describe("categoryOf", () => {
     expect(categoryOf(bot(["google_business_profile"]))).toBe("Google Business Profile");
     // An unknown provider still gets title-cased rather than shown raw.
     expect(categoryOf(bot(["acme_crm"]))).toBe("Acme Crm");
+  });
+});
+
+describe("prettyProvider", () => {
+  it("is exported so the pooled heading can name providers, not just categories", () => {
+    // post-publisher touches x and linkedin but is filed under X, so a
+    // heading built from category names alone left "LinkedIn" appearing
+    // nowhere on the page — which is exactly what someone scanning for a
+    // LinkedIn bot looks for.
+    expect(prettyProvider("linkedin")).toBe("LinkedIn");
+    expect(prettyProvider("x")).toBe("X");
   });
 });

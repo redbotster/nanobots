@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import type { BotSummary, ConnectionStatus } from "../lib/types";
-import { categoryOf } from "../lib/botCategory";
+import { categoryOf, prettyProvider } from "../lib/botCategory";
 import { BotCard } from "../components/BotCard";
 
 /** The pool for categories that would otherwise hold a single bot. Named
@@ -33,12 +33,17 @@ export function BotLibrary() {
           b.id.includes(query) ||
           b.name.toLowerCase().includes(query) ||
           b.description.toLowerCase().includes(query) ||
-          b.tags.some((t) => t.toLowerCase().includes(query)),
+          b.tags.some((t) => t.toLowerCase().includes(query)) ||
+          // By service, too. post-publisher is findable as "linkedin" only
+          // because its description happens to say so; a bot whose
+          // description doesn't name its provider should still be findable
+          // by it.
+          b.services.some((svc) => svc.provider.toLowerCase().includes(query)),
       ),
     [bots, query],
   );
 
-  const groups = useMemo(() => {
+  const { groups, pooled } = useMemo(() => {
     const m = new Map<string, BotSummary[]>();
     for (const bot of filtered) {
       const cat = categoryOf(bot);
@@ -50,10 +55,17 @@ export function BotLibrary() {
     // fill a single row between them — the card still names the service, and
     // search finds them by name either way.
     const singles: BotSummary[] = [];
+    const singleCats: string[] = [];
     const kept: [string, BotSummary[]][] = [];
     for (const [cat, list] of m) {
-      if (list.length === 1 && cat !== "Utility") singles.push(list[0]);
-      else kept.push([cat, list]);
+      if (list.length === 1 && cat !== "Utility") {
+        singles.push(list[0]);
+        // Every provider these bots touch, not just the one they are filed
+        // under. post-publisher posts to X *and* LinkedIn, and is filed
+        // under X — so listing categories alone left "LinkedIn" appearing
+        // nowhere on the page.
+        for (const svc of list[0].services) singleCats.push(prettyProvider(svc.provider));
+      } else kept.push([cat, list]);
     }
 
     // Biggest first. Alphabetical put GitHub's single bot above Google's
@@ -63,7 +75,14 @@ export function BotLibrary() {
       singles.sort((a, b) => a.id.localeCompare(b.id));
       kept.push([OTHER, singles]);
     }
-    return kept;
+    // Drop providers that already have a heading of their own. One pooled
+    // bot (invoice-chaser) also touches Google, and listing "Google" here
+    // next to a Google group of seventeen raises a question instead of
+    // answering one. The heading exists to say what is in here that is
+    // nowhere else.
+    const elsewhere = new Set(kept.map(([cat]) => cat));
+    const pooled = [...new Set(singleCats)].filter((p) => !elsewhere.has(p)).sort();
+    return { groups: kept, pooled };
   }, [filtered]);
 
   return (
@@ -100,8 +119,11 @@ export function BotLibrary() {
             {category}
             <span className="font-normal normal-case tracking-normal">({groupBots.length})</span>
             {category === OTHER && (
+              // Naming them is the whole point. Pooled under a bare
+              // "One-offs", the only bot that posts to X and LinkedIn became
+              // invisible to anyone scanning for X or LinkedIn.
               <span className="font-normal normal-case tracking-normal text-muted/60">
-                one bot each
+                {pooled.join(" · ")}
               </span>
             )}
           </button>
