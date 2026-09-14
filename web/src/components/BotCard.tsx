@@ -1,6 +1,5 @@
 import { useState } from "react";
-import type { BotSummary, ConnectableService, ConnectionStatus, Service } from "../lib/types";
-import { PortBadge } from "./PortBadge";
+import type { BotSummary, ConnectableService, ConnectionStatus, Port, Service } from "../lib/types";
 import { Switch } from "./Switch";
 import { Button } from "./Button";
 import { api } from "../lib/api";
@@ -288,19 +287,35 @@ export function BotCard({
         />
       )}
 
-      <div className="mt-3 flex items-center justify-between text-[11px] text-muted">
-        <div className="flex items-center gap-1.5">
-          {(bot.inputs ?? []).map((p) => (
-            <PortBadge key={p.name} name={p.name} type={p.type} dim />
-          ))}
-          <span>in</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span>out</span>
-          {(bot.outputs ?? []).map((p) => (
-            <PortBadge key={p.name} name={p.name} type={p.type} />
-          ))}
-        </div>
+      <PortSignature inputs={bot.inputs ?? []} outputs={bot.outputs ?? []} />
+    </div>
+  );
+}
+
+/** What this bot takes and what it gives back, as text you can read.
+ *
+ * This was six hollow circles and the words "in" and "out". The names and
+ * types were there, one Radix tooltip per dot — which is fine for the
+ * builder's brick, where you are looking at one bot, and useless on a page
+ * of thirty-three, where the question is "which of these takes a sheet?"
+ * and the answer required hovering every dot in turn.
+ *
+ * Names, not types: the name is what you match against when wiring a snap,
+ * and the type is one hover away on the row's title.
+ */
+function PortSignature({ inputs, outputs }: { inputs: Port[]; outputs: Port[] }) {
+  const list = (ports: Port[]) => ports.map((p) => p.name).join(" · ") || "—";
+  const detail = (ports: Port[]) =>
+    ports.map((p) => `${p.name}: ${p.type}`).join("\n") || "none";
+  return (
+    <div className="mt-3 space-y-0.5 border-t border-edge pt-2 text-[11px]">
+      <div className="flex gap-2" title={detail(inputs)}>
+        <span className="w-6 shrink-0 text-muted/60">in</span>
+        <span className="min-w-0 truncate text-muted">{list(inputs)}</span>
+      </div>
+      <div className="flex gap-2" title={detail(outputs)}>
+        <span className="w-6 shrink-0 text-muted/60">out</span>
+        <span className="min-w-0 truncate text-ink">{list(outputs)}</span>
       </div>
     </div>
   );

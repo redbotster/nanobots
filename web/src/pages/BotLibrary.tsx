@@ -4,6 +4,11 @@ import type { BotSummary, ConnectionStatus } from "../lib/types";
 import { categoryOf } from "../lib/botCategory";
 import { BotCard } from "../components/BotCard";
 
+/** The pool for categories that would otherwise hold a single bot. Named
+ * rather than inlined so the render can tell it apart — it is the one group
+ * whose heading does not name a service. */
+const OTHER = "One-offs";
+
 export function BotLibrary() {
   const [bots, setBots] = useState<BotSummary[] | null>(null);
   const [connections, setConnections] = useState<ConnectionStatus[]>([]);
@@ -39,7 +44,26 @@ export function BotLibrary() {
       const cat = categoryOf(bot);
       m.set(cat, [...(m.get(cat) ?? []), bot]);
     }
-    return [...m.entries()].sort(([a], [b]) => a.localeCompare(b));
+
+    // A category holding one bot costs a heading plus a grid row with two
+    // empty thirds, and there were four of them. Pooled into one group they
+    // fill a single row between them — the card still names the service, and
+    // search finds them by name either way.
+    const singles: BotSummary[] = [];
+    const kept: [string, BotSummary[]][] = [];
+    for (const [cat, list] of m) {
+      if (list.length === 1 && cat !== "Utility") singles.push(list[0]);
+      else kept.push([cat, list]);
+    }
+
+    // Biggest first. Alphabetical put GitHub's single bot above Google's
+    // eighteen, so the page opened on its least useful group.
+    kept.sort(([a, la], [b, lb]) => lb.length - la.length || a.localeCompare(b));
+    if (singles.length > 0) {
+      singles.sort((a, b) => a.id.localeCompare(b.id));
+      kept.push([OTHER, singles]);
+    }
+    return kept;
   }, [filtered]);
 
   return (
@@ -74,9 +98,18 @@ export function BotLibrary() {
             <span className={`inline-block transition-transform ${collapsed[category] ? "-rotate-90" : ""}`}>▾</span>
             {category}
             <span className="font-normal normal-case tracking-normal">({groupBots.length})</span>
+            {category === OTHER && (
+              <span className="font-normal normal-case tracking-normal text-muted/60">
+                one bot each
+              </span>
+            )}
           </button>
+          {/* items-start below, so a card is as tall as its own content.
+              Grid items stretch by default, which made a one-service bot
+              with no instructions — drive-save — grow 130px of empty panel
+              to match the tallest card in its row, and read as unfinished. */}
           {!collapsed[category] && (
-            <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-2 grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {groupBots.map((bot) => (
                 <BotCard key={bot.id} bot={bot} connections={connections} onChanged={reload} />
               ))}
