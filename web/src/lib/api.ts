@@ -22,6 +22,7 @@ import type {
   WebhookDetails,
   ImportResult,
   SpendResponse,
+  PostureResponse,
 } from "./types";
 
 async function reqText(path: string): Promise<string> {
@@ -117,6 +118,7 @@ export const api = {
       body: JSON.stringify({ message }),
     }),
   spend: () => req<SpendResponse>("/api/spend"),
+  posture: () => req<PostureResponse>("/api/posture"),
   cancelRun: (id: string) =>
     req<{ ok: boolean }>(`/api/runs/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
   listConnections: () => req<ConnectionStatus[]>("/api/connections"),

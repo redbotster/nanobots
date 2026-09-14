@@ -493,3 +493,23 @@ export interface SpendResponse {
   /** 1Claw's own words — a budget nearly spent, a balance running out. */
   warning?: string;
 }
+
+/** What 1Claw's OpenTelemetry surface says about this account. Shown as one
+ * row in Settings rather than a page of its own — see internal/api/posture.go. */
+export interface PostureResponse {
+  configured: boolean;
+  score: number;
+  threats: number;
+  critical: number;
+  pending: number;
+  agents: number;
+  agent_limit?: number;
+  /** How many of those agents this repo provisioned. Every distinct bot
+   * name gets one, so this is usually most of them. */
+  nanobots_agents: number;
+  /** At 80% of the plan's agent allowance. Hitting the cap is a real
+   * failure mode: EnsureAgent returns 403 mid-run. */
+  agents_near_cap: boolean;
+  tier?: string;
+  error?: string;
+}

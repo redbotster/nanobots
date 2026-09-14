@@ -3,6 +3,7 @@ import type React from "react";
 import { api } from "../lib/api";
 import type {
   BotSummary,
+  PostureResponse,
   ConnectableService,
   ConnectionStatus,
   SpendResponse,
@@ -90,6 +91,8 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
               }
             />
           )}
+
+          {status?.oneclaw_configured && <PostureRow />}
 
           <StatusRow
             tone={!status || status.llm_backend === "none" ? "warn" : status.llm_guardrails ? "ok" : "muted"}
@@ -348,5 +351,60 @@ function StatusRow({
       </div>
       {extra.length > 0 && <div className="ml-[5.5rem] mt-1.5 space-y-1.5">{extra}</div>}
     </div>
+  );
+}
+
+/** 1Claw's own view of this account, from its OpenTelemetry surface.
+ *
+ * Three numbers, and only one of them is usually interesting. The posture
+ * score and open threats are a health check you want to be boring. Agents
+ * is the one to act on: this repo gives every distinct bot name its own
+ * 1Claw agent, plans cap how many an account can hold, and running out
+ * surfaces as a 403 "Agent limit reached" from EnsureAgent in the middle of
+ * a run (docs/oneclaw-bridge.md). Seeing 24 of 50 beats discovering 50 of
+ * 50 when a swarm stops. */
+function PostureRow() {
+  const [p, setP] = useState<PostureResponse | null>(null);
+  useEffect(() => {
+    api.posture().then(setP).catch(() => {});
+  }, []);
+  if (!p || !p.configured) return null;
+
+  if (p.error) {
+    return (
+      <StatusRow tone="muted" label="Posture" detail="1Claw didn't answer">
+        <p className="text-[12px] leading-snug text-muted">{p.error}</p>
+      </StatusRow>
+    );
+  }
+
+  const cap = p.agent_limit ? `${p.agents}/${p.agent_limit}` : `${p.agents}`;
+  return (
+    <StatusRow
+      tone={p.agents_near_cap || p.critical > 0 ? "warn" : p.threats > 0 ? "muted" : "ok"}
+      label="Posture"
+      detail={
+        `${p.score}/100 · ${cap} agents` +
+        (p.threats > 0 ? ` · ${p.threats} open threat${p.threats === 1 ? "" : "s"}` : "") +
+        (p.pending > 0 ? ` · ${p.pending} awaiting approval` : "")
+      }
+    >
+      {p.nanobots_agents > 0 && (
+        <p className="text-[12px] leading-snug text-muted">
+          {p.nanobots_agents} of them were made by this app, one per bot name you've
+          run.
+          {p.agents_near_cap && (
+            <>
+              {" "}
+              <span className="text-warn">
+                That is close to the {p.tier} plan's limit. A run that needs a new bot
+                will fail with "Agent limit reached" — delete one you don't need from
+                1Claw to free a slot (docs/oneclaw-bridge.md).
+              </span>
+            </>
+          )}
+        </p>
+      )}
+    </StatusRow>
   );
 }

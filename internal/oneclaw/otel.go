@@ -199,3 +199,40 @@ func streamTransport() *http.Transport {
 	t.ResponseHeaderTimeout = 30 * time.Second
 	return t
 }
+
+// Quota is how much of the account's plan is used. The one that matters
+// here is agents: this repo gives every distinct bot name its own 1Claw
+// agent, so a busy catalog eats the allowance, and running out shows up as
+// a 403 "Agent limit reached" from EnsureAgent at the exact moment a swarm
+// tries to run a bot whose agent does not exist yet
+// (docs/oneclaw-bridge.md). A number you can see beats an error you cannot
+// predict.
+type Quota struct {
+	Tier  string `json:"tier"`
+	Usage struct {
+		Agents  Allowance `json:"agents"`
+		Secrets Allowance `json:"secrets"`
+		Vaults  Allowance `json:"vaults"`
+	} `json:"usage"`
+}
+
+type Allowance struct {
+	Used  int `json:"used"`
+	Limit int `json:"limit"`
+}
+
+// Near reports whether this allowance is close enough to its limit to be
+// worth warning about. Eighty percent: far enough out that there is time to
+// delete an agent, close enough that it is not crying wolf.
+func (a Allowance) Near() bool {
+	return a.Limit > 0 && a.Used*100 >= a.Limit*80
+}
+
+// Quota returns the account's plan usage.
+func (c *Client) Quota() (*Quota, error) {
+	var q Quota
+	if err := c.do("GET", "/v1/billing/subscription", nil, &q); err != nil {
+		return nil, err
+	}
+	return &q, nil
+}
