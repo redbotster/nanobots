@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/redbotster/nanobots/internal/runner"
+	"os"
+	"path/filepath"
 )
 
 // askAndRecord requests one approval on a real Run (so the decision goes
@@ -151,5 +153,99 @@ func TestAbsoluteSwarmPathsAreLeftAlone(t *testing.T) {
 		if got := resolveSwarmPath(root, tc.in); got != tc.want {
 			t.Errorf("resolveSwarmPath(%q) = %q, want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+// Every command in the usage text must be findable by `<cmd> --help`, or
+// the central help handler silently falls through to the full usage for a
+// command that does exist.
+func TestEveryCommandHasItsOwnHelpLine(t *testing.T) {
+	var cmds []string
+	for _, line := range strings.Split(usageText, "\n") {
+		t := strings.TrimSpace(line)
+		if t == "" || strings.HasSuffix(t, ":") || strings.HasPrefix(t, "usage:") {
+			continue
+		}
+		first := strings.Fields(t)[0]
+		// "init, add, save, …" is the not-implemented list.
+		if strings.HasSuffix(first, ",") {
+			continue
+		}
+		cmds = append(cmds, first)
+	}
+	if len(cmds) < 8 {
+		t.Fatalf("only found %d commands in the usage text: %v", len(cmds), cmds)
+	}
+	for _, c := range cmds {
+		if !helpFor(c) {
+			t.Errorf("`nanobots %s --help` finds nothing", c)
+		}
+	}
+}
+
+func TestWantsHelpSpotsBothForms(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want bool
+	}{
+		{[]string{"--help"}, true},
+		{[]string{"-h"}, true},
+		{[]string{"-f", "x.yaml", "--help"}, true},
+		{[]string{"-f", "x.yaml"}, false},
+		{nil, false},
+	} {
+		if got := wantsHelp(tc.args); got != tc.want {
+			t.Errorf("wantsHelp(%v) = %v, want %v", tc.args, got, tc.want)
+		}
+	}
+}
+
+// `conform bots` used to fail with "open bots/nanobot.yaml: no such file".
+// Recognising a directory of bots is what makes the obvious thing work.
+func TestBotDirsUnderFindsEveryBotAndNothingElse(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"alpha", "beta"} {
+		p := filepath.Join(dir, name)
+		if err := os.MkdirAll(p, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(p, "nanobot.yaml"), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A directory that is not a bot, and a loose file.
+	if err := os.MkdirAll(filepath.Join(dir, "notabot"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got := botDirsUnder(dir)
+	if len(got) != 2 {
+		t.Fatalf("found %d bot dirs, want 2: %v", len(got), got)
+	}
+	for _, g := range got {
+		if base := filepath.Base(g); base != "alpha" && base != "beta" {
+			t.Errorf("unexpected entry %q", g)
+		}
+	}
+}
+
+func TestBotDirsUnderIsEmptyForAMissingDirectory(t *testing.T) {
+	if got := botDirsUnder(filepath.Join(t.TempDir(), "nope")); len(got) != 0 {
+		t.Errorf("got %v, want nothing", got)
+	}
+}
+
+// The summary line for a failing bot has to say what went wrong, not just
+// that something did.
+func TestFirstProblemPullsTheComplaintOutOfAReport(t *testing.T) {
+	report := "conform: probe\n\nconform FAILED:\n  - output port \"count\": expected a string, got float64\n  - and another\n"
+	if got := firstProblem(report); got != `output port "count": expected a string, got float64` {
+		t.Errorf("firstProblem = %q", got)
+	}
+	if got := firstProblem("nothing wrong here"); got != "did not conform" {
+		t.Errorf("fallback = %q", got)
 	}
 }

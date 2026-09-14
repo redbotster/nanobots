@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -37,6 +39,19 @@ func main() {
 		os.Exit(2)
 	}
 	cmd, args := os.Args[1], os.Args[2:]
+
+	// `nanobots run --help` used to answer "unknown flag" — the tool
+	// telling you off for typing the most universal thing there is.
+	// Handled centrally so every command gets it, including ones added
+	// later that forget to.
+	if wantsHelp(args) {
+		if helpFor(cmd) {
+			return
+		}
+		usage()
+		return
+	}
+
 	var err error
 	switch cmd {
 	case "plan":
@@ -66,6 +81,9 @@ func main() {
 	case "init", "add", "save", "publish", "compile":
 		fmt.Fprintf(os.Stderr, "nanobots %s: not implemented in this build yet\n", cmd)
 		os.Exit(1)
+	case "-v", "--version", "version":
+		printVersion()
+		return
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -80,15 +98,50 @@ func main() {
 	}
 }
 
-func usage() {
-	fmt.Fprintln(os.Stderr, `usage: nanobots <command> [flags]
+// helpFor prints one command's own usage line. `nanobots run --help`
+// answered "unknown flag \"--help\"", which is the tool telling you off for
+// typing the most universal thing there is.
+func helpFor(cmd string) bool {
+	for _, line := range strings.Split(usageText, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), cmd+" ") ||
+			strings.TrimSpace(line) == cmd {
+			fmt.Println(strings.TrimSpace(line))
+			return true
+		}
+	}
+	return false
+}
+
+// wantsHelp reports whether -h/--help appears in a command's own arguments.
+func wantsHelp(args []string) bool {
+	for _, a := range args {
+		if a == "-h" || a == "--help" {
+			return true
+		}
+	}
+	return false
+}
+
+// Version is stamped at build time with
+// -ldflags "-X main.Version=$(git describe --tags --always --dirty)".
+// "dev" when someone just ran `go build`, which is the honest answer rather
+// than a made-up number.
+var Version = "dev"
+
+// printVersion also reports the Go toolchain, because "which build is this"
+// and "built with what" are the same question in a bug report.
+func printVersion() {
+	fmt.Printf("nanobots %s (%s %s/%s)\n", Version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
+}
+
+const usageText = `usage: nanobots <command> [flags]
 
 commands:
-  plan -f <swarm.yaml> [--bots <dir>]     type-check a swarm's snaps and print its run DAG
-  conform <bot-dir> [--fixtures <dir>]    run a bot's conformance fixtures against its declared ports
+  plan [-f <swarm.yaml>] [--bots <dir>]   type-check a swarm's snaps and print its run DAG; no -f checks every swarm
+  conform <bot-dir>|bots [--fixtures <d>] run a bot's conformance fixtures; "conform bots" checks all of them
   schema --out <dir>                      regenerate schemas/*.json from the Go types in internal/schema
   up [--addr host:port]                   start nanobotd (REST+SSE API) in the foreground
-  run -f <swarm.yaml> [--bots <dir>]       run a swarm to completion, printing its log; prompts on approvals
+  run -f <swarm.yaml> [--bots <dir>]      run a swarm to completion, printing its log; prompts on approvals
   connect google                          link a real Gmail/Drive/Sheets account (one-time OAuth in your browser)
   service install|status|uninstall        keep nanobotd running across reboots, so cron triggers actually fire
   connectors list|register|install|status one place to register an OAuth app and wire it to a bot
@@ -96,8 +149,10 @@ commands:
   webhook <swarm> [--addr host:port]      print where to post to fire a webhook swarm
   export -f <swarm.yaml> [-o <file>]      bundle a swarm to hand to someone else
   import <bundle.yaml>                    add a shared swarm to examples/swarms/
-  init, add, save, publish, compile        not implemented in this build yet`)
-}
+  version                                 print the build and Go toolchain
+  init, add, save, publish, compile       not implemented in this build yet`
+
+func usage() { fmt.Fprintln(os.Stderr, usageText) }
 
 func runPlan(args []string) error {
 	var swarmPath, botsDir string
@@ -120,8 +175,11 @@ func runPlan(args []string) error {
 			return fmt.Errorf("unknown flag %q", args[i])
 		}
 	}
+	// No -f means the whole catalog. TestPlanAllExampleSwarms has always
+	// done this; asking a person to loop over sixteen files by hand to
+	// answer "did my port change break anything" was the gap.
 	if swarmPath == "" {
-		return fmt.Errorf("-f <swarm.yaml> is required")
+		return planAll(botsDir)
 	}
 	result, err := planner.Plan(swarmPath, botsDir)
 	if err != nil {
@@ -134,9 +192,49 @@ func runPlan(args []string) error {
 	return nil
 }
 
+// planAll type-checks every swarm in examples/swarms, one line each.
+//
+// Keeps going past a failure for the same reason conformAll does: the
+// question is what broke, and the answer is the whole list.
+func planAll(botsDir string) error {
+	dir := filepath.Join("examples", "swarms")
+	files, err := filepath.Glob(filepath.Join(dir, "*.yaml"))
+	if err != nil || len(files) == 0 {
+		return fmt.Errorf("no swarms found in %s — pass -f <swarm.yaml> to plan one elsewhere", dir)
+	}
+	sort.Strings(files)
+	failed := 0
+	for _, f := range files {
+		name := strings.TrimSuffix(filepath.Base(f), ".yaml")
+		result, err := planner.Plan(f, botsDir)
+		switch {
+		case err != nil:
+			failed++
+			fmt.Printf("  FAIL  %-24s %v\n", name, err)
+		case !result.OK():
+			failed++
+			fmt.Printf("  FAIL  %-24s %s\n", name, firstProblem(result.Report()))
+		default:
+			fmt.Printf("  ok    %s\n", name)
+		}
+	}
+	fmt.Printf("\n%d swarms, %d failed\n", len(files), failed)
+	if failed > 0 {
+		os.Exit(1)
+	}
+	return nil
+}
+
+// runConform checks one bot, or every bot under a directory.
+//
+// `conform bots` used to fail with "open bots/nanobot.yaml: no such file",
+// which is the tool refusing the most obvious thing to type. The test suite
+// has always conformed the whole catalog (TestRunConformanceOnLaunchBots);
+// a person who just edited the interpreter or a fixture could only check
+// one bot at a time, thirty-nine times.
 func runConform(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: nanobots conform <bot-dir> [--fixtures <dir>]")
+		return fmt.Errorf("usage: nanobots conform <bot-dir>|<dir-of-bots> [--fixtures <dir>]")
 	}
 	botDir := args[0]
 	fixturesDir := ""
@@ -146,6 +244,14 @@ func runConform(args []string) error {
 			fixturesDir = args[i]
 		}
 	}
+	// A directory with no nanobot.yaml of its own, but bot directories
+	// inside it, means "all of these".
+	if _, err := os.Stat(filepath.Join(botDir, "nanobot.yaml")); err != nil {
+		if bots := botDirsUnder(botDir); len(bots) > 0 {
+			return conformAll(bots, fixturesDir)
+		}
+	}
+
 	report, err := contract.RunConformance(botDir, fixturesDir)
 	if err != nil {
 		return err
@@ -155,6 +261,64 @@ func runConform(args []string) error {
 		os.Exit(1)
 	}
 	return nil
+}
+
+// botDirsUnder returns every immediate subdirectory holding a nanobot.yaml.
+func botDirsUnder(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		p := filepath.Join(dir, e.Name())
+		if _, err := os.Stat(filepath.Join(p, "nanobot.yaml")); err == nil {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// conformAll runs every bot and prints one line each, then a total.
+//
+// It keeps going after a failure rather than stopping at the first. The
+// question being asked is "what did I break", and the answer is the whole
+// list, not the first item on it.
+func conformAll(botDirs []string, fixturesDir string) error {
+	failed := 0
+	for _, dir := range botDirs {
+		name := filepath.Base(dir)
+		report, err := contract.RunConformance(dir, fixturesDir)
+		switch {
+		case err != nil:
+			failed++
+			fmt.Printf("  FAIL  %-24s %v\n", name, err)
+		case !report.OK():
+			failed++
+			fmt.Printf("  FAIL  %-24s %s\n", name, firstProblem(report.String()))
+		default:
+			fmt.Printf("  ok    %s\n", name)
+		}
+	}
+	fmt.Printf("\n%d bots, %d failed\n", len(botDirs), failed)
+	if failed > 0 {
+		os.Exit(1)
+	}
+	return nil
+}
+
+// firstProblem pulls the first complaint out of a conformance report, so a
+// summary line says what went wrong rather than just that something did.
+func firstProblem(report string) string {
+	for _, line := range strings.Split(report, "\n") {
+		if t := strings.TrimSpace(line); strings.HasPrefix(t, "- ") {
+			return strings.TrimPrefix(t, "- ")
+		}
+	}
+	return "did not conform"
 }
 
 func runSchema(args []string) error {
