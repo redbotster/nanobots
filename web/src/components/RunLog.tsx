@@ -61,17 +61,30 @@ export function RunLog({
     <div className="grid h-full grid-rows-[1fr_auto] overflow-hidden">
       <div className="overflow-auto px-4 py-3 font-mono text-[12.5px] leading-relaxed">
         {run.log.map((entry, i) => (
-          <div key={i} className="fade-in grid grid-cols-[64px_100px_1fr] gap-3 py-0.5">
-            <span className="text-muted">{timeOf(entry.time)}</span>
-            <span className="truncate text-tron">
+          // At 375px the fixed 64px + 100px columns took 60% of the width
+          // and left the message about a hundred pixels to wrap in. The
+          // timestamp is the least useful of the three on a phone — you are
+          // watching a run happen, not auditing when — so it drops out and
+          // the bot column narrows. Both come back at sm.
+          <div
+            key={i}
+            className="fade-in grid grid-cols-[72px_1fr] gap-2 py-0.5 sm:grid-cols-[64px_100px_1fr] sm:gap-3"
+          >
+            <span className="hidden text-muted sm:inline" title={entry.time}>
+              {timeOf(entry.time)}
+            </span>
+            <span
+              className="truncate text-tron"
+              title={`${entry.bot}${entry.step ? "/" + entry.step : ""} · ${timeOf(entry.time)}`}
+            >
               {entry.bot}
               {entry.step ? `/${entry.step}` : ""}
             </span>
             <span
               className={
                 entry.msg.toLowerCase().startsWith("failed")
-                  ? "text-danger"
-                  : "text-ink"
+                  ? "break-words text-danger"
+                  : "break-words text-ink"
               }
             >
               {entry.msg}

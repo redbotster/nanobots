@@ -98,7 +98,11 @@ function ServiceToggle({
   return (
     <div>
       <div className="flex items-center gap-1.5">
-        <Switch checked={isLive} onCheckedChange={onCheckedChange} />
+        <Switch
+          checked={isLive}
+          onCheckedChange={onCheckedChange}
+          ariaLabel={`${service.id}: use a real account instead of demo data`}
+        />
         <span className="text-[11px] text-ink">{service.id}</span>
         {busy && <span className="text-[10px] text-muted">…</span>}
         {!busy && !isLive && !connected && !showTokenInput && (

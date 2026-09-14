@@ -77,7 +77,7 @@ function ComposeBox({
     <div className="rounded-lg border border-edge-strong bg-panel p-5 shadow-glow-sm">
       <div className="flex items-center gap-2">
         <span className="text-lg">✨</span>
-        <h2 className="font-display text-sm font-semibold text-ink">
+        <h2 id="compose-heading" className="font-display text-sm font-semibold text-ink">
           Describe what you want automated
         </h2>
       </div>
@@ -91,6 +91,10 @@ function ComposeBox({
           onKeyDown={(e) => e.key === "Enter" && submit()}
           placeholder={EXAMPLE_PROMPT}
           disabled={loading}
+          // The heading above is the label; pointing at it beats a second
+          // copy of the same words. A placeholder is not a label — it is a
+          // hint that disappears the moment you type.
+          aria-labelledby="compose-heading"
           className="flex-1 rounded border border-edge-strong bg-void px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-tron focus:outline-none disabled:opacity-60"
         />
         <Button variant="primary" onClick={submit} disabled={loading || !message.trim()}>

@@ -80,6 +80,7 @@ export function BotLibrary() {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search by name, tag, or description…"
+        aria-label="Search bots by name, tag, or description"
         className="mt-4 w-full max-w-sm rounded border border-edge-strong bg-void px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-tron focus:outline-none sm:w-80"
       />
 
