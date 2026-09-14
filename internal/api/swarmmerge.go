@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"fmt"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -27,7 +28,12 @@ import (
 
 // mergeIntoExistingSwarm returns existing with only the builder-owned
 // fields replaced. Every other key, and every comment, is preserved.
-func mergeIntoExistingSwarm(existing []byte, name, description string, bots []builderBotRef, snaps []builderSnap) ([]byte, error) {
+//
+// schedule is nil for "do not touch the trigger", which is what a caller
+// that does not model one must send. A non-nil empty string means make it
+// manual; anything else is a cron expression the caller has already
+// validated.
+func mergeIntoExistingSwarm(existing []byte, name, description string, bots []builderBotRef, snaps []builderSnap, schedule *string, timezone string) ([]byte, error) {
 	var doc yaml.Node
 	if err := yaml.Unmarshal(existing, &doc); err != nil {
 		return nil, fmt.Errorf("parse existing swarm: %w", err)
@@ -64,6 +70,23 @@ func mergeIntoExistingSwarm(existing []byte, name, description string, bots []bu
 		setNode(spec, "snaps", snapsNode)
 	} else {
 		deleteKey(spec, "snaps")
+	}
+
+	if schedule != nil {
+		trigger := ensureMapping(spec, "trigger")
+		if strings.TrimSpace(*schedule) == "" {
+			setScalar(trigger, "type", "manual")
+			deleteKey(trigger, "expr")
+			deleteKey(trigger, "timezone")
+		} else {
+			setScalar(trigger, "type", "cron")
+			setScalar(trigger, "expr", strings.TrimSpace(*schedule))
+			if timezone != "" {
+				setScalar(trigger, "timezone", timezone)
+			} else {
+				deleteKey(trigger, "timezone")
+			}
+		}
 	}
 
 	// Encode with a 2-space indent to match how these files are written by

@@ -326,7 +326,7 @@ spec:
   snaps: []
 `)
 	merged, err := mergeIntoExistingSwarm(existing, "probe", "probe",
-		[]builderBotRef{{ID: "notifier", Use: "notify@0.1.0"}}, []builderSnap{snap})
+		[]builderBotRef{{ID: "notifier", Use: "notify@0.1.0"}}, []builderSnap{snap}, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}

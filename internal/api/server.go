@@ -109,6 +109,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/roles/{id}", s.handleSetRole)
 	mux.HandleFunc("POST /api/roles/{id}/reset", s.handleResetRole)
 	mux.HandleFunc("GET /api/swarms", s.handleListSwarms)
+	mux.HandleFunc("GET /api/schedule/describe", s.handleDescribeSchedule)
 	mux.HandleFunc("GET /api/swarms/plan", s.handlePlan)
 	mux.HandleFunc("GET /api/swarms/yaml", s.handleSwarmYAML)
 	mux.HandleFunc("GET /api/swarms/full", s.handleGetSwarmFull)

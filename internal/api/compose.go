@@ -149,6 +149,8 @@ func (s *Server) planWithOneCorrection(
 }
 
 func (s *Server) planDraft(draft *saveSwarmRequest) planResponse {
+	// The planner does not care about the trigger, so plan with the default
+	// one; the draft carries the schedule on to whoever saves it.
 	sw := draftToNanoswarm(draft.Name, draft.Description, "", draft.Bots, draft.Snaps)
 	result, resolveErr := planner.PlanSwarm(sw, s.BotsDir)
 	return buildPlanResponse(draft.Name, result, resolveErr)
@@ -260,6 +262,7 @@ Produce **only** JSON in this shape:
 {
   "name": "a short, human-readable swarm name",
   "description": "one sentence describing what it does",
+  "schedule": "",
   "bots": [
     { "id": "a short instance id you choose, e.g. 'triage'", "use": "<catalog-id>@<version>", "inputs": {}, "on_error": "stop" }
   ],
@@ -267,6 +270,14 @@ Produce **only** JSON in this shape:
     { "from": "<instance-id>.<output-port>", "to": "<instance-id>.<input-port>", "join": "" }
   ]
 }
+
+"schedule" is a five-field cron expression for when this should run on its
+own — set it whenever the request says when ("every Friday" -> "0 9 * * 5",
+"every weekday morning" -> "0 7 * * 1-5", "every 30 minutes" ->
+"*/30 * * * *"). Leave it "" when the request implies no timing and the
+swarm should only run when someone presses Run. Do not describe a schedule
+in "description" that you have not put in "schedule": a swarm that says it
+runs every Friday and does not is worse than one that admits it is manual.
 
 "on_error" and "join" are optional; omit them unless you mean them. Note
 where they live: "on_error" is a sibling of "id" and "use", never a key

@@ -62,6 +62,7 @@ func TestMergePreservesEverythingTheBuilderDoesNotModel(t *testing.T) {
 			{ID: "pdf", Use: "render-pdf@0.1.0"}, // the actual edit
 		},
 		[]builderSnap{{From: "receipts.receipts", To: "reporter.sheet"}},
+		nil, "", // leave the trigger alone
 	)
 	if err != nil {
 		t.Fatalf("merge: %v", err)
@@ -104,6 +105,7 @@ func TestMergeAppliesRenamesAndRemovals(t *testing.T) {
 		"A new description.",
 		[]builderBotRef{{ID: "only", Use: "notify@0.1.0"}},
 		nil, // every snap removed
+		nil, "",
 	)
 	if err != nil {
 		t.Fatalf("merge: %v", err)
@@ -133,6 +135,7 @@ func TestMergedSwarmStillParses(t *testing.T) {
 		[]byte(existingSwarm), "bookkeeping-assistant", "d",
 		[]builderBotRef{{ID: "a", Use: "notify@0.1.0"}},
 		[]builderSnap{},
+		nil, "",
 	)
 	if err != nil {
 		t.Fatalf("merge: %v", err)
@@ -156,7 +159,7 @@ func TestMergedSwarmStillParses(t *testing.T) {
 }
 
 func TestMergeRejectsGarbage(t *testing.T) {
-	if _, err := mergeIntoExistingSwarm([]byte("\x00not yaml: ["), "n", "d", nil, nil); err == nil {
+	if _, err := mergeIntoExistingSwarm([]byte("\x00not yaml: ["), "n", "d", nil, nil, nil, ""); err == nil {
 		t.Error("expected an error rather than a silently mangled file")
 	}
 }

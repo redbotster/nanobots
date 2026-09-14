@@ -4,6 +4,7 @@
 package api
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"os"
@@ -11,8 +12,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/redbotster/nanobots/internal/planner"
+	"github.com/redbotster/nanobots/internal/scheduler"
 	"github.com/redbotster/nanobots/internal/schema"
 	"gopkg.in/yaml.v3"
 )
@@ -55,12 +58,16 @@ func (s builderSnap) toSchema() schema.Snap {
 }
 
 func draftToNanoswarm(name, description, owner string, bots []builderBotRef, snaps []builderSnap) *schema.Nanoswarm {
+	return draftToNanoswarmWithTrigger(name, description, owner, bots, snaps, schema.Trigger{Type: "manual"})
+}
+
+func draftToNanoswarmWithTrigger(name, description, owner string, bots []builderBotRef, snaps []builderSnap, trigger schema.Trigger) *schema.Nanoswarm {
 	sw := &schema.Nanoswarm{
 		APIVersion: "nanobots.dev/v1alpha1",
 		Kind:       "Nanoswarm",
 		Metadata:   schema.Metadata{Name: name, Description: description, Owner: owner},
 		Spec: schema.NanoswarmSpec{
-			Trigger: schema.Trigger{Type: "manual"},
+			Trigger: trigger,
 			Deploy:  schema.Deploy{Target: "local"},
 		},
 	}
@@ -71,6 +78,48 @@ func draftToNanoswarm(name, description, owner string, bots []builderBotRef, sna
 		sw.Spec.Snaps = append(sw.Spec.Snaps, s.toSchema())
 	}
 	return sw
+}
+
+// marshalSwarmYAML writes a swarm the way this repo writes swarms.
+func marshalSwarmYAML(sw *schema.Nanoswarm) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(sw); err != nil {
+		return nil, err
+	}
+	if err := enc.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// triggerFor turns a requested cron expression into a trigger, refusing one
+// the scheduler cannot parse.
+//
+// Validated with scheduler.Parse — the same parser that actually fires
+// these — rather than trusted. A swarm saved with an unparseable expression
+// is worse than a manual one: it looks scheduled in the list, reports a
+// next run of nothing, and silently never happens. The composer is a
+// language model writing cron by hand; assuming it gets that right is not
+// a risk worth taking for a field this quiet when wrong.
+func triggerFor(schedule *string, timezone string) (schema.Trigger, error) {
+	if schedule == nil {
+		return schema.Trigger{Type: "manual"}, nil
+	}
+	expr := strings.TrimSpace(*schedule)
+	if expr == "" {
+		return schema.Trigger{Type: "manual"}, nil
+	}
+	if _, err := scheduler.Parse(expr); err != nil {
+		return schema.Trigger{}, fmt.Errorf("%q is not a schedule this can run: %w", expr, err)
+	}
+	if timezone != "" {
+		if _, err := time.LoadLocation(timezone); err != nil {
+			return schema.Trigger{}, fmt.Errorf("unknown timezone %q: %w", timezone, err)
+		}
+	}
+	return schema.Trigger{Type: "cron", Expr: expr, Timezone: timezone}, nil
 }
 
 // buildPlanResponse shapes a PlanResult (or a Resolve-time error, when
@@ -154,6 +203,24 @@ type saveSwarmRequest struct {
 	Owner       string          `json:"owner,omitempty"`
 	Bots        []builderBotRef `json:"bots"`
 	Snaps       []builderSnap   `json:"snaps"`
+	// Schedule is a five-field cron expression, when this swarm should run
+	// on its own.
+	//
+	// A pointer, and the distinction matters: absent means "leave whatever
+	// this swarm already has alone", while present-and-empty means "make it
+	// manual". Without that, every save from a builder that does not model
+	// the trigger would quietly convert a cron swarm to a manual one — the
+	// exact class of loss swarmmerge.go exists to prevent.
+	//
+	// Every new swarm used to be written with trigger: {type: manual}, no
+	// matter what it was asked for. Compose "every friday summarise my
+	// overdue invoices" and you got a swarm the model had described as
+	// "Every Friday, finds overdue invoices…" that would never once fire on
+	// a Friday — the description was true about the intent and false about
+	// the thing. Fourteen of the fifteen catalog swarms carry a cron
+	// trigger, so this was the normal case, unreachable.
+	Schedule *string `json:"schedule,omitempty"`
+	Timezone string  `json:"timezone,omitempty"`
 }
 
 type saveSwarmResponse struct {
@@ -196,7 +263,16 @@ func (s *Server) handleSaveSwarm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sw := draftToNanoswarm(req.Name, req.Description, req.Owner, req.Bots, req.Snaps)
+	// Refused before anything is written, not warned about after: a swarm
+	// saved with a schedule that cannot be parsed looks scheduled and never
+	// runs, which is the worst of both.
+	trigger, terr := triggerFor(req.Schedule, req.Timezone)
+	if terr != nil {
+		writeError(w, http.StatusBadRequest, terr)
+		return
+	}
+
+	sw := draftToNanoswarmWithTrigger(req.Name, req.Description, req.Owner, req.Bots, req.Snaps, trigger)
 	result, resolveErr := planner.PlanSwarm(sw, s.BotsDir)
 	if resolveErr != nil {
 		writeError(w, http.StatusBadRequest, resolveErr)
@@ -224,14 +300,18 @@ func (s *Server) handleSaveSwarm(w http.ResponseWriter, r *http.Request) {
 	var raw []byte
 	var err error
 	if existing, readErr := os.ReadFile(path); readErr == nil {
-		raw, err = mergeIntoExistingSwarm(existing, req.Name, req.Description, req.Bots, req.Snaps)
+		raw, err = mergeIntoExistingSwarm(existing, req.Name, req.Description, req.Bots, req.Snaps, req.Schedule, req.Timezone)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError,
 				fmt.Errorf("could not update %s without losing the rest of the file: %w", filepath.Base(path), err))
 			return
 		}
 	} else {
-		raw, err = yaml.Marshal(sw)
+		// Two-space indent, matching the hand-written catalog and what
+		// swarmmerge.go already does when editing. yaml.Marshal defaults to
+		// four, so a created swarm sat next to fifteen two-space ones and
+		// every later edit re-indented the whole file.
+		raw, err = marshalSwarmYAML(sw)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return

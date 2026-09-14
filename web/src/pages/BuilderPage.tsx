@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from "react";
+import { SchedulePicker } from "../components/builder/SchedulePicker";
 import { api } from "../lib/api";
 import type {
   BotSummary,
@@ -75,6 +76,10 @@ export function BuilderPage({
   const [connections, setConnections] = useState<ConnectionStatus[]>([]);
   const [name, setName] = useState(existing?.name ?? composedDraft?.name ?? "");
   const [description, setDescription] = useState(existing?.description ?? composedDraft?.description ?? "");
+  // Only tracked for a *new* swarm. Editing an existing one leaves its
+  // trigger alone — the builder does not model triggers, and sending a
+  // value here on every save would unschedule anything you opened.
+  const [schedule, setSchedule] = useState(composedDraft?.schedule ?? "");
   const [bots, setBots] = useState<PlacedBot[]>([]);
   const [snaps, setSnaps] = useState<CanvasSnap[]>([]);
   const [inputValues, setInputValues] = useState<Record<string, Record<string, string>>>({});
@@ -243,6 +248,9 @@ export function BuilderPage({
           on_error: b.onError,
         })),
         snaps,
+        // Only on create. undefined on an edit is what tells the server to
+        // keep the existing trigger.
+        schedule: existing ? undefined : schedule,
       });
       savedRef.current = true; // a successful save is not unsaved work
       onDone(result.path);
@@ -298,6 +306,10 @@ export function BuilderPage({
           placeholder="Description (optional)"
           className="min-w-[180px] flex-[2] rounded border border-edge-strong bg-void px-2.5 py-1.5 text-sm text-ink placeholder:text-muted focus:border-tron focus:outline-none"
         />
+
+        {/* Only when creating: an edit leaves the trigger alone, so a
+            control here would be a promise the save does not keep. */}
+        {!existing && <SchedulePicker value={schedule} onChange={setSchedule} />}
 
         <div className="ml-auto flex items-center gap-3">
           {validating && <span className="text-xs text-muted">checking…</span>}

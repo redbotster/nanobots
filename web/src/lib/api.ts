@@ -86,6 +86,10 @@ export const api = {
     reqText(`/api/swarms/yaml?path=${encodeURIComponent(path)}`),
   swarmFull: (path: string) =>
     req<SwarmFull>(`/api/swarms/full?path=${encodeURIComponent(path)}`),
+  describeSchedule: (expr: string) =>
+    req<{ ok: boolean; human?: string; error?: string; next_run_at?: string }>(
+      `/api/schedule/describe?expr=${encodeURIComponent(expr)}`,
+    ),
   webhookDetails: (name: string) =>
     req<WebhookDetails>(`/api/swarms/${encodeURIComponent(name)}/webhook`),
   resumeSchedule: (name: string) =>

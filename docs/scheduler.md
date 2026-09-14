@@ -150,3 +150,47 @@ it is still true.
 It does not run the swarm: resuming a schedule and triggering a run are
 different intentions, and conflating them would mean you cannot un-pause
 something without also firing it.
+
+## The composer can schedule
+
+Fourteen of the fifteen catalog swarms carry a cron trigger, and until now
+nothing you built could have one. `draftToNanoswarm` hardcoded
+`trigger: {type: manual}`, so composing *"every friday summarise my overdue
+invoices and email me the list"* produced a swarm the model had described as
+**"Every Friday, finds overdue invoices and emails a summary"** — and that
+would never once fire on a Friday. The description was true about the intent
+and false about the thing.
+
+The composer now emits a `schedule` field, and the prompt is explicit that
+it must not describe a schedule it has not set. Against the live model:
+
+| request | schedule |
+|---|---|
+| "every friday summarise my overdue invoices…" | `0 9 * * 5` |
+| "every weekday morning recap my inbox" | `0 7 * * 1-5` |
+| "draft a reply to this one email when I paste it in" | *(none)* |
+
+The builder shows it before you save — a preset dropdown, or a raw cron
+field with the expression described back to you as you type
+(`GET /api/schedule/describe`). That endpoint uses the same
+`scheduler.Parse` and `scheduler.Describe` the swarm list and the firing
+loop use, so what the picker promises and what happens cannot drift. `0 9 *
+* 5` reads back as "Fridays at 9:00 AM", which is the whole point: you asked
+for Friday, and you can check you got Friday.
+
+An expression the scheduler cannot parse is **refused before anything is
+written**. A swarm saved with a broken schedule looks scheduled in the list,
+reports no next run, and silently never happens — worse than being honest
+about being manual.
+
+### `schedule` is a tri-state, and it has to be
+
+- **absent** — leave whatever trigger this swarm already has alone
+- **`""`** — make it manual
+- **`"0 9 * * 5"`** — this cron expression
+
+The distinction is not pedantry. The builder does not model triggers, so
+every save from it omits the field; if absent meant "manual", opening a
+scheduled swarm and pressing Save changes would quietly unschedule it. That
+is the same class of loss `swarmmerge.go` exists to prevent, and it now has
+a test of its own.

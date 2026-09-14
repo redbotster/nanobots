@@ -295,6 +295,14 @@ export interface SaveSwarmRequest {
   description?: string;
   bots: DraftBot[];
   snaps: DraftSnap[];
+  /** A five-field cron expression, or "" for manual.
+   *
+   * Tri-state on purpose, matching the server: `undefined` means "leave
+   * whatever this swarm already has alone", `""` means make it manual.
+   * Sending "" on every save would quietly unschedule any swarm you edited.
+   * See saveSwarmRequest in internal/api/builder.go. */
+  schedule?: string;
+  timezone?: string;
 }
 
 export interface SaveSwarmResult {

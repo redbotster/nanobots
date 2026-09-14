@@ -229,3 +229,33 @@ func (s *Server) handleResumeSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "swarm": name})
 }
+
+// handleDescribeSchedule turns a cron expression into English, and says so
+// when it isn't one.
+//
+// The composer writes cron now, and a cron expression the user cannot read
+// is a promise they cannot check — the entire reason to show the schedule
+// before saving is so they can confirm "every Friday" became Friday. This
+// answers with the same scheduler.Describe the swarm list uses and the same
+// scheduler.Parse that decides whether it fires, so what the picker says and
+// what actually happens cannot drift.
+func (s *Server) handleDescribeSchedule(w http.ResponseWriter, r *http.Request) {
+	expr := strings.TrimSpace(r.URL.Query().Get("expr"))
+	if expr == "" {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "human": "only when you press Run"})
+		return
+	}
+	sched, err := scheduler.Parse(expr)
+	if err != nil {
+		// 200, not 400: "that isn't a schedule" is the answer to the
+		// question, not a failure to answer it. The picker renders it as
+		// you type, and a stream of 400s in the console would be noise.
+		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	out := map[string]any{"ok": true, "human": scheduler.Describe(expr)}
+	if next := sched.Next(time.Now().UTC()); !next.IsZero() {
+		out["next_run_at"] = next.Format(time.RFC3339)
+	}
+	writeJSON(w, http.StatusOK, out)
+}
