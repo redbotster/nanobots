@@ -7,6 +7,7 @@ package api
 
 import (
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -164,20 +165,65 @@ func (s *Server) Handler() http.Handler {
 	return withCORS(mux)
 }
 
-// withCORS allows the WebUI dev server (a different origin during `vite
-// dev`) to call nanobotd directly. Loopback-only in practice — nanobotd
-// binds 127.0.0.1, not 0.0.0.0 (see cmd/nanobotd).
+// withCORS lets a locally-served WebUI call nanobotd, and nothing else.
+//
+// This used to answer `Access-Control-Allow-Origin: *` on every route,
+// including POST. Binding loopback is no defence against that: the browser
+// is already inside the loopback, so any page the user happened to have
+// open could read every swarm and run, read a webhook token, start a run,
+// save a swarm, and answer a pending approval — which is how a swarm sends
+// mail or pays an invoice. The JSON content type makes those preflighted,
+// and a wildcard passes the preflight.
+//
+// The stated reason for the wildcard was the `vite dev` server being a
+// different origin. It isn't: vite proxies /api to this daemon server-side
+// (web/vite.config.ts), every request the frontend makes is a relative
+// path, and the browser therefore never makes a cross-origin request here
+// at all. The wildcard bought the app nothing.
+//
+// Loopback origins are still echoed, so serving the built UI from any local
+// port keeps working. A request with no Origin header is not a browser
+// cross-origin request — curl, the vite proxy, a bot container — and gets
+// no CORS headers because it needs none.
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if origin := r.Header.Get("Origin"); origin != "" {
+			if isLoopbackOrigin(origin) {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			}
+			// Vary regardless of the decision: the response now depends on
+			// the Origin, and these routes carry ETags. Without it a cache
+			// could hand one origin's response to another.
+			w.Header().Add("Vary", "Origin")
+		}
 		if r.Method == http.MethodOptions {
+			// A disallowed origin gets 204 with no CORS headers, which the
+			// browser reads as "not permitted" — the correct answer, and
+			// one that leaks nothing about what exists here.
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// isLoopbackOrigin reports whether an Origin header names this machine.
+//
+// Parsed rather than prefix-matched: "http://127.0.0.1.evil.example" and
+// "http://localhost@evil.example" both start with something that looks
+// right, and a browser would send them from an attacker's page.
+func isLoopbackOrigin(origin string) bool {
+	u, err := url.Parse(origin)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return false
+	}
+	switch u.Hostname() {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	}
+	return false
 }
 
 // vaultProbe caches the "is the 1Claw vault locked" check. Longer TTL than

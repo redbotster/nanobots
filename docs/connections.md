@@ -195,3 +195,38 @@ way.
 
 `google_business_profile` is the remaining exception and is listed as such
 in that test: `review-responder` declares it and no client exists yet.
+
+## The daemon no longer answers to every website
+
+`nanobotd` binds loopback, and for a long time it also answered
+`Access-Control-Allow-Origin: *` on every route, including POST.
+
+Loopback is no defence against that. The browser is already inside the
+loopback, so any page the user happened to have open could read every swarm
+and run, read a webhook token, start a run, save a swarm, and answer a
+pending approval. Answering an approval is how a swarm sends mail or pays an
+invoice. The JSON content type makes those requests preflighted, and a
+wildcard passes the preflight, so the protection people assume preflight
+gives was not there.
+
+Two places in the code already treated the wildcard as a hazard and worked
+around it locally: `safeBlobMime` allowlists blob content types so a page
+cannot get scripted content executing on the daemon's origin, and
+`handleSwarmYAML` was fixed to resolve `?path=` inside the swarms directory
+after `?path=/Users/you/.ssh/id_rsa` turned out to work. Both are still
+right. They were compensating for the policy rather than fixing it.
+
+The stated reason for the wildcard was that `vite dev` is a different
+origin. It is not: vite proxies `/api` to the daemon server-side
+(`web/vite.config.ts`), every path the frontend fetches is relative, and the
+browser never makes a cross-origin request to nanobotd at all. The wildcard
+bought the app nothing.
+
+Now only loopback origins are echoed, so serving the built UI from any local
+port still works. The origin is *parsed*, not prefix-matched, because
+`http://127.0.0.1.evil.example` starts with something that looks right and a
+browser will send it from an attacker's page. A request with no `Origin` at
+all — curl, the vite proxy, a bot container — is not a browser cross-origin
+request and gets no CORS headers, because it needs none. `Vary: Origin` is
+set either way, since these routes carry ETags and a cache must not hand one
+origin's response to another.
