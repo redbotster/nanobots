@@ -47,7 +47,7 @@ ideas | starting (openclaw harness)
 ideas | using the bare image: no step here needs a browser
 ```
 
-Across the catalog that's **25 of 30 bots on the 25 MB image**; only `render-pdf`, `meeting-prep`, `quote-builder`, `recap-emails-to-pdf` and `sheet-reporter` need the big one. `TestMostCatalogBotsDoNotNeedABrowser` asserts the ratio against the real `bots/` tree, so a render step creeping into a lean bot is something a test notices.
+Across the catalog that's **35 of 39 bots on the 25 MB image**; only `render-pdf`, `meeting-prep`, `quote-builder`, `recap-emails-to-pdf` and `sheet-reporter` need the big one. `TestMostCatalogBotsDoNotNeedABrowser` asserts the ratio against the real `bots/` tree, so a render step creeping into a lean bot is something a test notices.
 
 The declared harness type is deliberately left alone. It's the honest statement of what a bot is, and once a real dynamic agent loop exists `openclaw` will mean more than "has Chromium" — this only decides which image to hand it today.
 

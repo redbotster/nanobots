@@ -108,8 +108,8 @@ and the commit says that.
 - `internal/` — `step` (the universal step interpreter), `runner`
   (orchestration, Docker, runs), `api` (REST+SSE), `planner`, `scheduler`,
   `schema`, `foundry`, plus the pluggable `llm` and `memory` backends.
-- `bots/` — 33 catalog bots, one directory each.
-- `examples/swarms/` — 15 swarms: 11 cron, 2 event, 1 webhook, 1 manual.
+- `bots/` — 39 catalog bots, one directory each.
+- `examples/swarms/` — 16 swarms: 12 cron, 2 event, 1 webhook, 1 manual.
 - `web/` — the React app. `docs/` — 21 pages, all linked from the README.
 
 Credentials live in `~/.secrets/nanobots.env` and never in the repo or a

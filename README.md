@@ -16,7 +16,7 @@ Nanobots' bet is the opposite one — the Unix philosophy applied to AI automati
 - **Fast** — most bots run in the `bare` harness (no LLM loop, no browser, a plain deterministic container) and finish in seconds; only the ones that genuinely need Chrome or an LLM call reach for more.
 - **Powerful** — small doesn't mean thin. Each bot is backed by a real integration wherever one exists (direct Gmail/Slack/GitHub/Stripe/HubSpot/X/LinkedIn clients, not just fixtures) and does its one job completely, not partially.
 - **Modular** — every input and output is a typed, named port (`docs/bot-contract.md`), so a bot never has to know or trust anything about its neighbors beyond the shape of the data crossing the wire.
-- **Orchestratable** — because the ports are typed and the contract is uniform, any bot can be snapped into any swarm the planner can type-check, and swapped for another bot with compatible ports without touching anything else. Composing bricks this way, instead of writing one monolithic agent, is what makes 30 bots and 14 swarms possible to build, test, and trust independently — you never have to reason about the whole system to trust one piece of it, and a piece you don't trust yet (a bot still on `connection: demo`) can't leak scope into the pieces you do.
+- **Orchestratable** — because the ports are typed and the contract is uniform, any bot can be snapped into any swarm the planner can type-check, and swapped for another bot with compatible ports without touching anything else. Composing bricks this way, instead of writing one monolithic agent, is what makes 39 bots and 16 swarms possible to build, test, and trust independently — you never have to reason about the whole system to trust one piece of it, and a piece you don't trust yet (a bot still on `connection: demo`) can't leak scope into the pieces you do.
 
 That's the actual product: not a chatbot that does automation, but a growing, composable catalog of small, real, individually-provable automation bricks — plus, since assembling bricks by hand is still work, an AI composer that does the assembly for you from one sentence of plain English (next section).
 
@@ -28,7 +28,7 @@ The full catalog also covers a second, secondary persona: a small business owner
 
 ## Status
 
-This repo implements the full 28-brick, 12-swarm launch catalog from `context/NANOBOTS-CATALOG.md` (Tranches A, B, and C), plus 2 bots and 2 swarms that predate the catalog work — **30 nanobots, 14 nanoswarms** — end to end and verified live, not just type-checked:
+This repo implements the full 28-brick, 12-swarm launch catalog from `context/NANOBOTS-CATALOG.md` (Tranches A, B, and C), plus the two bricks and two swarms that predate it and everything added since — **39 nanobots, 16 nanoswarms** — end to end and verified live, not just type-checked:
 
 - **The bot contract, planner, and Docker-backed local runner**: bots run as real, non-root, read-only-filesystem containers, wired to each other's outputs across separate containers, streamed live over SSE. `nanobots conform` proves every bot honors the contract without Docker; `nanobots plan` type-checks every swarm's snaps against real port types.
 - **A real [1Claw](https://docs.1claw.co) bridge**: Human API key → bearer token exchange, agent creation/deletion, Shroud (LLM proxy) chat completions, vault secrets, agent memory, approval requests, and a Browser Bridge client — all exercised against the real API, not mocked.
@@ -273,9 +273,9 @@ Per the project's own working style, expensive verification is a single consolid
 go build ./... && go vet ./... && go test ./...
 ```
 
-578 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
-- `internal/contract`'s `TestRunConformanceOnLaunchBots` — auto-discovers and conformance-tests all 30 bots under `bots/` against their own fixtures, no Docker or network.
-- `internal/planner`'s `TestPlanAllExampleSwarms` — auto-discovers and type-checks all 14 swarms under `examples/swarms/`.
+579 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
+- `internal/contract`'s `TestRunConformanceOnLaunchBots` — auto-discovers and conformance-tests all 39 bots under `bots/` against their own fixtures, no Docker or network.
+- `internal/planner`'s `TestPlanAllExampleSwarms` — auto-discovers and type-checks all 16 swarms under `examples/swarms/`.
 - httptest-mocked 1Claw/Google/Slack/GitHub/Stripe/HubSpot/X/LinkedIn API clients, built against each provider's real, documented endpoint shapes (verified against `@1claw/openapi-spec` and each provider's own docs, not guessed).
 - `internal/runner`'s run-history tests — a run really written to a temp dir, a second store really reading it back, plus the awkward cases: a corrupt file, an over-cap directory, and a run left mid-flight by a restart (`docs/run-history.md`).
 
@@ -301,7 +301,7 @@ Both were run for real this session, end to end: real openclaw/bare Docker conta
 3. Poll for the builder to open with a validated draft (a real `POST /api/compose` round trip to Shroud). Confirmed this session: a 4-bot draft (`inbox-triage` → `recap-emails-to-pdf` → `drive-save` → `notify`) came back named "Daily Priority Email Recap", already marked "ready to run" by the planner.
 4. Flip the header toggle to Advanced, confirm "Bot library" and "Build manually" now appear.
 
-That practice has also caught real bugs no unit test would have over the course of this build: the visual builder's own null-array crash and snap-trail mislabeling, a CSS Grid layout bug where the bot palette silently couldn't scroll past 11 bots, and a pre-existing `email-drive-file` timeout bug (its `max_runtime_secs: 60` guardrail was too short for its own approval gate to ever be answered in time).
+That practice has also caught real bugs no unit test would have over the course of this build: the visual builder's own null-array crash and snap-trail mislabeling, a CSS Grid layout bug where the bot palette silently couldn't scroll past its first screenful, and a pre-existing `email-drive-file` timeout bug (its `max_runtime_secs: 60` guardrail was too short for its own approval gate to ever be answered in time).
 
 ## License
 

@@ -218,3 +218,83 @@ func numberWord(n int) string {
 	}
 	return fmt.Sprint(n)
 }
+
+// Every catalog count in the README, not just the two headline ones.
+//
+// TestReadmeCatalogCountsAreAccurate only matches a bolded count at the
+// start of a line, so four prose claims sat at "30 nanobots, 14 nanoswarms"
+// through nine bots and two swarms being added — including the sentence
+// that introduces the whole catalog. A number the tests do not read is a
+// number that drifts.
+//
+// Deliberately absolute: no allowlist, no historical exceptions. Prose that
+// needs to say a different number spells it out in words ("the two bricks
+// that predate it"), which is also how it reads better.
+func TestEveryDocCountIsCurrent(t *testing.T) {
+	root := repoRoot(t)
+	readme, err := os.ReadFile(filepath.Join(root, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, _ := filepath.Glob(filepath.Join(root, "examples", "swarms", "*.yaml"))
+	want := map[string]int{
+		"bots":       len(allBotIDs(t, root)),
+		"nanobots":   len(allBotIDs(t, root)),
+		"swarms":     len(files),
+		"nanoswarms": len(files),
+	}
+
+	// Every prose page, not just the README. The same drift was in
+	// docs/harnesses.md ("25 of 30 bots"), docs/connections.md ("all 14
+	// swarms") and CLAUDE.md, which had gone stale within a day of being
+	// written.
+	pages := []string{"README.md", "CLAUDE.md"}
+	docs, _ := filepath.Glob(filepath.Join(root, "docs", "*.md"))
+	for _, d := range docs {
+		rel, err := filepath.Rel(root, d)
+		if err == nil {
+			pages = append(pages, rel)
+		}
+	}
+	_ = readme
+
+	re := regexp.MustCompile(`(\d+) (nanobots|nanoswarms|bots|swarms)\b`)
+	for _, page := range pages {
+		raw, err := os.ReadFile(filepath.Join(root, page))
+		if err != nil {
+			continue
+		}
+		for _, m := range re.FindAllStringSubmatch(stripFences(string(raw)), -1) {
+			got, err := strconv.Atoi(m[1])
+			if err != nil {
+				continue
+			}
+			if got != want[m[2]] {
+				t.Errorf("%s says %q; there are %d %s. Spell a historical number "+
+					"as a word if it is deliberately not the current count.",
+					page, m[0], want[m[2]], m[2])
+			}
+		}
+	}
+}
+
+// stripFences blanks out fenced code blocks. What is inside one is a
+// transcript or a mock of rendered output — docs/connections.md shows a
+// Settings row reading "18 bots would use this once connected" — and an
+// illustration is allowed to be an illustration. Prose making a claim about
+// the catalog is not.
+func stripFences(s string) string {
+	var out strings.Builder
+	inFence := false
+	for _, line := range strings.Split(s, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "```") {
+			inFence = !inFence
+			continue
+		}
+		if !inFence {
+			out.WriteString(line)
+		}
+		out.WriteString("\n")
+	}
+	return out.String()
+}
