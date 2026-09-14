@@ -18,18 +18,32 @@ import type { RunSummary } from "./types";
  */
 
 const POLL_MS = 2000;
+/** Ceiling for the backoff below. Low enough that the list catches up
+ * within a few seconds of nanobotd coming back — the banner in the header
+ * has already said it is gone, so this only governs how stale the list is
+ * for a moment afterwards. */
+const MAX_POLL_MS = 16000;
 
 type Listener = (runs: RunSummary[]) => void;
 
 const listeners = new Set<Listener>();
-let timer: ReturnType<typeof setInterval> | null = null;
+let timer: ReturnType<typeof setTimeout> | null = null;
 let latest: RunSummary[] | null = null;
 let visibilityBound = false;
 let etag: string | null = null;
+/** The current gap between polls. Doubles on each consecutive failure and
+ * snaps back to POLL_MS on the first success.
+ *
+ * Without it, a daemon that is down — which is the normal state before
+ * someone runs `nanobots up`, and every time it restarts — got a failed
+ * request every two seconds for as long as the tab stayed open, filling the
+ * console with proxy 500s and doing nothing useful with any of them. */
+let delay = POLL_MS;
 
 async function fetchOnce() {
   try {
     const res = await getIfChanged<RunSummary[]>("/api/runs", etag);
+    delay = POLL_MS;
     // 304: same bytes as last time. Returning here is the whole win — no
     // parse, no new array, no listener call, so an idle Runs page stops
     // re-rendering itself every two seconds over data that did not move.
@@ -39,7 +53,10 @@ async function fetchOnce() {
     for (const fn of listeners) fn(res.data);
   } catch {
     // A failed poll is not an event — nanobotd restarting shouldn't blank
-    // the list. The next tick recovers.
+    // the list, and the header already says when it is unreachable. Back
+    // off so an outage costs a handful of requests rather than one every
+    // two seconds until the tab is closed.
+    delay = Math.min(delay * 2, MAX_POLL_MS);
   }
 }
 
@@ -47,13 +64,35 @@ function shouldPoll() {
   return listeners.size > 0 && document.visibilityState !== "hidden";
 }
 
-function sync() {
-  if (shouldPoll() && timer === null) {
-    void fetchOnce();
-    timer = setInterval(fetchOnce, POLL_MS);
-  } else if (!shouldPoll() && timer !== null) {
-    clearInterval(timer);
+/** Whether a poll chain is alive. Separate from `timer`, which is null
+ * while a request is actually in flight — without this, a sync() landing in
+ * that window would start a second chain running alongside the first. */
+let polling = false;
+
+/** One poll, then schedule the next. A self-rescheduling timeout rather
+ * than setInterval, because the gap is no longer constant — and because
+ * setInterval would stack requests on top of each other if one were slow. */
+async function tick() {
+  await fetchOnce();
+  if (shouldPoll()) {
+    timer = setTimeout(tick, delay);
+  } else {
     timer = null;
+    polling = false;
+  }
+}
+
+function sync() {
+  if (shouldPoll() && !polling) {
+    // Starting always tries immediately at full speed: whatever the backoff
+    // had grown to, coming back to the tab means the user wants to see now.
+    polling = true;
+    delay = POLL_MS;
+    void tick();
+  } else if (!shouldPoll() && polling) {
+    if (timer !== null) clearTimeout(timer);
+    timer = null;
+    polling = false;
   }
 }
 
@@ -86,5 +125,6 @@ export function refreshRuns() {
   // and the point is to see its effect immediately rather than to confirm
   // nothing changed.
   etag = null;
+  delay = POLL_MS;
   void fetchOnce();
 }
