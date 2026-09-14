@@ -1,0 +1,10 @@
+{
+  "text": "We shipped saved views.\n\nPin any filter combination to the sidebar. It remembers your last sort order, and it syncs across devices.\n\nThat's the whole feature. It should make it quicker to get back to what you were doing.",
+  "changed": [
+    "removed 1 em dash",
+    "cut the \"In today's fast-paced landscape\" opener and the \"Let's dive in\" line",
+    "replaced 'robust', 'elevate' and 'comprehensive' with plain wording",
+    "removed the \"It's not just X, it's Y\" construction",
+    "dropped Firstly/Secondly/In conclusion and the closing summary"
+  ]
+}

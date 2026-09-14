@@ -1,0 +1,67 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanobot
+metadata:
+  name: tone
+  version: 0.1.0
+  description: Rewrite text so it reads like a person wrote it, not a model.
+  tags: [writing, editing, voice]
+  author: nanobots-community
+  license: MIT
+
+spec:
+  harness:
+    type: llm
+    entrypoint: ./bot.md
+
+  model:
+    provider: anthropic
+    name: claude-sonnet-4-6
+    max_tokens: 2000
+    # Low, deliberately. This bot is not writing anything — it is removing a
+    # narrow set of tells from text that already says what it means. A warm
+    # temperature here invents phrasing and drifts off the author's point,
+    # which is the one thing an editing pass must not do.
+    temperature: 0.3
+
+  ports:
+    inputs:
+      - name: text
+        type: string
+        required: true
+        description: "The draft to clean up. Snaps from anything that produces prose — repurposer.linkedin_post, github-issues-digest.digest, sheet-reporter.report_md."
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "Sound human. Don't sound like AI. No em dashes. Avoid the recognisable AI patterns."
+    outputs:
+      - name: text
+        type: string
+      # What it changed, one line each. A bot that silently rewrites your
+      # words is one you have to re-read in full to trust; this makes the
+      # edit checkable at a glance, and joins into notify.message with
+      # `join: lines` when you want the summary posted somewhere.
+      - name: changed
+        type: list<string>
+
+  steps:
+    - name: rewrite
+      type: ai.generate
+      prompt_file: ./prompts/rewrite.md
+      inputs: { text: "{{inputs.text}}", instructions: "{{inputs.instructions}}" }
+      outputs:
+        text: "{{steps.rewrite.output.text}}"
+        changed: "{{steps.rewrite.output.changed}}"
+
+  guardrails:
+    # allow: the text handed to this bot is the user's own draft, and
+    # redacting names out of a post before rewriting it would change the
+    # thing being edited.
+    pii: allow
+    injection_threshold: 0.7
+    max_runtime_secs: 60
+
+  resources:
+    preset: small
+    memory: 256Mi
+    cpu: 250m

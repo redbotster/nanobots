@@ -116,13 +116,13 @@ Once the WebUI is running, in **basic mode** (the default): type what you want a
 
 ## The catalog
 
-**33 bots** (`bots/`) — 27 job bricks plus 6 utility bricks (`approve`, `notify`, `render-pdf`, `drive-save`, `drive-watch`, `form-to-sheet`), all at `0.1.0`:
+**34 bots** (`bots/`) — 28 job bricks plus 6 utility bricks (`approve`, `notify`, `render-pdf`, `drive-save`, `drive-watch`, `form-to-sheet`), all at `0.1.0`:
 
 | Busy-person / solo-founder story (hero path) | SMB ops story (advanced) |
 |---|---|
 | `inbox-triage`, `draft-replies`, `follow-up-chaser`, `email-send-approved` | `lead-enricher`, `lead-router`, `quote-builder` |
 | `meeting-prep`, `calendar-scheduler`, `meeting-notes-filer` | `invoice-chaser`, `receipt-filer`, `sheet-reporter` |
-| `content-ideas`, `post-writer`, `post-publisher`, `repurposer`, `newsletter-drafter` | `support-triage`, `review-responder`, `competitor-watch` |
+| `content-ideas`, `post-writer`, `post-publisher`, `repurposer`, `newsletter-drafter`, `tone` | `support-triage`, `review-responder`, `competitor-watch` |
 | `recap-emails-to-pdf`, `email-drive-file`, `github-issues-digest` | `review-board`, `reviewer`, `review-synthesis` (a supervisor team — `docs/supervisors.md`) |
 
 **15 swarms** (`examples/swarms/`), each with a header comment documenting any place it simplifies the catalog's own aspirational diagram (usually: a downstream bot acts on the first item where fanning out would multiply container starts — see `docs/fan-out.md`):
