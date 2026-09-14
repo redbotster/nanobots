@@ -1,6 +1,7 @@
 package contract
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -158,4 +159,62 @@ func TestReadmeLinksEveryDoc(t *testing.T) {
 		t.Errorf("these docs are never linked from the README, so nobody starting at the front"+
 			" page will find them: %s", strings.Join(missing, ", "))
 	}
+}
+
+// "Eleven of the fifteen catalog swarms carry a cron trigger" is repeated
+// in five files — a CLI help note, the service installer's doc comment, the
+// builder, and twice in docs/scheduler.md. It was "fourteen" in all of them
+// for a long time, and wrong: the real split is 11 cron, 2 event, 1 webhook,
+// 1 manual. A number nobody can check is a number that drifts.
+func TestTheClaimedCronSwarmCountIsAccurate(t *testing.T) {
+	root := repoRoot(t)
+	entries, err := os.ReadDir(filepath.Join(root, "examples", "swarms"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cron, total := 0, 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
+			continue
+		}
+		total++
+		raw, err := os.ReadFile(filepath.Join(root, "examples", "swarms", e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(raw), "type: cron") {
+			cron++
+		}
+	}
+
+	// Sentence case: the count opens a sentence, the total does not.
+	claim := fmt.Sprintf("%s of the %s catalog swarms carry a cron trigger",
+		strings.ToUpper(numberWord(cron)[:1])+numberWord(cron)[1:], numberWord(total))
+	for _, f := range []string{
+		"cmd/nanobots/main.go",
+		"internal/service/service.go",
+		"internal/api/builder.go",
+		"docs/scheduler.md",
+	} {
+		raw, err := os.ReadFile(filepath.Join(root, f))
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The comment wraps, so compare on whitespace-collapsed text.
+		flat := strings.Join(strings.Fields(strings.ReplaceAll(string(raw), "//", " ")), " ")
+		if !strings.Contains(flat, claim) {
+			t.Errorf("%s does not say %q — there are %d cron swarms of %d", f, claim, cron, total)
+		}
+	}
+}
+
+// numberWord spells the small numbers these comments use.
+func numberWord(n int) string {
+	words := []string{"zero", "one", "two", "three", "four", "five", "six", "seven",
+		"eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen",
+		"sixteen", "seventeen", "eighteen", "nineteen", "twenty"}
+	if n < len(words) {
+		return words[n]
+	}
+	return fmt.Sprint(n)
 }
