@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -53,9 +52,16 @@ func (s *Server) handleSetBotInstructions(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// filepath.Base, not the raw id: this builds a filesystem path from a
-	// URL segment.
-	botPath := filepath.Join(s.BotsDir, filepath.Base(botID), "nanobot.yaml")
+	// catalogBotManifest, not filepath.Base: this builds a filesystem path
+	// from a URL segment, and Base is not the guard it looks like —
+	// filepath.Base("..") is "..", so an id of ".." still joined to
+	// BotsDir/../nanobot.yaml and this handler writes what it opens. See
+	// botpath.go.
+	botPath, err := s.catalogBotManifest(botID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
 	nb, err := schema.LoadNanobot(botPath)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err)
@@ -100,11 +106,11 @@ func (s *Server) handleSetBotInstructions(w http.ResponseWriter, r *http.Request
 	}
 
 	if s.Team != nil {
-		if shipped, known := s.Team.Shipped(filepath.Base(botID)); known && shipped == text {
+		if shipped, known := s.Team.Shipped(botID); known && shipped == text {
 			// Put back to what it shipped with — it's no longer tuned.
-			_ = s.Team.Forget(filepath.Base(botID))
+			_ = s.Team.Forget(botID)
 		} else if text != previous {
-			_ = s.Team.RecordTuned(filepath.Base(botID), previous)
+			_ = s.Team.RecordTuned(botID, previous)
 		}
 	}
 
@@ -113,7 +119,7 @@ func (s *Server) handleSetBotInstructions(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, botSummaryOf(fresh, filepath.Base(botID)))
+	writeJSON(w, http.StatusOK, botSummaryOf(fresh, botID))
 }
 
 func hasInstructionsPort(nb *schema.Nanobot) bool {

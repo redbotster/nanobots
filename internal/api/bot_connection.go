@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -56,7 +55,13 @@ func (s *Server) handleSetBotServiceConnection(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	botPath := filepath.Join(s.BotsDir, botID, "nanobot.yaml")
+	// Not filepath.Join(s.BotsDir, botID, ...): botID is a decoded path
+	// segment and "..%2f" reaches this handler as "../". See botpath.go.
+	botPath, err := s.catalogBotManifest(botID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
 	nb, err := schema.LoadNanobot(botPath)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err)
