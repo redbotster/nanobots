@@ -134,3 +134,28 @@ describe("runRemedy", () => {
     expect(runRemedy(null)).toBeNull();
   });
 });
+
+describe("an unanswered approval", () => {
+  it("is named as nobody being there, not as a hung bot", () => {
+    // The most common failure on a machine running scheduled swarms: 54
+    // runs on the development machine, every one an approval nobody
+    // answered, all previously reported as "container exceeded 30m0s".
+    const r = runRemedy(
+      "nobody answered the approval \"Send 'recap.pdf' to me@example.com?\" after 30m0s, " +
+        "so the bot was stopped — approve it from the Runs page while it's waiting, " +
+        "or take the approval off this step if it shouldn't need one",
+    );
+    expect(r).not.toBeNull();
+    expect(r!.advice).toContain("nobody answered in time");
+    // "Run it again" is the wrong advice here — the next scheduled run goes
+    // unanswered the same way. The advice must name a durable fix.
+    expect(r!.advice).not.toContain("Run it again");
+    expect(r!.advice).toMatch(/phone|approval off this step/);
+  });
+
+  it("is not confused with a decline, which is a decision", () => {
+    const declined = runRemedy("bot mailer: step approve: not approved");
+    expect(declined!.advice).toContain("declined");
+    expect(declined!.advice).not.toContain("nobody answered in time");
+  });
+});

@@ -571,7 +571,7 @@ func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID str
 		// container's stderr. Re-wrapping produced "container exited 1:
 		// container exited 1: <stderr> (<stderr>)" — the same text three
 		// times in the one line the Runs page shows you.
-		return err
+		return describeTimeout(run, botID, maxRuntime, err)
 	}
 
 	outputs, err := collectOutputs(nb, blobs, filepath.Join(runDir, "outputs"))
@@ -794,4 +794,52 @@ func (o *Orchestrator) agentFor(nb *schema.Nanobot) (id, apiKey string, err erro
 		return "", "", fmt.Errorf("ensure 1Claw agent: %w", err)
 	}
 	return id, apiKey, nil
+}
+
+// describeTimeout renames a container timeout that was really a human not
+// answering.
+//
+// Every one of the 54 runs on this machine that hit the 30-minute container
+// cap was sitting on an unanswered approval — 27 hours of container time —
+// and every one of them reported "container exceeded 30m0s and was
+// stopped". That is true about the container and wrong about what happened:
+//
+//	05:00:19  [mailer] approve  awaiting approval: Send 'recap.pdf' to me@example.com?
+//	05:30:19  [mailer] FAILED: container exceeded 30m0s and was stopped
+//
+// A 7am scheduled swarm asks a sleeping human to approve an email. Nobody
+// answers. The Runs page then reports what reads as a hung bot, so the
+// user goes looking for a bug in the bot instead of for the decision they
+// missed — and the one action that would have fixed it, approving, is the
+// one the message never mentions.
+//
+// Same class as "FAILED: stopped from the app" for a run the user stopped
+// on purpose, and fixed the same way: say what actually happened.
+func describeTimeout(run *Run, botID string, maxRuntime time.Duration, err error) error {
+	if err == nil || !strings.Contains(err.Error(), "exceeded") {
+		return err
+	}
+	pending := pendingFor(run, botID)
+	if pending == nil {
+		return err
+	}
+	waited := time.Since(pending.Created).Round(time.Second)
+	return fmt.Errorf(
+		"nobody answered the approval %q after %s, so the bot was stopped — "+
+			"approve it from the Runs page while it's waiting, or take the "+
+			"approval off this step if it shouldn't need one",
+		pending.Summary, waited)
+}
+
+// pendingFor returns this bot's still-unanswered approval, if it has one.
+func pendingFor(run *Run, botID string) *PendingApproval {
+	if run == nil {
+		return nil
+	}
+	for _, pa := range run.PendingApprovals() {
+		if pa.Bot == botID {
+			return pa
+		}
+	}
+	return nil
 }

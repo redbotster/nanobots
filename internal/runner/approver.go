@@ -12,6 +12,23 @@ import (
 // failing the step outright — long enough for a person to notice a mobile
 // push or come back to their laptop, short enough that a run doesn't hang
 // forever if nobody's watching.
+//
+// In practice it almost never fires, and it is worth knowing why before
+// tuning it. The container running the bot has its own budget, the bot's
+// `max_runtime_secs`, and that is the shorter of the two for every bot in
+// the catalog: most are 30-240 seconds, and the three that request
+// approvals use 1800 — exactly this value, so they tie and the container's
+// SIGKILL lands first. Either way the container dies before this timeout
+// gets to say anything, which is how all 54 approval waits on this machine
+// came to be reported as "container exceeded 30m0s and was stopped".
+//
+// describeTimeout in execute.go is what makes that case honest, by naming
+// the unanswered approval when a timeout coincides with one. Raising a
+// bot's max_runtime_secs past this value is what would make this timeout
+// fire instead, and let the bot exit cleanly rather than being killed —
+// deliberately not done here, because a bot's runtime budget is the bot's
+// own declaration and changing it silently for every approving bot is a
+// bigger decision than a comment should make.
 const approvalTimeout = 30 * time.Minute
 
 // RunQueueApprover routes an `approve` step to a Run's own pending-approval

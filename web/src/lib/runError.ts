@@ -164,6 +164,27 @@ export function runRemedy(raw: string | undefined | null): RunRemedy | null {
     };
   }
 
+  // Nobody was there. Distinct from a decline (a decision) and from a
+  // hang (a fault): the run did everything right and then waited for a
+  // person who never came.
+  //
+  // This is the single most common failure on a machine running scheduled
+  // swarms, and it used to surface as "container exceeded 30m0s and was
+  // stopped" — 54 runs on this one, every one of them an unanswered
+  // approval, all of them reading as a hung bot. The advice names the two
+  // real fixes, because "run it again" is not one: the next scheduled run
+  // at 7am will go unanswered exactly the same way.
+  if (m.includes("nobody answered")) {
+    return {
+      advice:
+        "The bot asked for approval and nobody answered in time, so it was stopped. " +
+        "If this runs on a schedule while you're away, connect 1Claw so the question " +
+        "reaches your phone — or take the approval off this step if it doesn't need one.",
+      action: { label: "Open Settings", page: "settings" },
+      docs: "docs/approvals.md",
+    };
+  }
+
   // A declined approval is a decision, not a fault — saying so stops
   // someone debugging their own "no".
   if (m.includes("not approved")) {

@@ -505,7 +505,11 @@ func (r *Run) requestApproval(bot, step, summary, riskTier string, writes []stri
 		r.mu.Lock()
 		delete(r.approvals, pa.ID)
 		r.mu.Unlock()
-		return false, "", fmt.Errorf("approval %s timed out after %s", pa.ID, timeout)
+		// Names what was being approved, not the approval's UUID. The id is
+		// no use to the person reading the Runs page — they cannot look it
+		// up, it is gone from the queue by the time they see it, and the
+		// one thing they need to recognise is which decision they missed.
+		return false, "", fmt.Errorf("nobody answered %q within %s", summary, timeout)
 	}
 }
 
