@@ -8,6 +8,11 @@ import (
 	"github.com/redbotster/nanobots/internal/schema"
 )
 
+// These exercise the fetch itself against an httptest server, which always
+// binds loopback, the address webfetch_guard.go exists to refuse. The guard
+// has its own tests in webfetch_guard_test.go.
+func init() { allowLoopbackForTest = true }
+
 func TestFetchURLStripsHTMLToPlainText(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html><head><style>body{color:red}</style></head><body><h1>Q3 Launch</h1><p>We shipped it.</p><script>evil()</script></body></html>`))

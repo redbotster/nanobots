@@ -230,3 +230,43 @@ all — curl, the vite proxy, a bot container — is not a browser cross-origin
 request and gets no CORS headers, because it needs none. `Vary: Origin` is
 set either way, since these routes carry ETags and a cache must not hand one
 origin's response to another.
+
+## web.fetch cannot reach your machine
+
+`web.fetch` takes a URL from a bot's inputs, and the fetch runs **in
+nanobotd**, not in the bot's container. That means it inherits the daemon's
+network position, which includes loopback.
+
+Demonstrated before this was fixed. A swarm using `competitor-watch` (the
+one bot declaring `network_egress: ["*"]`) with
+
+```yaml
+urls: ["http://127.0.0.1:7474/api/swarms/lead-to-meeting/webhook"]
+```
+
+ran to success, and nanobotd's own webhook token came back in the run's
+output. A swarm that then notifies or emails has exfiltrated it. The same
+reach covered `169.254.169.254` on a cloud VM and every other service on the
+host or LAN. The likely delivery is an imported swarm bundle: `nanobots
+import` shows what a swarm will *write* to, and a fetch is a read.
+
+`EgressPolicy` did not help and was never meant to. It answers *which public
+hosts* a bot promised to visit. A bot declaring `"*"` is saying it reads
+arbitrary pages from the web, not that it may read the machine it runs on,
+and an empty list means unenforced, which most bots are.
+
+Loopback, link-local (cloud metadata), private and multicast addresses are
+now refused. The check runs in the dialer's `Control` hook, at connect time,
+on the address actually being dialled:
+
+- A hostname resolves to whatever its owner says. `localtest.me` already
+  points at 127.0.0.1, so blocking on the string "127.0.0.1" catches
+  nothing.
+- A hostile name can answer differently on a second lookup, so a
+  check-then-connect passes the check and connects somewhere else. `Control`
+  runs after resolution with no gap.
+- Redirects get the same treatment, because the hook runs per connection
+  rather than per request.
+
+Public fetches are unaffected: `competitor-watch` against `https://example.com/`
+still succeeds, and the bots that exist to read the web keep working.

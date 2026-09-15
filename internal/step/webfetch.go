@@ -9,7 +9,29 @@ import (
 	"time"
 )
 
-var webFetchClient = &http.Client{Timeout: 10 * time.Second}
+// Transport built here rather than using the default, so every fetch goes
+// through guardedDialContext. See webfetch_guard.go: this client is handed
+// URLs from a bot's inputs and runs inside nanobotd, so without the guard it
+// can reach loopback and the rest of the host's network.
+var webFetchClient = &http.Client{
+	Timeout: 10 * time.Second,
+	Transport: &http.Transport{
+		DialContext:           guardedDialContext,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
+	},
+	// A redirect is a second URL the bot never named, and it is the usual
+	// way past an address check: a public host answering 302 to
+	// http://127.0.0.1. The dialer would catch it anyway, since it runs per
+	// connection; refusing here as well means the error says what happened
+	// rather than surfacing as a confusing connect failure.
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 5 {
+			return fmt.Errorf("web.fetch: too many redirects")
+		}
+		return nil
+	},
+}
 
 const webFetchMaxBytes = 1 << 20 // 1MB cap — this is a summary input, not a mirror
 
