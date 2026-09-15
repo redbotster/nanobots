@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 func TestRunSurvivesARestart(t *testing.T) {
@@ -194,5 +196,82 @@ func TestErrorPersistsWhicheverOrderItIsSetIn(t *testing.T) {
 				t.Errorf("persisted error = %q, want the reason", got.GetError())
 			}
 		})
+	}
+}
+
+// The history directory has been bounded since it existed. The per-run
+// workspaces beside it never were, and nothing removed one — 266
+// directories and 14MB against 200 retained runs on the machine this was
+// found on, 66 of them belonging to runs that had aged out of history and
+// were reachable from nowhere.
+func TestPruneWorkDirsRemovesOnlyWhatHistoryHasForgotten(t *testing.T) {
+	dir := t.TempDir()
+
+	kept := uuid.NewString()
+	forgotten := uuid.NewString()
+	alsoForgotten := uuid.NewString()
+	for _, id := range []string{kept, forgotten, alsoForgotten} {
+		if err := os.MkdirAll(filepath.Join(dir, id, "somebot"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, id, "somebot", "inputs.json"), []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	removed, err := PruneWorkDirs(dir, map[string]bool{kept: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 2 {
+		t.Errorf("removed = %d, want 2", removed)
+	}
+	if _, err := os.Stat(filepath.Join(dir, kept)); err != nil {
+		t.Errorf("deleted the workspace of a run still in history: %v", err)
+	}
+	for _, gone := range []string{forgotten, alsoForgotten} {
+		if _, err := os.Stat(filepath.Join(dir, gone)); !os.IsNotExist(err) {
+			t.Errorf("workspace %s survived: %v", gone, err)
+		}
+	}
+}
+
+// Anything not shaped like a run id is left alone. This calls os.RemoveAll
+// on names read off a disk listing, so it only ever removes things it can
+// recognise as its own.
+func TestPruneWorkDirsIgnoresAnythingThatIsNotARunID(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"not-a-uuid", "blobs", ".DS_Store_dir"} {
+		if err := os.MkdirAll(filepath.Join(dir, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A plain file alongside them must also survive.
+	if err := os.WriteFile(filepath.Join(dir, "README"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	removed, err := PruneWorkDirs(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 0 {
+		t.Errorf("removed = %d, want 0 — nothing here is a run workspace", removed)
+	}
+	for _, name := range []string{"not-a-uuid", "blobs", ".DS_Store_dir", "README"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Errorf("%s was removed: %v", name, err)
+		}
+	}
+}
+
+// First start, before any run has happened.
+func TestPruneWorkDirsIsFineWithNoDirectoryAtAll(t *testing.T) {
+	removed, err := PruneWorkDirs(filepath.Join(t.TempDir(), "never-created"), nil)
+	if err != nil {
+		t.Errorf("err = %v, want nil on first start", err)
+	}
+	if removed != 0 {
+		t.Errorf("removed = %d", removed)
 	}
 }

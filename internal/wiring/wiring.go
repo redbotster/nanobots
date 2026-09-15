@@ -186,6 +186,29 @@ func BuildRunStore(paths Paths, logf Logf) *runner.RunStore {
 	if err != nil && logf != nil {
 		logf("some run history could not be read from %s: %v", paths.HistoryDir, err)
 	}
+
+	// The history directory has always been bounded. The per-run workspaces
+	// beside it never were, and nothing removed one — 266 directories and
+	// 14MB against 200 retained runs on the machine this was found on, 66 of
+	// them belonging to runs no longer in any list. Pruned here, against the
+	// runs history actually kept, so the two cannot disagree about what
+	// still exists.
+	//
+	// Startup is the safe moment: nothing is running, so no container holds
+	// a bind mount into any of these.
+	keep := map[string]bool{}
+	for _, r := range store.List() {
+		keep[r.ID] = true
+	}
+	removed, perr := runner.PruneWorkDirs(paths.RunWorkDir, keep)
+	if logf != nil {
+		if perr != nil {
+			logf("cleaning old run workspaces in %s: %v", paths.RunWorkDir, perr)
+		}
+		if removed > 0 {
+			logf("cleaned %d run workspace(s) older than the kept history", removed)
+		}
+	}
 	return store
 }
 

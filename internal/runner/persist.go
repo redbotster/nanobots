@@ -2,10 +2,13 @@ package runner
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // Run history used to live only in memory, so restarting nanobotd — which
@@ -202,4 +205,58 @@ func demoSet(in []string) map[string]bool {
 		out[k] = true
 	}
 	return out
+}
+
+// PruneWorkDirs deletes per-run container workspaces that no run in history
+// can refer to any more.
+//
+// The history directory has been bounded since it existed
+// (MaxPersistedRuns, pruned on load). The *work* directory never was, and
+// nothing anywhere removed one: on this machine it had reached 266
+// directories and 14MB against 200 retained runs, so 66 of them belonged to
+// runs that no longer exist in any list, readable by nothing and reachable
+// from nowhere. One directory per run, forever, on a machine running
+// sixteen scheduled swarms.
+//
+// Keyed to the runs history actually kept rather than to an age or a count
+// of its own, so there is one retention rule in this package instead of two
+// that can disagree. A run you can still open in the UI keeps its
+// workspace; a run that has aged out of history loses it at the same
+// moment.
+//
+// Called at startup, where nothing is running and no container holds a bind
+// mount into any of these. Failures are counted and returned, never fatal:
+// a workspace that cannot be deleted is untidy, and refusing to start over
+// it would be worse than the mess.
+func PruneWorkDirs(workDir string, keep map[string]bool) (removed int, err error) {
+	entries, err := os.ReadDir(workDir)
+	if err != nil {
+		// No work directory yet is the normal first-start case, not a fault.
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	var failed int
+	for _, e := range entries {
+		if !e.IsDir() || keep[e.Name()] {
+			continue
+		}
+		// Only things shaped like a run id. The work directory is ours, but
+		// os.RemoveAll against a name that came off a disk listing deserves
+		// the same "is this really one of mine" check the blob store makes
+		// before reading a path (see step.FSBlobStore.Read).
+		if _, uerr := uuid.Parse(e.Name()); uerr != nil {
+			continue
+		}
+		if rerr := os.RemoveAll(filepath.Join(workDir, e.Name())); rerr != nil {
+			failed++
+			continue
+		}
+		removed++
+	}
+	if failed > 0 {
+		return removed, fmt.Errorf("%d run workspace(s) could not be removed", failed)
+	}
+	return removed, nil
 }
