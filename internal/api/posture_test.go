@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/redbotster/nanobots/internal/oneclaw"
@@ -127,4 +128,69 @@ func TestPostureSurvivesAMissingQuota(t *testing.T) {
 	if got.AgentLimit != 0 {
 		t.Errorf("an agent limit was invented: %d", got.AgentLimit)
 	}
+}
+
+// Three 1Claw reads, 2.8s in sequence on every call, on the page a user
+// opens when something is wrong. They now run concurrently and the result
+// is cached, which puts two claims in the comments that ought to be checked.
+func TestPostureIsCachedOnSuccessAndNotOnFailure(t *testing.T) {
+	t.Run("a good reading is served from cache", func(t *testing.T) {
+		var summaryReads atomic.Int64
+		mux := http.NewServeMux()
+		mux.HandleFunc("/v1/auth/api-key-token", func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprint(w, `{"token":"t","expires_in":3600}`)
+		})
+		mux.HandleFunc("/v1/otel/summary", func(w http.ResponseWriter, r *http.Request) {
+			summaryReads.Add(1)
+			fmt.Fprint(w, `{"posture_score":91,"open_threats":1,"agent_count":5}`)
+		})
+		up := httptest.NewServer(mux)
+		t.Cleanup(up.Close)
+		srv := testServer(t)
+		srv.OneClaw = oneclaw.NewClient("k")
+		srv.OneClaw.BaseURL = up.URL
+
+		if got := posture(t, srv).Score; got != 91 {
+			t.Fatalf("score = %d", got)
+		}
+		first := summaryReads.Load()
+		posture(t, srv)
+		posture(t, srv)
+		if got := summaryReads.Load(); got != first {
+			t.Errorf("1Claw was re-read %d -> %d across repeat calls; the cache is not being used", first, got)
+		}
+	})
+
+	t.Run("a failure is retried, not remembered", func(t *testing.T) {
+		// A blip cached for thirty seconds reads as an outage. The first
+		// call fails, the second must actually go and ask again.
+		var reads atomic.Int64
+		mux := http.NewServeMux()
+		mux.HandleFunc("/v1/auth/api-key-token", func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprint(w, `{"token":"t","expires_in":3600}`)
+		})
+		mux.HandleFunc("/v1/otel/summary", func(w http.ResponseWriter, r *http.Request) {
+			if reads.Add(1) == 1 {
+				w.WriteHeader(http.StatusBadGateway)
+				return
+			}
+			fmt.Fprint(w, `{"posture_score":88,"agent_count":3}`)
+		})
+		up := httptest.NewServer(mux)
+		t.Cleanup(up.Close)
+		srv := testServer(t)
+		srv.OneClaw = oneclaw.NewClient("k")
+		srv.OneClaw.BaseURL = up.URL
+
+		if got := posture(t, srv); got.Error == "" {
+			t.Fatalf("expected the first call to report the failure, got %+v", got)
+		}
+		got := posture(t, srv)
+		if got.Error != "" {
+			t.Errorf("the failure was cached: %q", got.Error)
+		}
+		if got.Score != 88 {
+			t.Errorf("score = %d, want the recovered reading", got.Score)
+		}
+	})
 }

@@ -92,7 +92,11 @@ type Server struct {
 	// connCache holds the last /api/connections answer. Zero value is a
 	// cold cache, so nothing has to construct it. See connections.go for
 	// why an eight-round-trip read is worth caching at all.
-	connCache connectionCache
+	connCache ttlCache[[]connectionStatus]
+
+	// postureCache holds the last /api/posture answer — three more 1Claw
+	// round trips, on the Settings page. See posture.go.
+	postureCache ttlCache[PostureResponse]
 }
 
 func (s *Server) swarmsDir() string {

@@ -59,48 +59,6 @@ var connectionServices = []string{"google", "slack", "github", "stripe", "hubspo
 // at the page.
 const connectionTTL = time.Minute
 
-// connectionCache holds the last status list read from the vault.
-//
-// Worth the machinery because the read is expensive in a way no amount of
-// local optimisation fixes: eight vault round trips, and 1Claw throttles
-// them. Measured against the live account — one read 866ms, eight serial
-// 7.3s, eight concurrent 3.2s, eight concurrent over a pooled transport
-// 2.8s. Concurrency buys the first 4.5 seconds; the remaining 3 belong to
-// the far end. So the only way to stop four pages opening on a multi-second
-// wait is to not make the call.
-type connectionCache struct {
-	mu       sync.Mutex
-	statuses []connectionStatus
-	at       time.Time
-}
-
-func (c *connectionCache) get() ([]connectionStatus, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.statuses == nil || time.Since(c.at) > connectionTTL {
-		return nil, false
-	}
-	// A copy: the caller hands this to the JSON encoder while another
-	// request may be replacing it.
-	out := make([]connectionStatus, len(c.statuses))
-	copy(out, c.statuses)
-	return out, true
-}
-
-func (c *connectionCache) put(statuses []connectionStatus) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.statuses, c.at = statuses, time.Now()
-}
-
-// invalidate is called by every handler here that writes a credential, so
-// the next status read reflects it immediately rather than after the TTL.
-func (c *connectionCache) invalidate() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.statuses, c.at = nil, time.Time{}
-}
-
 // handleConnectionsStatus reports which services have a credential in the
 // vault already.
 //
@@ -127,7 +85,7 @@ func (s *Server) handleConnectionsStatus(w http.ResponseWriter, r *http.Request)
 		writeJSONCached(w, r, http.StatusOK, []connectionStatus{})
 		return
 	}
-	if cached, ok := s.connCache.get(); ok {
+	if cached, ok := s.connCache.get(connectionTTL); ok {
 		writeJSONCached(w, r, http.StatusOK, cached)
 		return
 	}

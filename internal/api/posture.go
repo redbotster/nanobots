@@ -3,6 +3,10 @@ package api
 import (
 	"net/http"
 	"strings"
+	"sync"
+	"time"
+
+	"github.com/redbotster/nanobots/internal/oneclaw"
 )
 
 // What 1Claw already knows about this account, folded into the page that
@@ -51,20 +55,70 @@ type PostureResponse struct {
 // something about.
 const nanobotsAgentPrefix = "nanobots-"
 
+// postureTTL is how long a posture reading is served before being re-read.
+//
+// Shorter than the connections TTL because two of these numbers move on
+// their own: pending approvals appear when a run asks for one, and the
+// agent count grows whenever a swarm runs a bot that has never run before.
+// Nothing in this app can invalidate on those, so the TTL is the only
+// freshness there is — thirty seconds keeps the Settings block honest while
+// still collapsing a page's worth of repeat loads into one read.
+const postureTTL = 30 * time.Second
+
 func (s *Server) handlePosture(w http.ResponseWriter, r *http.Request) {
 	if s.OneClaw == nil || !s.OneClaw.Configured() {
-		writeJSON(w, http.StatusOK, PostureResponse{})
+		writeJSONCached(w, r, http.StatusOK, PostureResponse{})
+		return
+	}
+	if cached, ok := s.postureCache.get(postureTTL); ok {
+		writeJSONCached(w, r, http.StatusOK, cached)
 		return
 	}
 
 	out := PostureResponse{Configured: true}
 
-	p, err := s.OneClaw.OTelPosture()
-	if err != nil {
+	// Three independent 1Claw reads. In sequence they were 2.8s on every
+	// single call, measured against the live account — the same shape as
+	// /api/connections, and this one is on the Settings page a user opens
+	// to find out why something is not working.
+	//
+	// The summary decides whether there is a row at all; the other two only
+	// add detail, so their errors are dropped rather than reported. They
+	// still run concurrently with it, because the common case is that all
+	// three succeed and waiting for the summary first would spend a round
+	// trip to learn nothing.
+	var (
+		p        *oneclaw.Posture
+		postErr  error
+		quota    *oneclaw.Quota
+		topology *oneclaw.Topology
+		wg       sync.WaitGroup
+	)
+	wg.Add(3)
+	go func() { defer wg.Done(); p, postErr = s.OneClaw.OTelPosture() }()
+	go func() {
+		defer wg.Done()
+		if q, err := s.OneClaw.Quota(); err == nil {
+			quota = q
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		if t, err := s.OneClaw.OTelTopology(); err == nil {
+			topology = t
+		}
+	}()
+	wg.Wait()
+
+	if postErr != nil {
 		// 200 with an error field, not a 5xx: this is one row on a settings
 		// page, and a page that fails to render because a status widget
 		// could not reach a third party is worse than the widget saying so.
-		out.Error = err.Error()
+		//
+		// Deliberately not cached — a failure is the one answer worth
+		// retrying promptly, and caching it would make a blip look like an
+		// outage for the next thirty seconds.
+		out.Error = postErr.Error()
 		writeJSON(w, http.StatusOK, out)
 		return
 	}
@@ -73,20 +127,22 @@ func (s *Server) handlePosture(w http.ResponseWriter, r *http.Request) {
 
 	// Best-effort from here. A missing quota or topology costs a detail,
 	// not the row.
-	if q, err := s.OneClaw.Quota(); err == nil {
-		out.Tier = q.Tier
-		out.AgentLimit = q.Usage.Agents.Limit
-		out.AgentsNearCap = q.Usage.Agents.Near()
-		if q.Usage.Agents.Used > 0 {
-			out.Agents = q.Usage.Agents.Used
+	if quota != nil {
+		out.Tier = quota.Tier
+		out.AgentLimit = quota.Usage.Agents.Limit
+		out.AgentsNearCap = quota.Usage.Agents.Near()
+		if quota.Usage.Agents.Used > 0 {
+			out.Agents = quota.Usage.Agents.Used
 		}
 	}
-	if t, err := s.OneClaw.OTelTopology(); err == nil {
-		for _, n := range t.Nodes {
+	if topology != nil {
+		for _, n := range topology.Nodes {
 			if n.Kind == "agent" && strings.HasPrefix(n.Label, nanobotsAgentPrefix) {
 				out.NanobotsAgents++
 			}
 		}
 	}
-	writeJSON(w, http.StatusOK, out)
+
+	s.postureCache.put(out)
+	writeJSONCached(w, r, http.StatusOK, out)
 }
