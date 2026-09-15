@@ -182,9 +182,23 @@ func (s *Server) handleShroudProxy(w http.ResponseWriter, r *http.Request) {
 	if upstreamPath == "" || upstreamPath[0] != '/' {
 		upstreamPath = "/" + upstreamPath
 	}
+	if !traversalFree(upstreamPath) {
+		writeError(w, http.StatusBadRequest,
+			fmt.Errorf("the shroud path may not contain . or .. segments"))
+		return
+	}
+
+	upstream := strings.TrimRight(oneclaw.DefaultShroudURL, "/") + upstreamPath
+	// The query too. The shim's promise is that it adds two headers and
+	// changes nothing else, and dropping ?api-version=... on the floor is a
+	// change — one that shows up as an upstream 400 the caller cannot
+	// explain, because the request it sent is not the request that arrived.
+	if r.URL.RawQuery != "" {
+		upstream += "?" + r.URL.RawQuery
+	}
 
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost,
-		strings.TrimRight(oneclaw.DefaultShroudURL, "/")+upstreamPath, strings.NewReader(string(body)))
+		upstream, strings.NewReader(string(body)))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -216,6 +230,36 @@ func (s *Server) handleShroudProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(resp.StatusCode)
 	_, _ = io.Copy(w, resp.Body)
+}
+
+// traversalFree reports whether a path is free of "." and ".." segments.
+//
+// http.ServeMux looks like it already does this — it redirects an unclean
+// path rather than routing it — but it makes that decision on the *escaped*
+// path, while the handler reads the *decoded* r.URL.Path. So the check and
+// the use disagree about what the path is, and %2e%2e walks straight through
+// the gap:
+//
+//	POST /shroud/v1/chat/../../../v1/agents  -> 301, never reaches here
+//	POST /shroud/%2e%2e/v1/agents            -> 200, forwarded as /../v1/agents
+//
+// What arrives at Shroud then is a path this daemon did not intend, carrying
+// this daemon's agent key. Whether "/../v1/agents" resolves to anything
+// depends on how Shroud's own router normalises, which is not a property
+// nanobots gets to assume on its behalf — and the encoded and decoded forms
+// disagreeing is exactly the shape of bug that survives an upstream rewrite.
+//
+// Rejecting rather than cleaning: path.Clean would turn /../v1/agents into
+// /v1/agents and quietly forward it, which grants the escape instead of
+// refusing it. No client configured with base_url=".../shroud/v1" ever sends
+// a dot segment, so a 400 costs nothing real.
+func traversalFree(p string) bool {
+	for _, seg := range strings.Split(p, "/") {
+		if seg == "." || seg == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 // authorised compares the bearer token in constant time, so a caller can't

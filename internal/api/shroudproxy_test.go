@@ -18,6 +18,7 @@ import (
 // what reached upstream.
 type upstreamCapture struct {
 	path     string
+	query    string
 	headers  http.Header
 	body     string
 	status   int
@@ -34,7 +35,10 @@ func proxyServer(t *testing.T, up *upstreamCapture) *Server {
 
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
-		up.path, up.headers, up.body = r.URL.Path, r.Header.Clone(), string(raw)
+		// EscapedPath, not Path: the whole point of the traversal test below
+		// is that the two can disagree, and a capture that decodes hides it.
+		up.path, up.query = r.URL.EscapedPath(), r.URL.RawQuery
+		up.headers, up.body = r.Header.Clone(), string(raw)
 		if up.after != "" {
 			w.Header().Set("Retry-After", up.after)
 		}
@@ -161,6 +165,54 @@ func TestTheProviderCanBeOverriddenPerRequest(t *testing.T) {
 
 	if up.headers.Get("X-Shroud-Provider") != "openai" {
 		t.Errorf("X-Shroud-Provider = %q, want the caller's choice", up.headers.Get("X-Shroud-Provider"))
+	}
+}
+
+// The path is caller-controlled and gets forwarded to Shroud with this
+// daemon's agent key attached, so it is the one part of the request that has
+// to be checked rather than passed through.
+//
+// http.ServeMux appears to handle this already — it redirects an unclean
+// path instead of routing it — but it decides on the escaped path while the
+// handler reads the decoded one, and %2e%2e lives in the gap between them.
+// Before traversalFree, every encoded row below returned 200 and reached the
+// fake upstream as "/../v1/agents".
+func TestTheShimRefusesToWalkOutOfTheShroudPath(t *testing.T) {
+	for _, target := range []string{
+		"/shroud/%2e%2e/v1/agents",
+		"/shroud/..%2f..%2fv1/agents",
+		"/shroud/v1%2f..%2f..%2fv1%2fagents",
+		"/shroud/v1/%2e/chat/completions",
+	} {
+		up := &upstreamCapture{response: `{}`}
+		srv := proxyServer(t, up)
+		rec := proxyPost(srv, "test-token", target, `{}`)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400", target, rec.Code)
+		}
+		if up.path != "" {
+			t.Errorf("%s: reached Shroud as %q — with our agent key on it", target, up.path)
+		}
+	}
+}
+
+// And the ordinary path still goes through untouched, query and all. The
+// shim's promise is two added headers and no other change; silently dropping
+// ?api-version=... is a change the caller cannot see or explain.
+func TestThePathAndQueryArriveIntact(t *testing.T) {
+	up := &upstreamCapture{response: `{}`}
+	srv := proxyServer(t, up)
+	rec := proxyPost(srv, "test-token", "/shroud/v1/chat/completions?api-version=2024-10-21", `{}`)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+	}
+	if up.path != "/v1/chat/completions" {
+		t.Errorf("upstream path = %q", up.path)
+	}
+	if up.query != "api-version=2024-10-21" {
+		t.Errorf("upstream query = %q — the caller's query was dropped", up.query)
 	}
 }
 
