@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -308,5 +309,62 @@ func TestStatusReportsDockerSeparatelyFromOneClaw(t *testing.T) {
 	}
 	if !available && reason == "" {
 		t.Error("docker unavailable with an empty reason; the banner would render blank")
+	}
+}
+
+// /api/status is polled by every open tab, and answering it used to read
+// and parse every nanobot.yaml in the catalog each time — 15ms and 39 files
+// today, growing with the catalog, to answer a question whose answer only
+// changes when someone edits a bot file.
+//
+// Proved by removing the catalog from under it: within the TTL the answer
+// must still be there, which it can only be if the disk was not touched.
+func TestStatusDoesNotRereadTheCatalogOnEveryPoll(t *testing.T) {
+	srv := testServer(t)
+	botsDir := t.TempDir()
+	srv.BotsDir = botsDir
+
+	// One bot, with a recall step, so there is something to lose.
+	botDir := filepath.Join(botsDir, "recaller")
+	if err := os.MkdirAll(botDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	yaml := "apiVersion: nanobots.dev/v1\nkind: Nanobot\nmetadata:\n  name: recaller\n  version: 0.1.0\nspec:\n  description: d\n  harness:\n    kind: bare\n  steps:\n    - id: r\n      type: memory.recall\n"
+	if err := os.WriteFile(filepath.Join(botDir, "nanobot.yaml"), []byte(yaml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	recallBots := func() []string {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/api/status", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d", rec.Code)
+		}
+		var body struct {
+			Bots []string `json:"memory_recall_bots"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		return body.Bots
+	}
+
+	if got := recallBots(); len(got) != 1 || got[0] != "recaller" {
+		t.Fatalf("first poll = %v, want [recaller]", got)
+	}
+
+	// Take the catalog away. A handler that re-reads would now report none.
+	if err := os.RemoveAll(botDir); err != nil {
+		t.Fatal(err)
+	}
+	if got := recallBots(); len(got) != 1 || got[0] != "recaller" {
+		t.Errorf("second poll = %v — the catalog was re-read from disk", got)
+	}
+
+	// And the cache is not permanent: expire it and the truth comes back.
+	srv.recallCache.invalidate()
+	if got := recallBots(); len(got) != 0 {
+		t.Errorf("after invalidation = %v, want the bot to be gone", got)
 	}
 }

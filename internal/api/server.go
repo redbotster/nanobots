@@ -97,6 +97,11 @@ type Server struct {
 	// postureCache holds the last /api/posture answer — three more 1Claw
 	// round trips, on the Settings page. See posture.go.
 	postureCache ttlCache[PostureResponse]
+
+	// recallCache holds the list of bots with a memory.recall step, which
+	// costs a read of every nanobot.yaml in the catalog. /api/status is
+	// polled by every open tab; see recallBotsTTL.
+	recallCache ttlCache[[]string]
 }
 
 func (s *Server) swarmsDir() string {
@@ -288,10 +293,29 @@ func (p *dockerProbe) get(now time.Time) (bool, string) {
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
-	dockerOK, dockerReason := s.docker.get(now)
+
+	// The two probes are independent and both slow in different ways —
+	// `docker version` is a 129ms shell-out, the vault check is a ~1.5s
+	// network round trip to 1Claw. Measured on this machine; in sequence
+	// they were the whole cost of this endpoint, and a browser page load
+	// showed it at 1.7s.
+	var (
+		dockerOK                  bool
+		dockerReason, vaultReason string
+		vaultLocked               bool
+		wg                        sync.WaitGroup
+	)
+	wg.Add(2)
+	go func() { defer wg.Done(); dockerOK, dockerReason = s.docker.get(now) }()
+	go func() {
+		defer wg.Done()
+		vaultLocked, vaultReason = s.vault.get(now, s.OneClaw, s.VaultID)
+	}()
+
 	memKind, memRecall := s.memoryStatus()
 	llmKind, llmGuarded := s.llmStatus()
-	vaultLocked, vaultReason := s.vault.get(now, s.OneClaw, s.VaultID)
+	recallBots := s.recallBots()
+	wg.Wait()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"oneclaw_configured": s.OneClaw != nil && s.OneClaw.Configured(),
 		// A locked vault blocks every Slack/GitHub/Stripe/HubSpot bot at
@@ -312,7 +336,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"llm_guardrails":     llmGuarded,
 		"memory_backend":     memKind,
 		"memory_recall":      memRecall,
-		"memory_recall_bots": s.botsUsingRecall(),
+		"memory_recall_bots": recallBots,
 		// Reported separately from oneclaw because they fail independently
 		// and the fixes are unrelated: one is a key, the other is an app
 		// you have to go start.
@@ -357,6 +381,24 @@ func (s *Server) llmStatus() (kind string, guarded bool) {
 // Settings can say what a key/value backend is actually costing this
 // install. Derived from the catalog rather than written into the UI: the
 // list was three bots the day it was written and will not stay three.
+// recallBotsTTL bounds how stale the recall-bot list can be.
+//
+// The list comes from reading and parsing every nanobot.yaml in the
+// catalog: 15ms and 39 files today, growing with the catalog. That was
+// happening on every /api/status, which every open tab polls — so the cost
+// was per-tab, per-poll, forever, to answer a question whose answer only
+// changes when someone edits a bot file. Ten seconds is short enough that
+// editing a bot and reloading shows the change, long enough that polling
+// stops touching the disk.
+const recallBotsTTL = 10 * time.Second
+
+func (s *Server) recallBots() []string {
+	ids, _ := s.recallCache.do(recallBotsTTL, func() ([]string, error) {
+		return s.botsUsingRecall(), nil
+	})
+	return ids
+}
+
 func (s *Server) botsUsingRecall() []string {
 	entries, err := os.ReadDir(s.BotsDir)
 	if err != nil {
