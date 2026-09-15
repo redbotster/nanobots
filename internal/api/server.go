@@ -244,6 +244,16 @@ func isLoopbackOrigin(origin string) bool {
 // Docker's: unlocking involves a passkey prompt on another device, so
 // nobody does it inside 20 seconds, and this one is a network round trip
 // rather than a local command.
+//
+// Both probes hold their mutex across the slow call rather than releasing
+// it first, which makes them stampede-safe without a single-flight: a
+// second caller arriving mid-check blocks, and then finds a value fresh
+// enough to use, because the `now` it compares against was captured before
+// it started waiting. That is why a browser page load showing two
+// concurrent /api/status requests at 1.7s each was one doing the work and
+// one waiting on it, not two doing it twice — unlike the ttlCache case in
+// ttlcache.go, where releasing the lock first is what let four requests
+// each pay full price.
 type vaultProbe struct {
 	mu        sync.Mutex
 	checkedAt time.Time
