@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/redbotster/nanobots/internal/schema"
 )
@@ -424,3 +425,73 @@ spec:
 		}
 	}
 }
+
+// "Run it at 7am" means 7am where the user is.
+//
+// The builder shows a swarm's timezone but has never had a control to set
+// one, so every swarm saved from the WebUI arrived with "" — which the
+// scheduler reads as UTC. On a UTC-7 machine that turned "Weekdays at
+// 7:00 AM" into a midnight run while the card went on saying 7:00 AM.
+//
+// Checked against time.Now()'s own offset rather than against
+// localTimezoneName(), which would just be asking the code under test to
+// agree with itself. The first version of this test did exactly that and
+// passed on a machine where the function returned "" and fixed nothing.
+func TestASavedScheduleGetsThisMachinesTimezone(t *testing.T) {
+	expr := "0 7 * * 1-5"
+	trig, err := triggerFor(&expr, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if trig.Type != "cron" {
+		t.Fatalf("type = %q", trig.Type)
+	}
+	if trig.Timezone == "" {
+		t.Fatal("no timezone was set, so the scheduler will read this as UTC")
+	}
+
+	loc, err := time.LoadLocation(trig.Timezone)
+	if err != nil {
+		t.Fatalf("saved an unloadable timezone %q: %v", trig.Timezone, err)
+	}
+	// The independent check: whatever zone was chosen must agree with this
+	// machine's actual UTC offset right now.
+	now := time.Now()
+	_, want := now.Zone()
+	_, got := now.In(loc).Zone()
+	if got != want {
+		t.Errorf("saved timezone %q is %+d seconds off UTC, but this machine is %+d",
+			trig.Timezone, got, want)
+	}
+}
+
+// An explicit timezone still wins — this defaults, it does not override.
+func TestAnExplicitTimezoneIsKept(t *testing.T) {
+	expr := "0 9 * * 1"
+	trig, err := triggerFor(&expr, "Asia/Tokyo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if trig.Timezone != "Asia/Tokyo" {
+		t.Errorf("timezone = %q, want the one that was asked for", trig.Timezone)
+	}
+}
+
+// A manual swarm has no schedule to place in a timezone, and must not
+// acquire a cron trigger just because this defaulting exists.
+func TestAManualSwarmStaysManual(t *testing.T) {
+	for _, sched := range []*string{nil, ptrTo(""), ptrTo("   ")} {
+		trig, err := triggerFor(sched, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if trig.Type != "manual" {
+			t.Errorf("type = %q, want manual", trig.Type)
+		}
+		if trig.Timezone != "" {
+			t.Errorf("a manual trigger picked up timezone %q", trig.Timezone)
+		}
+	}
+}
+
+func ptrTo(s string) *string { return &s }

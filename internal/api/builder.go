@@ -118,8 +118,69 @@ func triggerFor(schedule *string, timezone string) (schema.Trigger, error) {
 		if _, err := time.LoadLocation(timezone); err != nil {
 			return schema.Trigger{}, fmt.Errorf("unknown timezone %q: %w", timezone, err)
 		}
+	} else {
+		// Nobody says "run it at 7am" and means 7am UTC.
+		//
+		// The builder shows a swarm's timezone but has never had a control
+		// to set one, so every swarm saved or edited from the WebUI arrived
+		// here with "" — and the scheduler reads an empty timezone as UTC.
+		// On this machine (UTC-7) that turned "Weekdays at 7:00 AM" into a
+		// run at midnight, while the card went on saying 7:00 AM, which is
+		// the card telling the truth about the cron and a lie about the
+		// swarm.
+		//
+		// Local, not UTC, because this is a local-first app: nanobotd runs
+		// on the user's own machine, so its zone is theirs. Written into
+		// the YAML explicitly rather than left empty and resolved at fire
+		// time, so the swarm keeps meaning what it meant if it is ever
+		// moved, shared, or read by something else — the same reason
+		// every catalog swarm names America/Chicago instead of relying on
+		// a default.
+		timezone = localTimezoneName()
 	}
 	return schema.Trigger{Type: "cron", Expr: expr, Timezone: timezone}, nil
+}
+
+// localTimezoneName is the machine's IANA zone ("America/Los_Angeles"), or
+// "" if it cannot be determined.
+//
+// time.Local.String() is the obvious answer and is not enough. On macOS with
+// no TZ set — the ordinary case for this app's users — it returns the
+// literal "Local", while the zone is plainly knowable:
+//
+//	time.Local.String() = "Local"
+//	Now().Zone()        = "PDT" offset=-25200
+//	/etc/localtime      -> /var/db/timezone/zoneinfo/America/Los_Angeles
+//
+// The first version of this checked only time.Local.String(), so it
+// returned "" on the very machine it was written on and changed nothing.
+// Hence the symlink, which is where both macOS and Linux keep the answer.
+//
+// "" rather than a guess when none of it works: an unset timezone keeps the
+// previous behaviour, and a confidently wrong zone is worse than an absent
+// one.
+func localTimezoneName() string {
+	if tz := strings.TrimSpace(os.Getenv("TZ")); tz != "" {
+		if _, err := time.LoadLocation(tz); err == nil {
+			return tz
+		}
+	}
+	if name := time.Local.String(); name != "" && name != "Local" {
+		if _, err := time.LoadLocation(name); err == nil {
+			return name
+		}
+	}
+	if target, err := os.Readlink("/etc/localtime"); err == nil {
+		// ".../zoneinfo/America/Los_Angeles" -> "America/Los_Angeles".
+		// Split on the directory rather than counting path elements: macOS
+		// uses /var/db/timezone/zoneinfo and Linux /usr/share/zoneinfo.
+		if _, after, ok := strings.Cut(target, "zoneinfo/"); ok {
+			if _, err := time.LoadLocation(after); err == nil {
+				return after
+			}
+		}
+	}
+	return ""
 }
 
 // buildPlanResponse shapes a PlanResult (or a Resolve-time error, when

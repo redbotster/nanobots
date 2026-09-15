@@ -81,10 +81,29 @@ func mergeIntoExistingSwarm(existing []byte, name, description string, bots []bu
 		} else {
 			setScalar(trigger, "type", "cron")
 			setScalar(trigger, "expr", strings.TrimSpace(*schedule))
-			if timezone != "" {
+			// Three states, not two — the same rule this whole file exists
+			// to enforce, which it was breaking for this one field.
+			//
+			// The builder displays a swarm's timezone but has never had a
+			// control to set one, so req.Timezone is always "" from the
+			// WebUI. The old else-branch read that as "clear it" and
+			// deleted the line, so pressing Save on any catalog swarm
+			// turned `timezone: America/Chicago` into nothing, which the
+			// scheduler reads as UTC: 7am Chicago silently became 2am
+			// Chicago, while the card went on saying 7:00 AM.
+			//
+			// Absent now means leave it alone. Only a swarm that has no
+			// timezone at all gets this machine's, matching what
+			// triggerFor does for a brand-new swarm.
+			switch {
+			case timezone != "":
 				setScalar(trigger, "timezone", timezone)
-			} else {
-				deleteKey(trigger, "timezone")
+			case findKey(trigger, "timezone") >= 0:
+				// Already has one. Not ours to change.
+			default:
+				if local := localTimezoneName(); local != "" {
+					setScalar(trigger, "timezone", local)
+				}
 			}
 		}
 	}

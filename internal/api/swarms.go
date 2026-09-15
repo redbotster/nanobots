@@ -237,8 +237,16 @@ func (s *Server) handleResumeSchedule(w http.ResponseWriter, r *http.Request) {
 // is a promise they cannot check — the entire reason to show the schedule
 // before saving is so they can confirm "every Friday" became Friday. This
 // answers with the same scheduler.Describe the swarm list uses and the same
-// scheduler.Parse that decides whether it fires, so what the picker says and
-// what actually happens cannot drift.
+// scheduler.Parse that decides whether it fires.
+//
+// next_run_at used to be computed as sched.Next(time.Now().UTC()) while the
+// scheduler computes sched.Next(now.In(loc)) — so this endpoint reported
+// 07:00Z for a swarm that fires at 07:00 America/Chicago, five hours out,
+// and returned the identical instant whatever timezone it was asked about.
+// The comment here claimed the picker and reality "cannot drift", which is
+// exactly the kind of claim that stops anyone checking. Nothing rendered
+// the field yet, so nobody had been misled; it was a trap set for the next
+// caller.
 func (s *Server) handleDescribeSchedule(w http.ResponseWriter, r *http.Request) {
 	expr := strings.TrimSpace(r.URL.Query().Get("expr"))
 	if expr == "" {
@@ -253,8 +261,31 @@ func (s *Server) handleDescribeSchedule(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
-	out := map[string]any{"ok": true, "human": scheduler.Describe(expr)}
-	if next := sched.Next(time.Now().UTC()); !next.IsZero() {
+
+	// Same resolution order the saved swarm will get: an explicit zone, else
+	// this machine's, else UTC.
+	loc := time.UTC
+	tz := strings.TrimSpace(r.URL.Query().Get("tz"))
+	if tz == "" {
+		tz = localTimezoneName()
+	}
+	if tz != "" {
+		if l, lerr := time.LoadLocation(tz); lerr == nil {
+			loc = l
+		} else {
+			// Named rather than silently falling back: a typo'd zone that
+			// quietly becomes UTC is how a schedule ends up firing in the
+			// middle of the night with nothing to explain it.
+			writeJSON(w, http.StatusOK, map[string]any{
+				"ok":    false,
+				"error": fmt.Sprintf("unknown timezone %q", tz),
+			})
+			return
+		}
+	}
+
+	out := map[string]any{"ok": true, "human": scheduler.Describe(expr), "timezone": loc.String()}
+	if next := sched.Next(time.Now().In(loc)); !next.IsZero() {
 		out["next_run_at"] = next.Format(time.RFC3339)
 	}
 	writeJSON(w, http.StatusOK, out)

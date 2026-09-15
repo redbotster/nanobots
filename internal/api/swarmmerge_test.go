@@ -163,3 +163,121 @@ func TestMergeRejectsGarbage(t *testing.T) {
 		t.Error("expected an error rather than a silently mangled file")
 	}
 }
+
+// Pressing Save must not move a swarm to a different timezone.
+//
+// This file exists because "Save changes" once destroyed a swarm's cron
+// trigger and its guardrails. It was doing the same thing to the timezone:
+// the builder has no control to set one, so it always sent "", and the
+// merge read that as "clear it" and deleted the line. The scheduler reads a
+// missing timezone as UTC, so saving daily-inbox-recap moved its 7am
+// Chicago run to 7am UTC — 2am Chicago — while the card still said 7:00 AM.
+func TestSavingASwarmKeepsItsTimezone(t *testing.T) {
+	existing := []byte(`apiVersion: nanobots.dev/v1
+kind: Nanoswarm
+metadata:
+  name: daily-inbox-recap
+  description: d
+spec:
+  bots: []
+  trigger:
+    type: cron
+    expr: "0 7 * * 1-5"
+    timezone: America/Chicago
+`)
+	sched := "0 7 * * 1-5"
+	out, err := mergeIntoExistingSwarm(existing, "daily-inbox-recap", "d",
+		[]builderBotRef{{ID: "recap", Use: "recap@0.1.0"}}, nil, &sched, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(out)
+	if !strings.Contains(got, "timezone: America/Chicago") {
+		t.Errorf("the timezone was dropped on save:\n%s", got)
+	}
+}
+
+// An explicit timezone still replaces the old one — this preserves, it does
+// not freeze.
+func TestAnExplicitTimezoneStillReplacesTheOldOne(t *testing.T) {
+	existing := []byte(`apiVersion: nanobots.dev/v1
+kind: Nanoswarm
+metadata:
+  name: s
+  description: d
+spec:
+  bots: []
+  trigger:
+    type: cron
+    expr: "0 7 * * *"
+    timezone: America/Chicago
+`)
+	sched := "0 7 * * *"
+	out, err := mergeIntoExistingSwarm(existing, "s", "d",
+		[]builderBotRef{{ID: "b", Use: "b@0.1.0"}}, nil, &sched, "Asia/Tokyo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(out)
+	if !strings.Contains(got, "timezone: Asia/Tokyo") || strings.Contains(got, "America/Chicago") {
+		t.Errorf("explicit timezone did not win:\n%s", got)
+	}
+}
+
+// A swarm with no timezone at all gets this machine's, so it means what the
+// person setting it meant — same as a brand-new swarm from triggerFor.
+func TestASwarmWithNoTimezoneGetsThisMachines(t *testing.T) {
+	existing := []byte(`apiVersion: nanobots.dev/v1
+kind: Nanoswarm
+metadata:
+  name: s
+  description: d
+spec:
+  bots: []
+  trigger:
+    type: cron
+    expr: "0 7 * * *"
+`)
+	sched := "0 7 * * *"
+	out, err := mergeIntoExistingSwarm(existing, "s", "d",
+		[]builderBotRef{{ID: "b", Use: "b@0.1.0"}}, nil, &sched, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if local := localTimezoneName(); local != "" {
+		if !strings.Contains(string(out), "timezone: "+local) {
+			t.Errorf("expected this machine's timezone %q:\n%s", local, string(out))
+		}
+	}
+}
+
+// Switching a swarm to manual still clears the schedule and its timezone —
+// preserving a timezone on a trigger that no longer has a schedule would
+// leave a field describing nothing.
+func TestGoingManualStillClearsTheSchedule(t *testing.T) {
+	existing := []byte(`apiVersion: nanobots.dev/v1
+kind: Nanoswarm
+metadata:
+  name: s
+  description: d
+spec:
+  bots: []
+  trigger:
+    type: cron
+    expr: "0 7 * * *"
+    timezone: America/Chicago
+`)
+	manual := ""
+	out, err := mergeIntoExistingSwarm(existing, "s", "d",
+		[]builderBotRef{{ID: "b", Use: "b@0.1.0"}}, nil, &manual, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(out)
+	if strings.Contains(got, "timezone:") || strings.Contains(got, "expr:") {
+		t.Errorf("manual swarm kept schedule fields:\n%s", got)
+	}
+	if !strings.Contains(got, "type: manual") {
+		t.Errorf("not switched to manual:\n%s", got)
+	}
+}
