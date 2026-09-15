@@ -94,6 +94,36 @@ Anything optional that can also be *deliberately cleared* needs three
 states, not two — `schedule` is `*string`: absent means leave it alone, `""`
 means make it manual.
 
+## A path segment is not a path
+
+This one has been found three separate times in this repo, so it goes in
+writing. `http.ServeMux` matches routes on the **escaped** path, but
+`r.PathValue` and `r.URL.Path` hand the handler the **decoded** one. The two
+disagree, and `..%2f` lives in the gap:
+
+    /api/bots/..%2f..%2fetc/x   -> route matches, PathValue is "../../etc"
+    /shroud/%2e%2e/v1/agents    -> no 301, forwarded as "/../v1/agents"
+
+The plain `/api/bots/../../etc/x` *is* redirected, which is exactly what
+makes this look handled when it isn't.
+
+Where it has landed: `handleGetBlob` read arbitrary files off disk including
+the dotenv with every API key; `handleSetBotServiceConnection` rewrote a
+`nanobot.yaml` outside `BotsDir`; the Shroud proxy forwarded an
+unnormalised path upstream carrying the daemon's agent key.
+
+So: anything from outside that becomes a path or an upstream URL goes
+through a validator, and the validator lives in one shared place
+(`internal/api/botpath.go`, `FSBlobStore.Read`, `fixturesDirFor`) rather
+than being re-fixed per handler. **Reject, don't clean** — `path.Clean`
+turns `/../v1/agents` into `/v1/agents` and forwards it, granting the escape
+instead of refusing it. And `filepath.Base` is not a guard:
+`filepath.Base("..")` is `".."`.
+
+Ids that come from `os.ReadDir` are already single directory names and are
+deliberately left unchecked; guarding them would imply the entries might be
+hostile, which is a lie about where they come from.
+
 ## Report honestly
 
 Say what was done, what was measured, and what was left. If a change is
