@@ -88,6 +88,11 @@ type Server struct {
 	// trigger type, declared since the first commit and until now inert.
 	// nil leaves the route returning 404.
 	Webhook *WebhookTrigger
+
+	// connCache holds the last /api/connections answer. Zero value is a
+	// cold cache, so nothing has to construct it. See connections.go for
+	// why an eight-round-trip read is worth caching at all.
+	connCache connectionCache
 }
 
 func (s *Server) swarmsDir() string {

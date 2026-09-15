@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/redbotster/nanobots/internal/oneclaw"
@@ -15,7 +17,17 @@ import (
 // for the connections endpoints to exercise a real oneclaw.Client against,
 // without a real account.
 func fakeOneClaw(t *testing.T) *oneclaw.Client {
+	c, _ := fakeOneClawCounting(t)
+	return c
+}
+
+// fakeOneClawCounting is the same fake, plus a count of how many secret
+// reads actually reached it — the only way to tell a served cache from a
+// re-read, since both produce an identical response body.
+func fakeOneClawCounting(t *testing.T) (*oneclaw.Client, *atomic.Int64) {
 	t.Helper()
+	var reads atomic.Int64
+	var mu sync.Mutex
 	secrets := map[string]string{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/auth/api-key-token", func(w http.ResponseWriter, r *http.Request) {
@@ -30,6 +42,10 @@ func fakeOneClaw(t *testing.T) *oneclaw.Client {
 	})
 	mux.HandleFunc("/v1/vaults/v1/secrets/", func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path[len("/v1/vaults/v1/secrets/"):]
+		// The handler under test reads these concurrently now, so the map
+		// behind them needs a lock or -race fails on the fake, not the code.
+		mu.Lock()
+		defer mu.Unlock()
 		switch r.Method {
 		case http.MethodPut:
 			var body map[string]string
@@ -38,6 +54,7 @@ func fakeOneClaw(t *testing.T) *oneclaw.Client {
 			w.WriteHeader(http.StatusCreated)
 			json.NewEncoder(w).Encode(map[string]any{"id": "s1", "path": path, "type": "generic", "version": 1})
 		case http.MethodGet:
+			reads.Add(1)
 			val, ok := secrets[path]
 			if !ok {
 				w.WriteHeader(http.StatusNotFound)
@@ -62,7 +79,7 @@ func fakeOneClaw(t *testing.T) *oneclaw.Client {
 	t.Cleanup(srv.Close)
 	oc := oneclaw.NewClient("1ck_test")
 	oc.BaseURL = srv.URL
-	return oc
+	return oc, &reads
 }
 
 func testServerWithOneClaw(t *testing.T) *Server {
@@ -225,5 +242,115 @@ func TestHandleConnectionsStatusTreatsALinkedInAccessTokenAsConnected(t *testing
 		if s.Service == "linkedin" && !s.Connected {
 			t.Error("expected linkedin to be Connected via its access_token fallback")
 		}
+	}
+}
+
+// The eight vault reads behind this endpoint run concurrently (7.8s serial,
+// ~1s parallel against the live daemon). Two properties that a concurrent
+// rewrite can quietly break, and neither shows up as a failing build:
+//
+//   - the order of the list, which has to stay fixed because the response
+//     is ETag-cached and a reshuffle would invalidate it on every call
+//   - the absence of a data race on the shared result slice
+//
+// The race is only visible under -race, which the house verification
+// command already passes, so this test exists to give it something to look
+// at: before this, nothing exercised the endpoint's goroutines at all.
+func TestConnectionsStatusIsStablyOrderedUnderConcurrency(t *testing.T) {
+	srv := testServerWithOneClaw(t)
+
+	var first []connectionStatus
+	for i := 0; i < 5; i++ {
+		rec := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/connections", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+		}
+		var got []connectionStatus
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != len(connectionServices) {
+			t.Fatalf("got %d statuses, want %d", len(got), len(connectionServices))
+		}
+		for j, svc := range connectionServices {
+			if got[j].Service != svc {
+				t.Fatalf("position %d = %q, want %q — the order must not depend on "+
+					"which vault read finished first", j, got[j].Service, svc)
+			}
+		}
+		if first == nil {
+			first = got
+			continue
+		}
+		for j := range got {
+			if got[j] != first[j] {
+				t.Fatalf("call %d differs at %d: %+v vs %+v", i, j, got[j], first[j])
+			}
+		}
+	}
+}
+
+// Four pages load /api/connections, and answering it honestly costs eight
+// vault round trips that 1Claw throttles — 7.8s serial, 3.2s concurrent,
+// measured against the live account. So the answer is cached, and these are
+// the two things that has to get right.
+func TestConnectionsStatusIsCachedButNeverStaleAfterConnecting(t *testing.T) {
+	srv := testServer(t)
+	oc, reads := fakeOneClawCounting(t)
+	srv.OneClaw = oc
+
+	get := func() []connectionStatus {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/connections", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
+		}
+		var out []connectionStatus
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	connected := func(list []connectionStatus, service string) bool {
+		t.Helper()
+		for _, s := range list {
+			if s.Service == service {
+				return s.Connected
+			}
+		}
+		t.Fatalf("no %s in %+v", service, list)
+		return false
+	}
+
+	get()
+	afterFirst := reads.Load()
+	if afterFirst == 0 {
+		t.Fatal("the first call read nothing from the vault")
+	}
+
+	// Cached: three more calls, no further vault traffic.
+	get()
+	get()
+	get()
+	if got := reads.Load(); got != afterFirst {
+		t.Errorf("vault reads went %d -> %d across three repeat calls; the cache is not being used", afterFirst, got)
+	}
+
+	// Never stale: connecting has to show immediately, not after the TTL.
+	// This is the honesty half — a cache that keeps saying "not connected"
+	// about something the user just connected is worse than a slow page.
+	if connected(get(), "slack") {
+		t.Fatal("slack started connected")
+	}
+	body, _ := json.Marshal(connectTokenRequest{Token: "xoxb-abc"})
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/connections/slack", bytes.NewReader(body)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("connect slack: %d %s", rec.Code, rec.Body.String())
+	}
+	if !connected(get(), "slack") {
+		t.Error("slack still reads as disconnected right after connecting it — the cache outlived the write")
 	}
 }
