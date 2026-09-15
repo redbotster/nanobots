@@ -85,38 +85,37 @@ func (s *Server) handleConnectionsStatus(w http.ResponseWriter, r *http.Request)
 		writeJSONCached(w, r, http.StatusOK, []connectionStatus{})
 		return
 	}
-	if cached, ok := s.connCache.get(connectionTTL); ok {
-		writeJSONCached(w, r, http.StatusOK, cached)
-		return
-	}
-
-	vault, err := s.OneClaw.EnsureVault("nanobots-main")
+	statuses, err := s.connCache.do(connectionTTL, func() ([]connectionStatus, error) {
+		vault, err := s.OneClaw.EnsureVault("nanobots-main")
+		if err != nil {
+			return nil, err
+		}
+		out := make([]connectionStatus, len(connectionServices))
+		var wg sync.WaitGroup
+		for i, service := range connectionServices {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, err := s.OneClaw.GetSecret(vault.ID, vaultKeyFor[service])
+				connected := err == nil
+				if service == "linkedin" && !connected {
+					// LinkedIn may have connected without a refresh token at all
+					// (see internal/step/linkedin_live.go) — a stored access token
+					// alone still counts as connected.
+					_, err := s.OneClaw.GetSecret(vault.ID, "linkedin/access_token")
+					connected = err == nil
+				}
+				out[i] = connectionStatus{Service: service, Connected: connected}
+			}()
+		}
+		wg.Wait()
+		return out, nil
+	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
 
-	statuses := make([]connectionStatus, len(connectionServices))
-	var wg sync.WaitGroup
-	for i, service := range connectionServices {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			_, err := s.OneClaw.GetSecret(vault.ID, vaultKeyFor[service])
-			connected := err == nil
-			if service == "linkedin" && !connected {
-				// LinkedIn may have connected without a refresh token at all
-				// (see internal/step/linkedin_live.go) — a stored access token
-				// alone still counts as connected.
-				_, err := s.OneClaw.GetSecret(vault.ID, "linkedin/access_token")
-				connected = err == nil
-			}
-			statuses[i] = connectionStatus{Service: service, Connected: connected}
-		}()
-	}
-	wg.Wait()
-
-	s.connCache.put(statuses)
 	writeJSONCached(w, r, http.StatusOK, statuses)
 }
 

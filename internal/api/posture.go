@@ -70,11 +70,27 @@ func (s *Server) handlePosture(w http.ResponseWriter, r *http.Request) {
 		writeJSONCached(w, r, http.StatusOK, PostureResponse{})
 		return
 	}
-	if cached, ok := s.postureCache.get(postureTTL); ok {
-		writeJSONCached(w, r, http.StatusOK, cached)
+	out, err := s.postureCache.do(postureTTL, func() (PostureResponse, error) {
+		return s.readPosture()
+	})
+	if err != nil {
+		// 200 with an error field, not a 5xx: this is one row on a settings
+		// page, and a page that fails to render because a status widget
+		// could not reach a third party is worse than the widget saying so.
+		//
+		// The error also told the cache not to remember this — a blip kept
+		// for thirty seconds reads as an outage, and "1Claw is down" is the
+		// one answer worth asking about again immediately.
+		writeJSON(w, http.StatusOK, out)
 		return
 	}
+	writeJSONCached(w, r, http.StatusOK, out)
+}
 
+// readPosture assembles one reading. Separate from the handler so the cache
+// has a plain function to call and the handler has no branch that can
+// forget to populate it.
+func (s *Server) readPosture() (PostureResponse, error) {
 	out := PostureResponse{Configured: true}
 
 	// Three independent 1Claw reads. In sequence they were 2.8s on every
@@ -111,16 +127,10 @@ func (s *Server) handlePosture(w http.ResponseWriter, r *http.Request) {
 	wg.Wait()
 
 	if postErr != nil {
-		// 200 with an error field, not a 5xx: this is one row on a settings
-		// page, and a page that fails to render because a status widget
-		// could not reach a third party is worse than the widget saying so.
-		//
-		// Deliberately not cached — a failure is the one answer worth
-		// retrying promptly, and caching it would make a blip look like an
-		// outage for the next thirty seconds.
+		// Returned as both a value and an error: the value is what the
+		// Settings row shows, the error is what stops it being cached.
 		out.Error = postErr.Error()
-		writeJSON(w, http.StatusOK, out)
-		return
+		return out, postErr
 	}
 	out.Score, out.Threats, out.Critical = p.Score, p.OpenThreats, p.OpenCritical
 	out.Pending, out.Agents = p.PendingApprovals, p.AgentCount
@@ -143,6 +153,5 @@ func (s *Server) handlePosture(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.postureCache.put(out)
-	writeJSONCached(w, r, http.StatusOK, out)
+	return out, nil
 }
