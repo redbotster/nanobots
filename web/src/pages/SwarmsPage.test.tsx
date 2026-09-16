@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { LastRunLine } from "./SwarmsPage";
+import { LastRunLine, swarmMatches } from "./SwarmsPage";
 import type { SwarmSummary } from "../lib/types";
 
 function swarm(over: Partial<SwarmSummary>): SwarmSummary {
@@ -61,5 +61,44 @@ describe("the swarm card's run line", () => {
   it("says nothing has run yet when nothing has", () => {
     render(<LastRunLine swarm={swarm({})} />);
     expect(screen.getByText(/never run yet/i)).toBeTruthy();
+  });
+});
+
+describe("filtering the swarm list", () => {
+  const list = [
+    swarm({ name: "github-digest-to-slack", description: "Summarise a repo's newest open issues and post the digest to Slack." }),
+    swarm({ name: "get-paid", description: "Find every overdue invoice and send each reminder once approved." }),
+    swarm({ name: "morning-brief", description: "Triage the inbox and prep today's meetings into one brief." }),
+  ];
+  const matching = (q: string) => list.filter((s) => swarmMatches(s, q)).map((s) => s.name);
+
+  it("matches on the name", () => {
+    expect(matching("get-paid")).toEqual(["get-paid"]);
+  });
+
+  it("matches on the description, because that is how people remember one", () => {
+    // "the one that posts to Slack" is a description search; the word
+    // appears in github-digest-to-slack's name too, which is fine — it is
+    // the same swarm either way.
+    expect(matching("invoice")).toEqual(["get-paid"]);
+    expect(matching("meetings")).toEqual(["morning-brief"]);
+  });
+
+  it("does not care about the order the words are remembered in", () => {
+    expect(matching("slack digest")).toEqual(["github-digest-to-slack"]);
+    expect(matching("digest slack")).toEqual(["github-digest-to-slack"]);
+  });
+
+  it("ignores case and stray whitespace", () => {
+    expect(matching("  GitHub   DIGEST ")).toEqual(["github-digest-to-slack"]);
+  });
+
+  it("shows everything when nothing has been typed", () => {
+    expect(matching("")).toHaveLength(3);
+    expect(matching("   ")).toHaveLength(3);
+  });
+
+  it("returns nothing rather than everything when nothing matches", () => {
+    expect(matching("nonexistent")).toEqual([]);
   });
 });

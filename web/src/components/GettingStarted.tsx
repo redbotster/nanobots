@@ -51,6 +51,10 @@ export function GettingStarted({
       return false;
     }
   });
+  // Expanded is only ever set by the user clicking "Show". The default is
+  // derived from progress below, so someone who has done nothing still gets
+  // the full card without having to ask for it.
+  const [expanded, setExpanded] = useState(false);
   const [hasRun, setHasRun] = useState<boolean | null>(null);
   const [connected, setConnected] = useState<boolean | null>(null);
 
@@ -106,6 +110,47 @@ export function GettingStarted({
     }
     setDismissed(true);
   };
+
+  const remaining = steps.filter((s) => !s.done);
+
+  // Shrinks as you make progress.
+  //
+  // This sat at the top of the landing page at full height whatever your
+  // state, so on a 720px viewport the first swarm card started at y=533 —
+  // three quarters of the screen spent on chrome before the thing you came
+  // for. Most of that was this card, still explaining all three steps to
+  // someone who had done two of them and run 184 swarms.
+  //
+  // A user with nothing done still gets the full card: that is the case it
+  // was written for, and the one where the detail earns its space. Once
+  // anything is done it becomes one line naming what is left, which is the
+  // only part still worth reading, and "Show" brings the rest back.
+  if (!expanded && remaining.length < steps.length) {
+    return (
+      <div className="mb-3 flex items-center gap-2 rounded-lg border border-edge bg-panel/40 px-3 py-2 text-[12px]">
+        <span className="text-muted">
+          Getting started · {steps.length - remaining.length} of {steps.length} done
+        </span>
+        <span className="min-w-0 truncate text-ink">{remaining[0].title}</span>
+        {remaining[0].action && (
+          <button
+            onClick={remaining[0].action.onClick}
+            className="shrink-0 text-tron underline-offset-2 hover:underline"
+          >
+            {remaining[0].action.label}
+          </button>
+        )}
+        <span className="ml-auto flex shrink-0 gap-2.5">
+          <button onClick={() => setExpanded(true)} className="text-muted hover:text-ink">
+            Show
+          </button>
+          <button onClick={dismiss} className="text-muted hover:text-ink">
+            Hide
+          </button>
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="mb-4 rounded-lg border border-edge-strong bg-panel/60 p-5">

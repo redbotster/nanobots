@@ -89,6 +89,26 @@ type Mode =
  * enough that an idle list is one empty 304 round trip at a time. */
 const SWARM_POLL_MS = 4000;
 
+/** Below this many swarms, a filter box costs more attention than the
+ * scrolling it saves. The catalog ships 16, so it is there by default; a
+ * fresh install with three is not made better by a search field. */
+const SEARCH_THRESHOLD = 6;
+
+/** Matches a swarm against what someone typed.
+ *
+ * Name and description, because people remember a swarm either way — "the
+ * one that posts to Slack" is a description search, "get-paid" is a name
+ * one. Case-insensitive, and every whitespace-separated term has to match
+ * somewhere, so "slack digest" finds github-digest-to-slack without
+ * depending on the order the words are remembered in.
+ */
+export function swarmMatches(s: SwarmSummary, query: string): boolean {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return true;
+  const hay = `${s.name} ${s.description ?? ""}`.toLowerCase();
+  return terms.every((t) => hay.includes(t));
+}
+
 const EXAMPLE_PROMPT = "Help me automate a daily email recap and list it by priority";
 
 /** The "head nanobot": describe what you want automated in plain English,
@@ -325,6 +345,7 @@ export function SwarmsPage({
   const [swarms, setSwarms] = useState<SwarmSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>({ kind: "list" });
+  const [query, setQuery] = useState("");
 
   const reload = () => api.listSwarms().then(setSwarms).catch((e) => setError(String(e)));
 
@@ -373,6 +394,12 @@ export function SwarmsPage({
     // reset the clock and re-request immediately.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode.kind]);
+
+  // Filtered for display only — `swarms` stays the full list so the count in
+  // the empty state below, and the threshold that decides whether to show the
+  // filter at all, both describe what exists rather than what survived the
+  // query.
+  const visible = swarms === null ? null : swarms.filter((s) => swarmMatches(s, query));
 
   if (mode.kind === "view") {
     return (
@@ -437,6 +464,15 @@ export function SwarmsPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {(swarms?.length ?? 0) > SEARCH_THRESHOLD && (
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Filter swarms"
+              aria-label="Filter swarms by name or description"
+              className="w-40 rounded border border-edge-strong bg-void px-2.5 py-1.5 text-xs text-ink placeholder:text-muted focus:border-tron focus:outline-none sm:w-52"
+            />
+          )}
           <ImportSwarmButton onClick={() => setMode({ kind: "import" })} />
           {uiMode === "advanced" && (
             <Button variant="ghost" onClick={() => setMode({ kind: "build" })}>
@@ -484,7 +520,7 @@ export function SwarmsPage({
       )}
 
       <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {swarms?.map((s) => (
+        {visible?.map((s) => (
           <div
             key={s.path}
             className="fade-in group flex flex-col rounded-lg border border-edge-strong bg-panel transition-shadow focus-within:border-tron hover:border-tron hover:shadow-glow-sm"
@@ -523,6 +559,17 @@ export function SwarmsPage({
       {swarms?.length === 0 && (
         <p className="mt-6 text-sm text-muted">
           No swarms found in examples/swarms/.
+        </p>
+      )}
+      {/* Filtered everything away. Distinct from having no swarms at all,
+          which is a different problem with a different fix. */}
+      {swarms !== null && swarms.length > 0 && visible!.length === 0 && (
+        <p className="mt-6 text-sm text-muted">
+          No swarm matches “{query}”.{" "}
+          <button onClick={() => setQuery("")} className="text-tron hover:underline">
+            Clear the filter
+          </button>{" "}
+          to see all {swarms.length}.
         </p>
       )}
     </div>

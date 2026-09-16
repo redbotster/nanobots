@@ -46,10 +46,36 @@ describe("GettingStarted", () => {
   it("ticks off a step that is genuinely done, and hides its blurb", async () => {
     stub(3, false);
     render(<GettingStarted status={status("gemini (direct)")} onOpenSettings={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText("Getting started")).toBeTruthy());
+    // Partly done, so it starts collapsed — open it to check the steps.
+    await waitFor(() => expect(screen.getByText("Show")).toBeTruthy());
+    fireEvent.click(screen.getByText("Show"));
     // The model and run steps are done, so only the connect blurb remains.
     expect(screen.queryByText(/Without one, every bot returns/)).toBeNull();
     expect(screen.getByText(/Then the same swarm reads your actual inbox/)).toBeTruthy();
+  });
+
+  // It used to sit at the top of the landing page at full height whatever
+  // your state, so the first swarm card started at y=533 of a 720px
+  // viewport — three quarters of the screen spent explaining all three
+  // steps to someone who had done two of them.
+  it("collapses to one line once you have made a start", async () => {
+    stub(3, false);
+    render(<GettingStarted status={status("gemini (direct)")} onOpenSettings={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText(/2 of 3 done/)).toBeTruthy());
+    // Names what is left, and nothing else.
+    expect(screen.getByText(/Connect an account/)).toBeTruthy();
+    expect(screen.queryByText(/Nothing here needs setting up to try/)).toBeNull();
+    expect(screen.queryByText(/Then the same swarm reads your actual inbox/)).toBeNull();
+  });
+
+  // A genuinely new install is the case this card was written for, and the
+  // one where the detail earns its space.
+  it("stays full-height when nothing has been done yet", async () => {
+    stub(0, false);
+    render(<GettingStarted status={status("none")} onOpenSettings={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Getting started")).toBeTruthy());
+    expect(screen.getByText(/Nothing here needs setting up to try/)).toBeTruthy();
+    expect(screen.queryByText("Show")).toBeNull();
   });
 
   // It has to get out of the way on its own. Someone who set everything up
