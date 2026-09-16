@@ -51,7 +51,21 @@ export function SwarmView({
   useEffect(() => {
     setPlan(null);
     setSelected(null);
-    setRunId(null);
+    // Adopt the swarm's most recent run rather than starting blank.
+    //
+    // This page used to know only about runs you started from it, so opening
+    // a swarm always said "Nothing's run yet. Hit Run once above to see it
+    // happen here, live" — including for a swarm whose run was at that
+    // moment sitting on an approval. Following "waiting for your approval"
+    // from the swarm list landed you on a page claiming nothing had ever
+    // run, with no way to answer from there. The one action you came to take
+    // was the one thing missing, and the copy was plainly false: the nav
+    // badge beside it was counting that very run.
+    setRunId(swarm.last_run_id ?? null);
+    // A run that had already finished before this page opened must not
+    // trigger the jump-to-Results below, which exists for the moment a run
+    // you are watching succeeds — not for arriving at an old one.
+    wasSucceeded.current = swarm.last_run_status === "succeeded";
     setLoadError(null);
     // Both of these used to swallow their failures — plan into an empty
     // catch, listBots into nothing at all — so a 500 from either left the
@@ -64,7 +78,7 @@ export function SwarmView({
       .listBots()
       .then((list) => setBots(Object.fromEntries(list.map((b) => [b.id, b]))))
       .catch((e) => setLoadError(String(e)));
-  }, [SWARM_PATH]);
+  }, [SWARM_PATH, swarm.last_run_id, swarm.last_run_status]);
 
   const order = plan?.order ?? [];
   const botIdOf = useMemo(() => {
