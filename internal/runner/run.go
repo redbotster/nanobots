@@ -71,7 +71,8 @@ type Run struct {
 	FinishedAt time.Time `json:"finished_at,omitempty"`
 	Error      string    `json:"error,omitempty"`
 	// TriggeredBy is "manual" (a human clicked Run or invoked `nanobots
-	// run`) or "schedule" (internal/scheduler fired it) — set once at
+	// run`), "schedule" (internal/scheduler fired it), or "webhook"
+	// (something posted to /webhooks/{swarm}) — set once at
 	// construction/immediately after and never mutated again, so reading
 	// it directly elsewhere carries the same no-further-writes safety as
 	// ID/SwarmName (see GetStatus's own doc comment for the fields that

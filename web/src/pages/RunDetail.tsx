@@ -258,6 +258,14 @@ export function RunDetail({
               ⏰ scheduled
             </span>
           )}
+          {run?.triggered_by === "webhook" && (
+            <span
+              className="rounded-full border border-edge px-1.5 py-0.5 text-[9px] text-muted"
+              title="Started by something posting to this swarm's webhook, not a manual Run click"
+            >
+              ⚡ webhook
+            </span>
+          )}
           {!finished && run && (
             // A running swarm holds a container until it finishes or hits
             // its ceiling — up to thirty minutes. Watching was the only

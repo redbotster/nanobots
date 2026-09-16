@@ -67,6 +67,7 @@ export function LastRunLine({ swarm: s }: { swarm: SwarmSummary }) {
       <StatusDot tone={RUN_TONE[s.last_run_status] ?? "muted"} />
       last ran {relativeTime(s.last_run_at!)}
       {s.last_run_trigger === "schedule" && " · scheduled"}
+      {s.last_run_trigger === "webhook" && " · by webhook"}
     </div>
   );
 }

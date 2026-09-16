@@ -249,3 +249,26 @@ func TestAWebhookSwarmIsNoLongerReportedAsInert(t *testing.T) {
 		t.Errorf("event inert_trigger = %q, want the expression", ev.InertTrigger)
 	}
 }
+
+// A webhook run was not started by a human, and must not say it was.
+//
+// TriggeredBy defaults to "manual" and only the scheduler ever overrode it,
+// so every run this endpoint started since it was wired up claimed someone
+// had clicked Run. That is the one thing this field exists to get right —
+// its own doc says it is there "so the Runs page can show a run nobody
+// clicked instead of a mystery entry".
+func TestAWebhookRunSaysAWebhookStartedIt(t *testing.T) {
+	srv := webhookServer(t, map[string]string{"intake": webhookSwarm})
+
+	if got := post(srv, "/webhooks/intake", "test-token", `{"x":1}`).Code; got != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202", got)
+	}
+
+	runs := srv.Runs.List()
+	if len(runs) != 1 {
+		t.Fatalf("expected one run, got %d", len(runs))
+	}
+	if got := runs[0].TriggeredBy; got != "webhook" {
+		t.Errorf("triggered_by = %q, want \"webhook\" — nobody clicked Run", got)
+	}
+}

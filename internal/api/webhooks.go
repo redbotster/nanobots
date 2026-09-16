@@ -109,6 +109,15 @@ func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	// Nobody clicked Run. TriggeredBy defaults to "manual" and only the
+	// scheduler ever overrode it, so every webhook run since this endpoint
+	// was wired up has claimed a human started it — which is the one thing
+	// this field exists to get right.
+	//
+	// Safe to set directly without a lock, for the same reason the
+	// scheduler's own line is: nothing can observe this run until Runs.Add
+	// publishes it, and TriggeredBy is never written again after.
+	run.TriggeredBy = "webhook"
 	s.Runs.Add(run)
 	// 202: the run has started, not finished. A webhook sender should not
 	// be held open for a swarm that opens an approval gate and waits half

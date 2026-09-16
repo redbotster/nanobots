@@ -113,7 +113,7 @@ export interface RunCore {
   /** "manual" (a human clicked Run) or "schedule" (internal/scheduler
    * fired it) — see docs/scheduler.md. Lets the Runs page explain a run
    * nobody remembers starting. */
-  triggered_by: "manual" | "schedule";
+  triggered_by: "manual" | "schedule" | "webhook";
   /** The swarm file this was planned from — present on any real swarm run,
    * absent on a foundry job (which embeds a Run but has no swarm file).
    * It's what makes "Run it again" possible from the run itself. */
@@ -211,7 +211,7 @@ export interface SwarmSummary {
   last_run_id?: string;
   last_run_status?: RunStatus;
   last_run_at?: string;
-  last_run_trigger?: "manual" | "schedule";
+  last_run_trigger?: "manual" | "schedule" | "webhook";
   /** "Weekdays at 7:00 AM" — the swarm's cron trigger in words. Absent when
    * the swarm has no cron trigger. See internal/scheduler/describe.go. */
   schedule?: string;
