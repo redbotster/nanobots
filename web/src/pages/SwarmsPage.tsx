@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { ImportSwarm, ImportSwarmButton } from "../components/ImportSwarm";
-import { api } from "../lib/api";
+import { api, getIfChanged, Unchanged } from "../lib/api";
 import { GettingStarted } from "../components/GettingStarted";
 import type { StatusResponse, ComposeGap, SaveSwarmRequest, SwarmSummary } from "../lib/types";
 import type { UIMode } from "../lib/uiMode";
@@ -22,6 +22,52 @@ function LazyFallback() {
   return <div className="p-6 text-sm text-muted/60">Loading…</div>;
 }
 
+/** What this swarm's most recent run is doing, in words that are true while
+ * it is doing it.
+ *
+ * Every state used to render as "last ran 2h ago", including the two where
+ * the run has not finished. A swarm parked on an approval therefore looked
+ * exactly like one that finished yesterday: same muted grey, same past
+ * tense, nothing to suggest a person was being waited on.
+ *
+ * That is the failure mode this app actually has. Fifty-four runs on the
+ * development machine died at their container timeout with an approval
+ * nobody answered, 27 hours of container time, and the swarm card — the
+ * thing you look at — said "last ran" the whole while. The nav badge does
+ * count it, but it is a small number on a page you are not on.
+ *
+ * So the waiting case gets the warn colour and present tense, and "last
+ * ran" is kept for runs that have actually finished.
+ */
+export function LastRunLine({ swarm: s }: { swarm: SwarmSummary }) {
+  if (s.last_run_status === "awaiting_approval") {
+    return (
+      <div className="mt-1 flex items-center gap-1.5 text-[11px] font-medium text-warn">
+        <StatusDot tone="warn" />
+        waiting for your approval
+      </div>
+    );
+  }
+  if (s.last_run_status === "running") {
+    return (
+      <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted">
+        <StatusDot tone="warn" />
+        running now
+      </div>
+    );
+  }
+  if (!s.last_run_status) {
+    return <div className="mt-1 text-[11px] text-muted/60">never run yet</div>;
+  }
+  return (
+    <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted">
+      <StatusDot tone={RUN_TONE[s.last_run_status] ?? "muted"} />
+      last ran {relativeTime(s.last_run_at!)}
+      {s.last_run_trigger === "schedule" && " · scheduled"}
+    </div>
+  );
+}
+
 const RUN_TONE: Record<string, "ok" | "warn" | "danger" | "muted"> = {
   succeeded: "ok",
   running: "warn",
@@ -37,6 +83,11 @@ type Mode =
   | { kind: "build"; swarm?: SwarmSummary; composedDraft?: SaveSwarmRequest }
   | { kind: "gap"; request: string; gap: ComposeGap }
   | { kind: "foundry"; jobId: string; request: string };
+
+/** How often the swarm list re-checks. Four seconds: fast enough that a run
+ * starting or finishing shows up while you are looking at the page, slow
+ * enough that an idle list is one empty 304 round trip at a time. */
+const SWARM_POLL_MS = 4000;
 
 const EXAMPLE_PROMPT = "Help me automate a daily email recap and list it by priority";
 
@@ -276,9 +327,52 @@ export function SwarmsPage({
   const [mode, setMode] = useState<Mode>({ kind: "list" });
 
   const reload = () => api.listSwarms().then(setSwarms).catch((e) => setError(String(e)));
+
+  // The landing page was a snapshot taken once on mount and never refreshed.
+  // Everything live on it went stale the moment you arrived: a run that
+  // finished still said "running now", a failure streak froze at whatever it
+  // was when the page loaded, and a swarm that started waiting on an
+  // approval while you were looking at it never said so — which is the one
+  // thing this page most needs to be able to tell you.
+  //
+  // Conditional GET, not a plain poll: /api/swarms is ~9KB and almost every
+  // poll is byte-identical, so the server answers 304 with no body and this
+  // skips both the parse and the React state update (see getIfChanged). An
+  // idle list costs one empty round trip every four seconds and does not
+  // re-render.
+  //
+  // Only while the list is on screen. The builder and the swarm view are
+  // their own surfaces with their own loading, and polling underneath them
+  // would be churn nobody can see.
   useEffect(() => {
-    reload();
-  }, []);
+    if (mode.kind !== "list") return;
+    let alive = true;
+    let tag: string | null = null;
+    const tick = async () => {
+      try {
+        const res = await getIfChanged<SwarmSummary[]>("/api/swarms", tag);
+        if (!alive || res === Unchanged) return;
+        tag = res.etag;
+        setSwarms(res.data);
+        setError(null);
+      } catch (e) {
+        // A failed poll is not worth replacing a good list with an error
+        // message — the next tick usually succeeds, and a daemon restart
+        // should not blank the page you are reading.
+        if (alive && swarms === null) setError(String(e));
+      }
+    };
+    tick();
+    const id = setInterval(tick, SWARM_POLL_MS);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+    // swarms is deliberately not a dependency: it changes on every poll that
+    // brings something new, and restarting the interval each time would
+    // reset the clock and re-request immediately.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode.kind]);
 
   if (mode.kind === "view") {
     return (
@@ -409,15 +503,7 @@ export function SwarmsPage({
                 {s.description}
               </p>
               <ScheduleLine swarm={s} />
-              {s.last_run_status ? (
-                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted">
-                  <StatusDot tone={RUN_TONE[s.last_run_status] ?? "muted"} />
-                  last ran {relativeTime(s.last_run_at!)}
-                  {s.last_run_trigger === "schedule" && " · scheduled"}
-                </div>
-              ) : (
-                <div className="mt-1 text-[11px] text-muted/60">never run yet</div>
-              )}
+              <LastRunLine swarm={s} />
             </button>
             {s.schedule_paused && (
               <PausedNotice
