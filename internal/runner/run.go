@@ -86,6 +86,23 @@ type Run struct {
 	// swarm that is broken, and pausing its schedule over them would be the
 	// app misreading you.
 	StoppedByUser bool `json:"stopped_by_user,omitempty"`
+	// DeclinedByUser marks a run that failed because a human answered "no"
+	// to one of its approvals, through this app. Same argument as
+	// StoppedByUser, and the same consumer: declining is the approval
+	// feature working, and a swarm whose whole job is to ask before it
+	// sends should not have its schedule paused for being told no.
+	//
+	// Found on a real machine: support-desk-lite had its schedule paused
+	// with a streak that included declines the user had made deliberately,
+	// while the app's own remedy for that error already said "This wasn't a
+	// fault: the approval was declined." Two parts of one build disagreeing
+	// about whether the user did something wrong.
+	//
+	// Set only by Decide, which is the REST path a person clicks. An
+	// unattended decline — the CLI with no terminal to ask — never reaches
+	// here, and should not: nobody chose that, and it will recur until
+	// something changes.
+	DeclinedByUser bool `json:"declined_by_user,omitempty"`
 	// SwarmPath is the file this run was planned from — the one fact needed
 	// to run the same thing again. Set once by ExecuteSwarm and never
 	// mutated (same safety argument as TriggeredBy). Empty for a foundry
@@ -526,8 +543,19 @@ func (r *Run) Decide(approvalID string, approved bool, decidedBy string) error {
 	if !ok {
 		return fmt.Errorf("no pending approval %s on run %s (it may have timed out, or the run may have ended)", approvalID, r.ID)
 	}
+	if !approved {
+		r.DeclinedByUser = true
+	}
 	pa.decision <- approvalDecision{approved: approved, decidedBy: decidedBy}
 	return nil
+}
+
+// WasDeclinedByUser reports whether a human answered "no" to one of this
+// run's approvals.
+func (r *Run) WasDeclinedByUser() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.DeclinedByUser
 }
 
 // releaseApprovals unblocks anything waiting on a human.

@@ -100,6 +100,17 @@ func (b *Breaker) Check(swarmName string, runs []*runner.Run) Status {
 		if r.WasStoppedByUser() {
 			continue
 		}
+		// Nor is a run you declined. An approval gate exists to be answered
+		// either way, and a swarm whose whole job is to ask before it sends
+		// should not lose its schedule for being told no.
+		//
+		// This was live: support-desk-lite sat paused with declines counted
+		// into its streak, while the app's own remedy for that same error
+		// said "This wasn't a fault: the approval was declined." One build,
+		// two opinions about whether the user had done something wrong.
+		if r.WasDeclinedByUser() {
+			continue
+		}
 		switch r.GetStatus() {
 		case runner.StatusSucceeded, runner.StatusFailed:
 			mine = append(mine, r)

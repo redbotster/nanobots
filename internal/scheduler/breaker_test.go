@@ -173,3 +173,59 @@ func TestBreakerSurvivesACorruptMarkerFile(t *testing.T) {
 func writeFile(path, body string) error {
 	return os.WriteFile(path, []byte(body), 0o600)
 }
+
+// Declining an approval is the feature working, not the swarm breaking.
+//
+// support-desk-lite was paused on a real machine with declines counted into
+// its streak — while the app's own remedy for that same error said "This
+// wasn't a fault: the approval was declined." A swarm whose whole job is to
+// ask before it sends must not lose its schedule for being told no.
+func TestDecliningAnApprovalDoesNotPauseTheSchedule(t *testing.T) {
+	dir := t.TempDir()
+	b := &Breaker{Dir: dir, MaxFailures: 3}
+
+	var runs []*runner.Run
+	for i := 0; i < 5; i++ {
+		r := runner.NewRun("support-desk-lite")
+		r.StartedAt = time.Now().Add(time.Duration(i) * time.Minute)
+		r.DeclinedByUser = true
+		r.SetError(errors.New(`bot email-send-approved: step "gate": not approved (decided_by=you)`))
+		r.SetStatus(runner.StatusFailed)
+		runs = append(runs, r)
+	}
+
+	if st := b.Check("support-desk-lite", runs); st.Paused {
+		t.Errorf("paused after %d declined approvals — declining is an answer, not a fault", st.Failures)
+	}
+}
+
+// And a real failure still trips it, including one that happens to follow a
+// decline. The exemption is for the declined run, not for the swarm.
+func TestARealFailureStillPausesAfterADecline(t *testing.T) {
+	dir := t.TempDir()
+	b := &Breaker{Dir: dir, MaxFailures: 2}
+
+	declined := runner.NewRun("s")
+	declined.StartedAt = time.Now()
+	declined.DeclinedByUser = true
+	declined.SetError(errors.New("not approved (decided_by=you)"))
+	declined.SetStatus(runner.StatusFailed)
+
+	var runs []*runner.Run
+	runs = append(runs, declined)
+	for i := 0; i < 2; i++ {
+		r := runner.NewRun("s")
+		r.StartedAt = time.Now().Add(time.Duration(i+1) * time.Minute)
+		r.SetError(errors.New("no connected account yet"))
+		r.SetStatus(runner.StatusFailed)
+		runs = append(runs, r)
+	}
+
+	st := b.Check("s", runs)
+	if !st.Paused {
+		t.Errorf("two genuine failures should still pause; got %d failures", st.Failures)
+	}
+	if st.Failures != 2 {
+		t.Errorf("counted %d failures, want 2 — the decline should not be one", st.Failures)
+	}
+}
