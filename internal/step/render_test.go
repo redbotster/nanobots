@@ -51,11 +51,25 @@ func TestRenderHTMLToPNGNoChromeFallsBackToHTML(t *testing.T) {
 }
 
 func TestRenderHTMLToPDFTimesOutOnAHungChrome(t *testing.T) {
-	// A fake "chrome" that just sleeps — proves a hung renderer fails fast
-	// with a clear error instead of hanging the whole bot run.
+	// A fake "chrome" that hangs *and spawns a child that outlives it*,
+	// which is what real Chrome does — renderer and GPU processes.
+	//
+	// The child matters. exec.CommandContext kills the process it started;
+	// Wait then blocks until every pipe is closed, and a grandchild still
+	// holds them. This script used to be a plain `sleep 10`, which macOS
+	// exec's in place — so the shell *was* the sleep, killing it worked, and
+	// the test passed here for as long as it existed. On Linux the shell and
+	// the sleep are two processes and the call took the full ten seconds
+	// against a 100ms timeout. CI found it on its first run.
+	//
+	// `sleep & wait` makes that two processes rather than one. It still does
+	// not reproduce the hang on macOS — checked by removing WaitDelay again,
+	// which leaves this passing in 0.10s here — so Linux CI is what actually
+	// exercises the fix. Said plainly because a test that only bites on one
+	// platform is worth knowing about before trusting a green run locally.
 	dir := t.TempDir()
 	fakeChrome := filepath.Join(dir, "chrome-that-hangs.sh")
-	os.WriteFile(fakeChrome, []byte("#!/bin/sh\nsleep 10\n"), 0o755)
+	os.WriteFile(fakeChrome, []byte("#!/bin/sh\nsleep 10 &\nwait\n"), 0o755)
 	t.Setenv("NANOBOTS_CHROME_PATH", fakeChrome)
 
 	old := chromeRenderTimeout
@@ -71,7 +85,10 @@ func TestRenderHTMLToPDFTimesOutOnAHungChrome(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected a timeout error from a hung chrome process")
 	}
-	if elapsed > 5*time.Second {
-		t.Errorf("RenderHTMLToPDF took %s, expected it to fail fast on timeout", elapsed)
+	// Generous enough for chromeWaitDelay, tight enough to catch a return
+	// that waited on the grandchild instead.
+	if elapsed > chromeWaitDelay+3*time.Second {
+		t.Errorf("RenderHTMLToPDF took %s against a %s timeout — it waited on a "+
+			"child of the process it killed", elapsed, chromeRenderTimeout)
 	}
 }

@@ -198,16 +198,27 @@ func TestLLMHarnessRunsOnTheSmallImage(t *testing.T) {
 	}
 	// And "llm" resolves to the same 25MB image bare does, because
 	// ai.generate never runs in the container.
-	llmTag, llmUser, err := EnsureHarnessImage("llm", ".")
-	if err != nil {
-		t.Fatalf("llm harness not implemented: %v", err)
+	//
+	// Read off harnessBuild rather than through EnsureHarnessImage, which
+	// is what this used to do. That call builds the image when it is
+	// missing, so the test passed here only because a previous run had
+	// already built it — and on any machine without one it tried to build
+	// from repoRoot ".", which is this package's directory, and failed with
+	// "lstat harness: no such file or directory". CI found it on its first
+	// run. The claim is about the mapping, so the mapping is what to assert;
+	// it needs no Docker and no repo root.
+	llm, ok := harnessBuild["llm"]
+	if !ok {
+		t.Fatal("no llm harness in harnessBuild")
 	}
-	bareTag, bareUser, err := EnsureHarnessImage("bare", ".")
-	if err != nil {
-		t.Fatal(err)
+	bare := harnessBuild["bare"]
+	if llm.Tag != bare.Tag || llm.User != bare.User {
+		t.Errorf("llm resolves to %s/%s, want the same as bare (%s/%s)",
+			llm.Tag, llm.User, bare.Tag, bare.User)
 	}
-	if llmTag != bareTag || llmUser != bareUser {
-		t.Errorf("llm resolves to %s/%s, want the same as bare (%s/%s)", llmTag, llmUser, bareTag, bareUser)
+	if llm.Dockerfile != bare.Dockerfile {
+		t.Errorf("llm builds from %s, bare from %s — same image means same Dockerfile",
+			llm.Dockerfile, bare.Dockerfile)
 	}
 }
 

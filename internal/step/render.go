@@ -20,6 +20,25 @@ import (
 // const, so tests can shrink it rather than waiting out the real timeout.
 var chromeRenderTimeout = 30 * time.Second
 
+// chromeWaitDelay bounds how long the timeout waits for a killed Chrome's
+// children to let go.
+//
+// exec.CommandContext kills the process it started, and then Wait blocks
+// until every pipe it handed out is closed — which a grandchild still holds.
+// Chrome spawns renderer and GPU processes, so "timed out after 30s" could
+// take considerably longer than 30s to actually return, which is the one
+// thing a timeout exists to prevent.
+//
+// Found by CI rather than here: the hung-Chrome test stubs a shell script
+// that sleeps, and on Linux the shell is killed while the sleep it spawned
+// keeps the pipes open. The test took the full 10 seconds against a 100ms
+// timeout. macOS happened to exec the sleep in place, so it passed locally
+// and had done for as long as the test existed.
+//
+// WaitDelay closes the pipes and force-kills the group after the context is
+// done, so the deadline is the deadline.
+const chromeWaitDelay = 2 * time.Second
+
 // RenderHTML executes an html/template file against data, returning the
 // rendered HTML bytes.
 func RenderHTML(templatePath string, data any) ([]byte, error) {
@@ -77,6 +96,7 @@ func RenderHTMLToPDF(templatePath string, data any) (pdfBytes []byte, mime strin
 		"--no-pdf-header-footer",
 		"file://"+htmlPath,
 	)
+	cmd.WaitDelay = chromeWaitDelay
 	out, err := cmd.CombinedOutput()
 	if ctx.Err() == context.DeadlineExceeded {
 		return nil, "", fmt.Errorf("headless chrome render timed out after %s", chromeRenderTimeout)
@@ -128,6 +148,7 @@ func RenderHTMLToPNG(templatePath string, data any) (pngBytes []byte, mime strin
 		"--window-size=640,480",
 		"file://"+htmlPath,
 	)
+	cmd.WaitDelay = chromeWaitDelay
 	out, err := cmd.CombinedOutput()
 	if ctx.Err() == context.DeadlineExceeded {
 		return nil, "", fmt.Errorf("headless chrome render timed out after %s", chromeRenderTimeout)
