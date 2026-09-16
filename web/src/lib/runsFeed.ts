@@ -65,17 +65,42 @@ function shouldPoll() {
 }
 
 /** Whether a poll chain is alive. Separate from `timer`, which is null
- * while a request is actually in flight — without this, a sync() landing in
- * that window would start a second chain running alongside the first. */
+ * while a request is actually in flight. */
 let polling = false;
+
+/** Which chain is the live one.
+ *
+ * `polling` alone was not enough, and the gap it left was measurable: the
+ * feed ran two chains in lockstep, two identical requests 0ms apart every
+ * two seconds, doubling this endpoint's traffic.
+ *
+ * Stopping cannot cancel a tick that is already awaiting its fetch —
+ * clearTimeout has nothing to clear, because `timer` is null for exactly as
+ * long as the request is in flight. So the stop set polling=false, the
+ * in-flight tick finished and rescheduled itself regardless, and the next
+ * subscribe saw polling=false and started a second chain beside it.
+ *
+ * React's StrictMode does subscribe/unsubscribe/subscribe on mount, which is
+ * how this showed up — and is exactly what StrictMode is for. The race is
+ * real without it too: any subscriber churn while a request is in flight
+ * does the same thing.
+ *
+ * A tick now carries the epoch it was started in and retires quietly if that
+ * is no longer current, so a stop orphans the in-flight chain instead of
+ * leaving it running. */
+let epoch = 0;
 
 /** One poll, then schedule the next. A self-rescheduling timeout rather
  * than setInterval, because the gap is no longer constant — and because
  * setInterval would stack requests on top of each other if one were slow. */
-async function tick() {
+async function tick(mine: number) {
   await fetchOnce();
+  // Superseded while the request was in flight: another chain owns the
+  // schedule now, or polling was stopped. Either way this one is done, and
+  // must not touch `timer` or `polling` on the way out.
+  if (mine !== epoch) return;
   if (shouldPoll()) {
-    timer = setTimeout(tick, delay);
+    timer = setTimeout(() => void tick(mine), delay);
   } else {
     timer = null;
     polling = false;
@@ -88,11 +113,15 @@ function sync() {
     // had grown to, coming back to the tab means the user wants to see now.
     polling = true;
     delay = POLL_MS;
-    void tick();
+    epoch++;
+    void tick(epoch);
   } else if (!shouldPoll() && polling) {
     if (timer !== null) clearTimeout(timer);
     timer = null;
     polling = false;
+    // Orphans any tick still awaiting its fetch, which clearTimeout above
+    // cannot reach.
+    epoch++;
   }
 }
 
