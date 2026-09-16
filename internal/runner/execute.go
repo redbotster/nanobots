@@ -824,11 +824,19 @@ func describeTimeout(run *Run, botID string, maxRuntime time.Duration, err error
 		return err
 	}
 	waited := time.Since(pending.Created).Round(time.Second)
-	return fmt.Errorf(
-		"nobody answered the approval %q after %s, so the bot was stopped — "+
-			"approve it from the Runs page while it's waiting, or take the "+
-			"approval off this step if it shouldn't need one",
-		pending.Summary, waited)
+	// The fact, and only the fact.
+	//
+	// This carried its own advice at first — "approve it from the Runs page,
+	// or take the approval off this step" — which put the same sentence
+	// twice on the run page, once here and once in the remedy panel
+	// underneath. Every other error in this app is a bare statement of what
+	// happened, with web/src/lib/runError.ts supplying what to do about it,
+	// a button to do it with, and a link to the doc. This one was the odd
+	// one out because of how it was written, not because it needed to be.
+	//
+	// Same wording as the approval gate's own timeout in run.go, so the two
+	// paths into this failure read the same way.
+	return fmt.Errorf("nobody answered the approval %q within %s", pending.Summary, waited)
 }
 
 // pendingFor returns this bot's still-unanswered approval, if it has one.

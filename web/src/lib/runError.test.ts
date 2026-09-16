@@ -140,10 +140,11 @@ describe("an unanswered approval", () => {
     // The most common failure on a machine running scheduled swarms: 54
     // runs on the development machine, every one an approval nobody
     // answered, all previously reported as "container exceeded 30m0s".
+    // Exactly what internal/runner produces now. The message is the fact
+    // alone; this remedy is the only place the advice lives, which is why
+    // it has to keep matching it.
     const r = runRemedy(
-      "nobody answered the approval \"Send 'recap.pdf' to me@example.com?\" after 30m0s, " +
-        "so the bot was stopped — approve it from the Runs page while it's waiting, " +
-        "or take the approval off this step if it shouldn't need one",
+      "nobody answered the approval \"Send 'recap.pdf' to me@example.com?\" within 30m0s",
     );
     expect(r).not.toBeNull();
     expect(r!.advice).toContain("nobody answered in time");

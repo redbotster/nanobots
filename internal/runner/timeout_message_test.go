@@ -27,7 +27,6 @@ func TestATimeoutWaitingOnAnApprovalSaysSo(t *testing.T) {
 	for _, want := range []string{
 		"nobody answered the approval",
 		"Send 'recap.pdf' to me@example.com?",
-		"approve it from the Runs page",
 	} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("message is missing %q:\n  %s", want, msg)
@@ -35,6 +34,13 @@ func TestATimeoutWaitingOnAnApprovalSaysSo(t *testing.T) {
 	}
 	if strings.Contains(msg, "container exceeded") {
 		t.Errorf("still leads with the container timeout:\n  %s", msg)
+	}
+	// The fact, not the advice. Every other error in this app is a bare
+	// statement of what happened, with runError.ts supplying what to do and
+	// a button to do it with; this one carried its own copy and printed the
+	// same sentence twice on the run page.
+	if strings.Contains(msg, "Runs page") || strings.Contains(msg, "take the approval off") {
+		t.Errorf("the message is giving advice that the remedy panel already gives:\n  %s", msg)
 	}
 }
 
