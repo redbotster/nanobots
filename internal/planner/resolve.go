@@ -56,7 +56,7 @@ func Resolve(sw *schema.Nanoswarm, botsDir string) (*ResolvedSwarm, error) {
 			out.Bots[ref.ID] = &ResolvedBot{Ref: ref, Nanobot: nb}
 			continue
 		default:
-			return nil, fmt.Errorf("bot %q: must set either use: or path:", ref.ID)
+			return nil, fmt.Errorf("bot %q: must set either \"use\" or \"path\"", ref.ID)
 		}
 		nb, err := schema.LoadNanobot(nbPath)
 		if err != nil {

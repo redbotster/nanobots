@@ -170,13 +170,13 @@ func (c *Client) EnsureAgent(stateDir, name string, req CreateAgentRequest) (age
 				return "", "", fmt.Errorf(
 					"agent %q on 1Claw is now id=%s, but the credential saved in %s is for id=%s, which no longer exists — "+
 						"an api_key is shown only once, so the current agent's key can't be recovered. "+
-						"Delete it with `1claw agent delete %s` and re-run to get a fresh one.",
+						"Delete it with `1claw agent delete %s` and re-run to get a fresh one",
 					name, a.ID, stateDir, cred.AgentID, a.ID)
 			}
 			return "", "", fmt.Errorf(
 				"agent %q already exists on 1Claw (id=%s) but Nanobots has no saved credential for it in %s — "+
 					"its api_key was only ever shown once. Delete it with `1claw agent delete %s` and re-run, "+
-					"or restore the saved credential file if you have a backup.",
+					"or restore the saved credential file if you have a backup",
 				name, a.ID, stateDir, a.ID)
 		}
 	}

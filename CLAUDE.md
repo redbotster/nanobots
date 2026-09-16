@@ -62,6 +62,18 @@ go build ./... && go vet ./... && go test ./... -race
 cd web && npx tsc -b && npm run lint && npm run format:check && npm run test
 ```
 
+Occasionally, not in CI:
+
+```sh
+go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+```
+
+The tree is clean against it. Not in the workflow because the current
+staticcheck needs a newer Go than go.mod declares, so every CI run would
+download a second toolchain to find what `go vet`, the race detector and the
+gofmt check mostly already do — it earned its keep once, at four findings
+across the whole codebase, and that is about the right cadence.
+
 `npm run format` rewrites; `format:check` only reports. ESLint keeps
 react-hooks' compiler-era rules on except three, each switched off in
 `eslint.config.js` with the reason and the finding count — read that before

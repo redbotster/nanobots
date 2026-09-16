@@ -19,10 +19,14 @@ import (
 var referenceBots = []string{"content-ideas", "receipt-filer"}
 
 // BuildBrief assembles the one string handed to a coding agent to author
-// exactly one new bot. It's read fresh from disk at job-start (not
-// go:embed), matching how internal/runner.EnsureHarnessImage already
-// resolves harness/*/Dockerfile at runtime rather than baking it into the
+// exactly one new bot. It's read fresh from disk at job-start rather than
+// embedded, matching how internal/runner.EnsureHarnessImage already
+// resolves harness/*/Dockerfile at runtime instead of baking it into the
 // binary.
+//
+// (Deliberately not naming the embed directive here: wrapped onto its own
+// line, "// go:embed" in prose is indistinguishable from a directive someone
+// broke by adding a space, and staticcheck reads it as exactly that.)
 func BuildBrief(repoRoot string, in BriefInput, binPath string) (string, error) {
 	var b strings.Builder
 
