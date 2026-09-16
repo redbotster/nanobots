@@ -148,16 +148,24 @@ function ServiceToggle({
  *
  * Read-only until the card is given onChanged, so the foundry's review
  * preview stays a preview. */
-function InstructionsEditor({
+export function InstructionsEditor({
   botId,
   current,
   onChanged,
+  startOpen = false,
+  onCancel,
 }: {
   botId: string;
   current: string;
   onChanged: () => void;
+  /** Opened already, for a caller that has just chosen this bot and has
+   * nothing to gain from a second click — see the Team page's picker. */
+  startOpen?: boolean;
+  /** Called when a startOpen editor is dismissed, so the caller can drop
+   * the bot it was drafting rather than leaving an empty editor behind. */
+  onCancel?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(startOpen);
   const [text, setText] = useState(current);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -220,7 +228,10 @@ function InstructionsEditor({
           {saving ? "Saving…" : "Save"}
         </button>
         <button
-          onClick={() => setOpen(false)}
+          onClick={() => {
+            setOpen(false);
+            onCancel?.();
+          }}
           className="rounded border border-edge px-2 py-0.5 text-[11px] text-muted hover:text-ink"
         >
           Cancel

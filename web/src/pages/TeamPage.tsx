@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
+import { InstructionsEditor } from "../components/BotCard";
 import { RoleLibrarySection } from "../components/RoleLibrary";
 import { Tabs } from "../components/Tabs";
 import type { BotSummary, Team, TeamMember } from "../lib/types";
@@ -94,7 +95,7 @@ function MemberRow({ member, onChanged }: { member: TeamMember; onChanged: () =>
  *
  * The list stays what you've tuned rather than the whole catalog — that is
  * the point of this page — so adding someone is a deliberate act, here. */
-function TuneAnother({
+export function TuneAnother({
   tuned,
   onChanged,
 }: {
@@ -103,7 +104,7 @@ function TuneAnother({
 }) {
   const [all, setAll] = useState<BotSummary[] | null>(null);
   const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [drafting, setDrafting] = useState<BotSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -116,22 +117,47 @@ function TuneAnother({
     (b) => !tuned.has(b.id) && b.inputs.some((p) => p.name === "instructions"),
   );
 
-  const start = async (b: BotSummary) => {
-    setBusy(b.id);
+  // Picking a bot opens its editor. It does not save anything yet.
+  //
+  // This used to POST the bot's own shipped instructions straight back,
+  // unchanged, to get it into the team — and the server records a bot only
+  // when the text actually differs from what is already there, which for an
+  // unchanged value it never does. So the API returned 200, nothing was
+  // recorded, the picker closed, and the page still said "Nothing tuned
+  // yet". Picking a bot did nothing at all, silently.
+  //
+  // The page's own copy already says what should happen: "changing one
+  // brings it here". So choose a bot, see what it ships with, change it,
+  // save — and that save is what puts it in the team.
+  const start = (b: BotSummary) => {
     setError(null);
-    try {
-      // Seed with what it ships with, so the first edit is a change to
-      // something real rather than typing into an empty box.
-      const shipped = b.inputs.find((p) => p.name === "instructions")?.default ?? "";
-      await api.setBotInstructions(b.id, shipped);
-      onChanged();
-      setOpen(false);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(null);
-    }
+    setDrafting(b);
+    setOpen(false);
   };
+
+  if (drafting) {
+    const shipped = drafting.inputs.find((p) => p.name === "instructions")?.default ?? "";
+    return (
+      <div className="mt-3 rounded-lg border border-tron/60 bg-panel p-4">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="font-display text-sm text-ink">{drafting.id}</span>
+          <span className="text-[11px] text-muted">
+            change this and save to add it to your team
+          </span>
+        </div>
+        <InstructionsEditor
+          botId={drafting.id}
+          current={shipped}
+          startOpen
+          onCancel={() => setDrafting(null)}
+          onChanged={() => {
+            setDrafting(null);
+            onChanged();
+          }}
+        />
+      </div>
+    );
+  }
 
   if (!open) {
     return (
@@ -163,8 +189,7 @@ function TuneAnother({
         {tunable.map((b) => (
           <button
             key={b.id}
-            onClick={() => void start(b)}
-            disabled={busy !== null}
+            onClick={() => start(b)}
             className="rounded border border-edge px-2.5 py-1.5 text-left transition-colors hover:border-tron disabled:opacity-40"
           >
             <span className="font-display text-[13px] text-ink">{b.id}</span>
