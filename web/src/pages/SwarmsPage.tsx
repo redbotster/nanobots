@@ -8,13 +8,16 @@ import { SwarmView } from "./SwarmView";
 import { Button } from "../components/Button";
 import { StatusDot } from "../components/StatusDot";
 import { relativeTime, untilTime } from "../lib/relativeTime";
+import { swarmMatches } from "../lib/swarmFilter";
 
 // Both are reached only by an explicit action — opening the builder, or
 // opting into a foundry job after a composer gap — and the builder drags in
 // the whole canvas/palette/inspector tree. Loading them lazily keeps them
 // out of the bundle everyone downloads to look at a list of swarms.
 const BuilderPage = lazy(() => import("./BuilderPage").then((m) => ({ default: m.BuilderPage })));
-const FoundryJobPage = lazy(() => import("./FoundryJobPage").then((m) => ({ default: m.FoundryJobPage })));
+const FoundryJobPage = lazy(() =>
+  import("./FoundryJobPage").then((m) => ({ default: m.FoundryJobPage })),
+);
 
 /** Deliberately quiet: these chunks load from the same local machine in a
  * few milliseconds, so a spinner would flash more than it informs. */
@@ -94,21 +97,6 @@ const SWARM_POLL_MS = 4000;
  * fresh install with three is not made better by a search field. */
 const SEARCH_THRESHOLD = 6;
 
-/** Matches a swarm against what someone typed.
- *
- * Name and description, because people remember a swarm either way — "the
- * one that posts to Slack" is a description search, "get-paid" is a name
- * one. Case-insensitive, and every whitespace-separated term has to match
- * somewhere, so "slack digest" finds github-digest-to-slack without
- * depending on the order the words are remembered in.
- */
-export function swarmMatches(s: SwarmSummary, query: string): boolean {
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-  if (terms.length === 0) return true;
-  const hay = `${s.name} ${s.description ?? ""}`.toLowerCase();
-  return terms.every((t) => hay.includes(t));
-}
-
 const EXAMPLE_PROMPT = "Help me automate a daily email recap and list it by priority";
 
 /** The "head nanobot": describe what you want automated in plain English,
@@ -153,7 +141,8 @@ function ComposeBox({
         </h2>
       </div>
       <p className="mt-1 text-[13px] text-muted">
-        Talk to the head nanobot — it snaps together a draft from the real catalog for you to review.
+        Talk to the head nanobot — it snaps together a draft from the real catalog for you to
+        review.
       </p>
       <div className="mt-3 flex flex-col gap-2 sm:flex-row">
         <input
@@ -190,16 +179,13 @@ function GapPanel({
 }) {
   return (
     <div className="rounded-lg border border-edge-strong bg-panel p-5 shadow-glow-sm">
-      <h2 className="font-display text-sm font-semibold text-ink">
-        The catalog can't do that yet
-      </h2>
+      <h2 className="font-display text-sm font-semibold text-ink">The catalog can't do that yet</h2>
       <p className="mt-1 text-[13px] text-muted">
         Missing capability: <span className="text-ink">{gap.missing_capability}</span>
       </p>
       <p className="mt-2 text-[13px] text-muted">
-        Want me to build a new bot for it? A sandboxed coding agent will
-        author and self-test one — you review and approve it before it's
-        ever part of the catalog.
+        Want me to build a new bot for it? A sandboxed coding agent will author and self-test one —
+        you review and approve it before it's ever part of the catalog.
       </p>
       <div className="mt-3 flex gap-2">
         <Button variant="primary" onClick={onBuild}>
@@ -309,7 +295,10 @@ function ScheduleLine({ swarm }: { swarm: SwarmSummary }) {
     // Not a schedule, but the same question — "does this run on its own?" —
     // and the answer is yes. Open it to get the URL.
     return (
-      <div className="mt-2.5 truncate text-[11px] text-muted" title="Open this swarm to get its URL">
+      <div
+        className="mt-2.5 truncate text-[11px] text-muted"
+        title="Open this swarm to get its URL"
+      >
         ⚡ Runs when something posts to it
       </div>
     );
@@ -355,7 +344,11 @@ export function SwarmsPage({
   const [mode, setMode] = useState<Mode>({ kind: "list" });
   const [query, setQuery] = useState("");
 
-  const reload = () => api.listSwarms().then(setSwarms).catch((e) => setError(String(e)));
+  const reload = () =>
+    api
+      .listSwarms()
+      .then(setSwarms)
+      .catch((e) => setError(String(e)));
 
   // The landing page was a snapshot taken once on mount and never refreshed.
   // Everything live on it went stale the moment you arrived: a run that
@@ -423,21 +416,21 @@ export function SwarmsPage({
     return (
       <Suspense fallback={<LazyFallback />}>
         <BuilderPage
-        existing={mode.swarm}
-        composedDraft={mode.composedDraft}
-        onDone={(savedPath) => {
-          if (!savedPath) {
-            setMode({ kind: "list" });
-            reload();
-            return;
-          }
-          api.listSwarms().then((list) => {
-            setSwarms(list);
-            const found = list.find((s) => s.path === savedPath);
-            setMode(found ? { kind: "view", swarm: found } : { kind: "list" });
-          });
-        }}
-      />
+          existing={mode.swarm}
+          composedDraft={mode.composedDraft}
+          onDone={(savedPath) => {
+            if (!savedPath) {
+              setMode({ kind: "list" });
+              reload();
+              return;
+            }
+            api.listSwarms().then((list) => {
+              setSwarms(list);
+              const found = list.find((s) => s.path === savedPath);
+              setMode(found ? { kind: "view", swarm: found } : { kind: "list" });
+            });
+          }}
+        />
       </Suspense>
     );
   }
@@ -447,16 +440,18 @@ export function SwarmsPage({
     return (
       <Suspense fallback={<LazyFallback />}>
         <FoundryJobPage
-        jobId={mode.jobId}
-        onDone={() => setMode({ kind: "list" })}
-        onPromoted={() => {
-          // The gap is filled — retry the exact same request with zero
-          // further human input. It should succeed now.
-          api.compose(request).then((result) => {
-            setMode(result.draft ? { kind: "build", composedDraft: result.draft } : { kind: "list" });
-          });
-        }}
-      />
+          jobId={mode.jobId}
+          onDone={() => setMode({ kind: "list" })}
+          onPromoted={() => {
+            // The gap is filled — retry the exact same request with zero
+            // further human input. It should succeed now.
+            api.compose(request).then((result) => {
+              setMode(
+                result.draft ? { kind: "build", composedDraft: result.draft } : { kind: "list" },
+              );
+            });
+          }}
+        />
       </Suspense>
     );
   }
@@ -495,10 +490,7 @@ export function SwarmsPage({
 
       <div className="mt-4">
         {mode.kind === "import" ? (
-          <ImportSwarm
-            onImported={reload}
-            onClose={() => setMode({ kind: "list" })}
-          />
+          <ImportSwarm onImported={reload} onClose={() => setMode({ kind: "list" })} />
         ) : mode.kind === "gap" ? (
           <GapPanel
             gap={mode.gap}
@@ -506,7 +498,12 @@ export function SwarmsPage({
             onBuild={() => {
               const { request, gap } = mode;
               api
-                .startFoundryJob(request, gap.missing_capability, gap.suggested_inputs, gap.suggested_outputs)
+                .startFoundryJob(
+                  request,
+                  gap.missing_capability,
+                  gap.suggested_inputs,
+                  gap.suggested_outputs,
+                )
                 .then((job) => setMode({ kind: "foundry", jobId: job.id, request }))
                 .catch((e) => setError(String(e)));
             }}
@@ -541,14 +538,10 @@ export function SwarmsPage({
               className="flex-1 p-4 text-left outline-none"
             >
               <div className="flex items-start justify-between gap-2">
-                <h2 className="font-display text-base font-semibold text-ink">
-                  {s.name}
-                </h2>
+                <h2 className="font-display text-base font-semibold text-ink">{s.name}</h2>
                 {s.services_total > 0 && <ConnectionBadge swarm={s} />}
               </div>
-              <p className="mt-1.5 text-[13px] leading-snug text-muted">
-                {s.description}
-              </p>
+              <p className="mt-1.5 text-[13px] leading-snug text-muted">{s.description}</p>
               <ScheduleLine swarm={s} />
               <LastRunLine swarm={s} />
             </button>
@@ -556,7 +549,10 @@ export function SwarmsPage({
               <PausedNotice
                 swarm={s}
                 onResume={() =>
-                  api.resumeSchedule(s.name).then(reload).catch((e) => setError(String(e)))
+                  api
+                    .resumeSchedule(s.name)
+                    .then(reload)
+                    .catch((e) => setError(String(e)))
                 }
               />
             )}
@@ -564,13 +560,9 @@ export function SwarmsPage({
         ))}
       </div>
 
-      {swarms === null && !error && (
-        <p className="mt-5 text-sm text-muted/60">Loading swarms…</p>
-      )}
+      {swarms === null && !error && <p className="mt-5 text-sm text-muted/60">Loading swarms…</p>}
       {swarms?.length === 0 && (
-        <p className="mt-6 text-sm text-muted">
-          No swarms found in examples/swarms/.
-        </p>
+        <p className="mt-6 text-sm text-muted">No swarms found in examples/swarms/.</p>
       )}
       {/* Filtered everything away. Distinct from having no swarms at all,
           which is a different problem with a different fix. */}

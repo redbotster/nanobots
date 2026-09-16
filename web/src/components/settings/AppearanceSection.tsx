@@ -33,9 +33,7 @@ export function AppearanceSection() {
           ))}
         </div>
         {theme === "system" && (
-          <span className="text-[12px] text-muted">
-            currently {resolved}, following your OS
-          </span>
+          <span className="text-[12px] text-muted">currently {resolved}, following your OS</span>
         )}
       </div>
     </section>

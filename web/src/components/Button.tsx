@@ -14,8 +14,7 @@ const variants: Record<Variant, string> = {
   // text-white, not text-ink: `deep` is a saturated blue in both themes,
   // so the label on it stays white even when the page is light.
   primary: "bg-deep text-white hover:brightness-110 shadow-glow-sm",
-  ghost:
-    "border border-edge-strong text-ink hover:bg-tron/10 hover:border-tron",
+  ghost: "border border-edge-strong text-ink hover:bg-tron/10 hover:border-tron",
   danger: "border border-danger/50 text-danger hover:bg-danger/10",
 };
 
@@ -24,7 +23,5 @@ export function Button({
   className = "",
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant }) {
-  return (
-    <button className={`${base} ${variants[variant]} ${className}`} {...props} />
-  );
+  return <button className={`${base} ${variants[variant]} ${className}`} {...props} />;
 }

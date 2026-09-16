@@ -253,9 +253,16 @@ export function BuilderCanvas({
   // fitting and scroll extent is derived from this rather than from a
   // hardcoded 2000x2000, which was both too small for a wide graph and too
   // large for a two-node one.
-  const bounds = () => {
+  // useCallback so fitToView can depend on it by name. It reads only bots
+  // and botDefs, which were fitToView's dependency list anyway — stating
+  // that here instead means the linter can see the connection rather than
+  // being told to trust it.
+  const bounds = useCallback(() => {
     if (bots.length === 0) return null;
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity;
     for (const b of bots) {
       const def = botDefs[b.botId];
       const rows = Math.max(def?.inputs.length ?? 0, def?.outputs.length ?? 0, 1);
@@ -265,7 +272,7 @@ export function BuilderCanvas({
       maxY = Math.max(maxY, b.y + nodeHeight(rows));
     }
     return { minX, minY, maxX, maxY };
-  };
+  }, [bots, botDefs]);
 
   const box = bounds();
   // The scrollable content area: past the graph by SCROLL_MARGIN so there is
@@ -292,9 +299,12 @@ export function BuilderCanvas({
     // the margin. requestAnimationFrame because scrollTo before the layer
     // has re-rendered at the new scale clamps against the old extent.
     requestAnimationFrame(() => {
-      canvas.scrollTo({ left: Math.max(0, b.minX * z - FIT_MARGIN), top: Math.max(0, b.minY * z - FIT_MARGIN) });
+      canvas.scrollTo({
+        left: Math.max(0, b.minX * z - FIT_MARGIN),
+        top: Math.max(0, b.minY * z - FIT_MARGIN),
+      });
     });
-  }, [bots, botDefs]);
+  }, [bounds]);
 
   // Fit once the nodes and their port definitions have both arrived. Opening
   // a five-bot swarm used to land you at 0,0 at 100% with the last two bots
@@ -382,7 +392,8 @@ export function BuilderCanvas({
     cancelConnectionRef.current = cleanup;
   };
 
-  const checkFor = (from: string, to: string) => snapChecks.find((c) => c.From === from && c.To === to);
+  const checkFor = (from: string, to: string) =>
+    snapChecks.find((c) => c.From === from && c.To === to);
 
   return (
     <div
@@ -416,199 +427,208 @@ export function BuilderCanvas({
             transformOrigin: "0 0",
           }}
         >
-      {/* z-20 puts the connector layer above the nodes (z-10). The layer
+          {/* z-20 puts the connector layer above the nodes (z-10). The layer
           itself is pointer-events-none so it never steals a click meant for
           a node; only the remove handles inside it opt back in. Without
           this, a node dragged over a connection's midpoint covered its
           remove handle completely and the connection became impossible to
           delete — there is no other affordance for removing one. */}
-      <svg
-        className="pointer-events-none absolute left-0 top-0 z-20 overflow-visible"
-        width={contentW}
-        height={contentH}
-      >
-        {snaps.map((s, i) => {
-          const fromEp = endpointPort(s.from);
-          const toEp = endpointPort(s.to);
-          const from = positions[portKey(fromEp.instanceId, "out", fromEp.port)];
-          const to = positions[portKey(toEp.instanceId, "in", toEp.port)];
-          if (!from || !to) return null;
-          const check = checkFor(s.from, s.to);
-          // Themed via CSS vars rather than hex so the canvas follows
-          // light/dark like everything else — see src/index.css.
-          const stroke = check
-            ? check.OK
-              ? "rgb(var(--c-ok))"
-              : "rgb(var(--c-danger))"
-            : "rgb(var(--c-tron))";
-          const midX = (from.x + to.x) / 2;
-          return (
-            <g key={s.from + "->" + s.to} className="pointer-events-auto">
-              <path
-                d={`M ${from.x} ${from.y} C ${midX} ${from.y}, ${midX} ${to.y}, ${to.x} ${to.y}`}
-                fill="none"
-                stroke={stroke}
-                strokeWidth={2}
-                opacity={0.85}
-              />
-              <circle
-                cx={(from.x + to.x) / 2}
-                cy={(from.y + to.y) / 2}
-                r={7}
-                fill="rgb(var(--c-panel))"
-                stroke={stroke}
-                strokeWidth={1.5}
-                className="cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-tron"
-                role="button"
-                tabIndex={0}
-                aria-label={`Remove the connection from ${s.from} to ${s.to}`}
-                onClick={() => onRemoveSnap(i)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onRemoveSnap(i);
-                  }
-                }}
-              >
-                <title>Remove connection</title>
-              </circle>
-            </g>
-          );
-        })}
-        {connecting && cursor && positions[portKey(connecting.instanceId, "out", connecting.port)] && (
-          <line
-            x1={positions[portKey(connecting.instanceId, "out", connecting.port)].x}
-            y1={positions[portKey(connecting.instanceId, "out", connecting.port)].y}
-            x2={cursor.x}
-            y2={cursor.y}
-            stroke="rgb(var(--c-tron))"
-            strokeWidth={2}
-            strokeDasharray="4 3"
-          />
-        )}
-      </svg>
-
-      {bots.map((bot) => {
-        const def = botDefs[bot.botId];
-        const rows = Math.max(def?.inputs.length ?? 0, def?.outputs.length ?? 0, 1);
-        return (
-          <div
-            key={bot.instanceId}
-            style={{ left: bot.x, top: bot.y, width: NODE_WIDTH, zIndex: 10 }}
-            tabIndex={0}
-            role="group"
-            aria-label={`${bot.instanceId} (${bot.botId})${selectedInstanceId === bot.instanceId ? ", selected" : ""}`}
-            onFocus={() => onSelectBot(bot.instanceId)}
-            onKeyDown={(e) => {
-              // Arrow keys move a node without a mouse. Shift for a coarse
-              // step, since nudging 240px one press at a time is not a
-              // usable way to lay out a graph.
-              const step = e.shiftKey ? 40 : 8;
-              const deltas: Record<string, [number, number]> = {
-                ArrowLeft: [-step, 0], ArrowRight: [step, 0],
-                ArrowUp: [0, -step], ArrowDown: [0, step],
-              };
-              const d = deltas[e.key];
-              if (!d) return;
-              e.preventDefault();
-              onMoveBot(bot.instanceId, Math.max(0, bot.x + d[0]), Math.max(0, bot.y + d[1]));
-            }}
-            className={`absolute select-none rounded-lg border bg-panel shadow-glow-sm ${
-              selectedInstanceId === bot.instanceId ? "border-tron" : "border-edge-strong"
-            }`}
-            onMouseDown={(e) => startDragNode(bot.instanceId, e)}
+          <svg
+            className="pointer-events-none absolute left-0 top-0 z-20 overflow-visible"
+            width={contentW}
+            height={contentH}
           >
-            <div
-              className="flex cursor-grab items-center justify-between gap-2 rounded-t-lg border-b border-edge px-3 py-2 active:cursor-grabbing"
-              style={{ height: HEADER_HEIGHT }}
-            >
-              <div className="min-w-0">
-                <div className="truncate font-display text-xs font-semibold text-ink">
-                  {def?.name ?? bot.botId}
-                </div>
-                <div className="truncate text-[10px] text-muted">{bot.instanceId}</div>
-              </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRemoveBot(bot.instanceId);
+            {snaps.map((s, i) => {
+              const fromEp = endpointPort(s.from);
+              const toEp = endpointPort(s.to);
+              const from = positions[portKey(fromEp.instanceId, "out", fromEp.port)];
+              const to = positions[portKey(toEp.instanceId, "in", toEp.port)];
+              if (!from || !to) return null;
+              const check = checkFor(s.from, s.to);
+              // Themed via CSS vars rather than hex so the canvas follows
+              // light/dark like everything else — see src/index.css.
+              const stroke = check
+                ? check.OK
+                  ? "rgb(var(--c-ok))"
+                  : "rgb(var(--c-danger))"
+                : "rgb(var(--c-tron))";
+              const midX = (from.x + to.x) / 2;
+              return (
+                <g key={s.from + "->" + s.to} className="pointer-events-auto">
+                  <path
+                    d={`M ${from.x} ${from.y} C ${midX} ${from.y}, ${midX} ${to.y}, ${to.x} ${to.y}`}
+                    fill="none"
+                    stroke={stroke}
+                    strokeWidth={2}
+                    opacity={0.85}
+                  />
+                  <circle
+                    cx={(from.x + to.x) / 2}
+                    cy={(from.y + to.y) / 2}
+                    r={7}
+                    fill="rgb(var(--c-panel))"
+                    stroke={stroke}
+                    strokeWidth={1.5}
+                    className="cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-tron"
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Remove the connection from ${s.from} to ${s.to}`}
+                    onClick={() => onRemoveSnap(i)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onRemoveSnap(i);
+                      }
+                    }}
+                  >
+                    <title>Remove connection</title>
+                  </circle>
+                </g>
+              );
+            })}
+            {connecting &&
+              cursor &&
+              positions[portKey(connecting.instanceId, "out", connecting.port)] && (
+                <line
+                  x1={positions[portKey(connecting.instanceId, "out", connecting.port)].x}
+                  y1={positions[portKey(connecting.instanceId, "out", connecting.port)].y}
+                  x2={cursor.x}
+                  y2={cursor.y}
+                  stroke="rgb(var(--c-tron))"
+                  strokeWidth={2}
+                  strokeDasharray="4 3"
+                />
+              )}
+          </svg>
+
+          {bots.map((bot) => {
+            const def = botDefs[bot.botId];
+            const rows = Math.max(def?.inputs.length ?? 0, def?.outputs.length ?? 0, 1);
+            return (
+              <div
+                key={bot.instanceId}
+                style={{ left: bot.x, top: bot.y, width: NODE_WIDTH, zIndex: 10 }}
+                tabIndex={0}
+                role="group"
+                aria-label={`${bot.instanceId} (${bot.botId})${selectedInstanceId === bot.instanceId ? ", selected" : ""}`}
+                onFocus={() => onSelectBot(bot.instanceId)}
+                onKeyDown={(e) => {
+                  // Arrow keys move a node without a mouse. Shift for a coarse
+                  // step, since nudging 240px one press at a time is not a
+                  // usable way to lay out a graph.
+                  const step = e.shiftKey ? 40 : 8;
+                  const deltas: Record<string, [number, number]> = {
+                    ArrowLeft: [-step, 0],
+                    ArrowRight: [step, 0],
+                    ArrowUp: [0, -step],
+                    ArrowDown: [0, step],
+                  };
+                  const d = deltas[e.key];
+                  if (!d) return;
+                  e.preventDefault();
+                  onMoveBot(bot.instanceId, Math.max(0, bot.x + d[0]), Math.max(0, bot.y + d[1]));
                 }}
-                className="shrink-0 text-muted hover:text-danger"
-                title="Remove from swarm"
+                className={`absolute select-none rounded-lg border bg-panel shadow-glow-sm ${
+                  selectedInstanceId === bot.instanceId ? "border-tron" : "border-edge-strong"
+                }`}
+                onMouseDown={(e) => startDragNode(bot.instanceId, e)}
               >
-                ✕
-              </button>
-            </div>
-
-            <div className="relative py-1.5" style={{ height: rows * ROW_HEIGHT }}>
-              {def?.inputs.map((p, i) => (
                 <div
-                  key={p.name}
-                  className="absolute left-0 flex -translate-x-1/2 items-center gap-1.5"
-                  style={{ top: i * ROW_HEIGHT + ROW_HEIGHT / 2 - 7 }}
+                  className="flex cursor-grab items-center justify-between gap-2 rounded-t-lg border-b border-edge px-3 py-2 active:cursor-grabbing"
+                  style={{ height: HEADER_HEIGHT }}
                 >
+                  <div className="min-w-0">
+                    <div className="truncate font-display text-xs font-semibold text-ink">
+                      {def?.name ?? bot.botId}
+                    </div>
+                    <div className="truncate text-[10px] text-muted">{bot.instanceId}</div>
+                  </div>
                   <button
-                    type="button"
-                    data-port={portKey(bot.instanceId, "in", p.name)}
-                    ref={registerPort(portKey(bot.instanceId, "in", p.name))}
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (!pending) return;
-                      onAddSnap({
-                        from: `${pending.instanceId}.${pending.port}`,
-                        to: `${bot.instanceId}.${p.name}`,
-                      });
-                      setPending(null);
+                      onRemoveBot(bot.instanceId);
                     }}
-                    disabled={!pending}
-                    aria-label={
-                      pending
-                        ? `Connect ${pending.instanceId}.${pending.port} to input ${p.name} of ${bot.instanceId}`
-                        : `Input ${p.name} of ${bot.instanceId}, type ${p.type}. Activate an output port first.`
-                    }
-                    title={`${p.name}: ${p.type}`}
-                    className={`h-3.5 w-3.5 rounded-full border-2 bg-void focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tron ${
-                      pending ? "cursor-crosshair border-tron hover:bg-tron/30" : "cursor-default border-muted"
-                    }`}
-                  />
-                  <span className="max-w-[110px] truncate pl-1 text-[10px] text-muted">{p.name}</span>
+                    className="shrink-0 text-muted hover:text-danger"
+                    title="Remove from swarm"
+                  >
+                    ✕
+                  </button>
                 </div>
-              ))}
-              {def?.outputs.map((p, i) => (
-                <div
-                  key={p.name}
-                  className="absolute right-0 flex translate-x-1/2 items-center justify-end gap-1.5"
-                  style={{ top: i * ROW_HEIGHT + ROW_HEIGHT / 2 - 7 }}
-                >
-                  <span className="max-w-[110px] truncate pr-1 text-right text-[10px] text-muted">
-                    {p.name}
-                  </span>
-                  <button
-                    type="button"
-                    data-port={portKey(bot.instanceId, "out", p.name)}
-                    ref={registerPort(portKey(bot.instanceId, "out", p.name))}
-                    onMouseDown={(e) => startConnection(bot.instanceId, p.name, e)}
-                    onClick={(e) => {
-                      // Keyboard and plain-click path: arm this output, then
-                      // activate an input port to complete the connection.
-                      // The mouse drag above is the same operation done
-                      // continuously; this is the discrete version.
-                      e.stopPropagation();
-                      setPending({ instanceId: bot.instanceId, port: p.name });
-                    }}
-                    aria-label={`Output ${p.name} of ${bot.instanceId}, type ${p.type}. Activate, then choose an input to connect it to.`}
-                    title={`${p.name}: ${p.type}`}
-                    className={`h-3.5 w-3.5 cursor-crosshair rounded-full border-2 border-tron bg-void shadow-[0_0_6px_theme(colors.tron)] hover:bg-tron/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tron ${
-                      pending?.instanceId === bot.instanceId && pending?.port === p.name ? "bg-tron" : ""
-                    }`}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
 
+                <div className="relative py-1.5" style={{ height: rows * ROW_HEIGHT }}>
+                  {def?.inputs.map((p, i) => (
+                    <div
+                      key={p.name}
+                      className="absolute left-0 flex -translate-x-1/2 items-center gap-1.5"
+                      style={{ top: i * ROW_HEIGHT + ROW_HEIGHT / 2 - 7 }}
+                    >
+                      <button
+                        type="button"
+                        data-port={portKey(bot.instanceId, "in", p.name)}
+                        ref={registerPort(portKey(bot.instanceId, "in", p.name))}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!pending) return;
+                          onAddSnap({
+                            from: `${pending.instanceId}.${pending.port}`,
+                            to: `${bot.instanceId}.${p.name}`,
+                          });
+                          setPending(null);
+                        }}
+                        disabled={!pending}
+                        aria-label={
+                          pending
+                            ? `Connect ${pending.instanceId}.${pending.port} to input ${p.name} of ${bot.instanceId}`
+                            : `Input ${p.name} of ${bot.instanceId}, type ${p.type}. Activate an output port first.`
+                        }
+                        title={`${p.name}: ${p.type}`}
+                        className={`h-3.5 w-3.5 rounded-full border-2 bg-void focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tron ${
+                          pending
+                            ? "cursor-crosshair border-tron hover:bg-tron/30"
+                            : "cursor-default border-muted"
+                        }`}
+                      />
+                      <span className="max-w-[110px] truncate pl-1 text-[10px] text-muted">
+                        {p.name}
+                      </span>
+                    </div>
+                  ))}
+                  {def?.outputs.map((p, i) => (
+                    <div
+                      key={p.name}
+                      className="absolute right-0 flex translate-x-1/2 items-center justify-end gap-1.5"
+                      style={{ top: i * ROW_HEIGHT + ROW_HEIGHT / 2 - 7 }}
+                    >
+                      <span className="max-w-[110px] truncate pr-1 text-right text-[10px] text-muted">
+                        {p.name}
+                      </span>
+                      <button
+                        type="button"
+                        data-port={portKey(bot.instanceId, "out", p.name)}
+                        ref={registerPort(portKey(bot.instanceId, "out", p.name))}
+                        onMouseDown={(e) => startConnection(bot.instanceId, p.name, e)}
+                        onClick={(e) => {
+                          // Keyboard and plain-click path: arm this output, then
+                          // activate an input port to complete the connection.
+                          // The mouse drag above is the same operation done
+                          // continuously; this is the discrete version.
+                          e.stopPropagation();
+                          setPending({ instanceId: bot.instanceId, port: p.name });
+                        }}
+                        aria-label={`Output ${p.name} of ${bot.instanceId}, type ${p.type}. Activate, then choose an input to connect it to.`}
+                        title={`${p.name}: ${p.type}`}
+                        className={`h-3.5 w-3.5 cursor-crosshair rounded-full border-2 border-tron bg-void shadow-[0_0_6px_theme(colors.tron)] hover:bg-tron/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tron ${
+                          pending?.instanceId === bot.instanceId && pending?.port === p.name
+                            ? "bg-tron"
+                            : ""
+                        }`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -616,7 +636,8 @@ export function BuilderCanvas({
           readable at whatever zoom the last swarm left behind. */}
       {bots.length === 0 && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted">
-          Click a bot on the left to add it here, then drag from an output dot to an input dot to connect them.
+          Click a bot on the left to add it here, then drag from an output dot to an input dot to
+          connect them.
         </div>
       )}
     </div>

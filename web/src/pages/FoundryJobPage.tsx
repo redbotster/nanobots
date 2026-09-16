@@ -56,23 +56,16 @@ export function FoundryJobPage({
   return (
     <div className="grid h-full grid-rows-[auto_1fr] overflow-hidden">
       <header className="flex flex-wrap items-center gap-3 border-b border-edge px-5 py-3">
-        <button
-          onClick={onDone}
-          className="text-sm text-muted hover:text-ink"
-        >
+        <button onClick={onDone} className="text-sm text-muted hover:text-ink">
           ← Swarms
         </button>
         <div className="flex items-center gap-2 text-sm">
           <StatusDot tone={STATUS_TONE[job.status] ?? "muted"} />
-          <span className="font-display font-semibold text-ink">
-            Building a new bot
-          </span>
+          <span className="font-display font-semibold text-ink">Building a new bot</span>
           <span className="text-muted">— {job.missing_capability}</span>
         </div>
         {job.outcome && job.outcome !== "promoted" && (
-          <span className="ml-auto text-[12px] text-danger">
-            {job.outcome.replace("_", " ")}
-          </span>
+          <span className="ml-auto text-[12px] text-danger">{job.outcome.replace("_", " ")}</span>
         )}
       </header>
 
@@ -83,8 +76,8 @@ export function FoundryJobPage({
           {job.bot ? (
             <>
               <p className="mb-3 text-[13px] text-muted">
-                Conformance passed. Review it, then approve to add it to the
-                catalog — or reject to discard it.
+                Conformance passed. Review it, then approve to add it to the catalog — or reject to
+                discard it.
               </p>
               <BotCard bot={job.bot} />
             </>

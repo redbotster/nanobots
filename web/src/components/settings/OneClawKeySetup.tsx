@@ -46,9 +46,9 @@ export function OneClawKeySetup() {
   return (
     <div className="mt-3">
       <p className="text-[13px] leading-relaxed text-muted">
-        Paste your 1Claw Human API key — we'll check it works, then save it
-        to <code className="text-ink">~/.secrets/nanobots.env</code> for
-        you. It's never written into this repo or shown to a bot.
+        Paste your 1Claw Human API key — we'll check it works, then save it to{" "}
+        <code className="text-ink">~/.secrets/nanobots.env</code> for you. It's never written into
+        this repo or shown to a bot.
       </p>
       <div className="mt-2 flex items-center gap-2">
         <input

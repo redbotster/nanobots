@@ -67,7 +67,9 @@ function UseInBots({ provider, connected }: { provider: string; connected: boole
             disabled={busy}
             className="rounded border border-edge-strong px-2 py-0.5 text-ink transition-colors hover:border-tron disabled:opacity-50"
           >
-            {busy ? "Switching…" : `Use my account in ${counts.demo === 1 ? "it" : "all " + counts.demo}`}
+            {busy
+              ? "Switching…"
+              : `Use my account in ${counts.demo === 1 ? "it" : "all " + counts.demo}`}
           </button>
         </>
       )}
@@ -95,7 +97,6 @@ function UseInBots({ provider, connected }: { provider: string; connected: boole
     </div>
   );
 }
-
 
 export function OAuthConnectRow({
   provider,

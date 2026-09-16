@@ -123,7 +123,11 @@ function AddRole({ onChanged }: { onChanged: (lib: Library) => void }) {
   // The id is derived rather than asked for: it exists so an edit can find
   // the role again, and making someone invent a slug is a question with
   // only one sensible answer.
-  const id = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const id = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
 
   const submit = async () => {
     setBusy(true);
@@ -188,7 +192,10 @@ export function RoleLibrarySection() {
   const [showRoster, setShowRoster] = useState(false);
 
   const reload = useCallback(() => {
-    api.roles().then(setLib).catch((e) => setError(String(e)));
+    api
+      .roles()
+      .then(setLib)
+      .catch((e) => setError(String(e)));
   }, []);
   useEffect(reload, [reload]);
 

@@ -32,13 +32,7 @@ export default {
       },
       fontFamily: {
         display: ["'Chakra Petch'", "system-ui", "sans-serif"],
-        body: [
-          "-apple-system",
-          "BlinkMacSystemFont",
-          "'Segoe UI'",
-          "system-ui",
-          "sans-serif",
-        ],
+        body: ["-apple-system", "BlinkMacSystemFont", "'Segoe UI'", "system-ui", "sans-serif"],
       },
       boxShadow: {
         glow: "0 0 24px var(--c-glow-shadow)",

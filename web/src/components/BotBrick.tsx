@@ -32,12 +32,8 @@ export function BotBrick({
         {bot.id}
         <span className="text-muted">v{bot.version}</span>
       </div>
-      <h3 className="mt-1 font-display text-[15px] font-semibold text-ink">
-        {bot.name}
-      </h3>
-      <p className="mt-1 line-clamp-2 text-[12.5px] leading-snug text-muted">
-        {bot.description}
-      </p>
+      <h3 className="mt-1 font-display text-[15px] font-semibold text-ink">{bot.name}</h3>
+      <p className="mt-1 line-clamp-2 text-[12.5px] leading-snug text-muted">{bot.description}</p>
       <div className="mt-2.5 flex flex-wrap gap-1">
         {(bot.services ?? []).map((s) => (
           <span

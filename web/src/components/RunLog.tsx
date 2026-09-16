@@ -51,8 +51,8 @@ export function RunLog({
   if (!run) {
     return (
       <div className="flex h-full items-center justify-center p-8 text-center text-sm text-muted">
-        Nothing's run yet. Hit <span className="mx-1 text-ink">Run once</span>{" "}
-        above to see it happen here, live.
+        Nothing's run yet. Hit <span className="mx-1 text-ink">Run once</span> above to see it
+        happen here, live.
       </div>
     );
   }
@@ -91,9 +91,7 @@ export function RunLog({
             </span>
           </div>
         ))}
-        {run.log.length === 0 && (
-          <div className="text-muted">waiting for the first step…</div>
-        )}
+        {run.log.length === 0 && <div className="text-muted">waiting for the first step…</div>}
         <div ref={endRef} />
       </div>
 
@@ -103,9 +101,7 @@ export function RunLog({
           className="fade-in flex flex-col gap-2 border-t border-warn/40 bg-warn/[0.06] px-4 py-3 sm:flex-row sm:items-center"
         >
           <div className="min-w-0 text-sm">
-            <span className="font-display font-semibold text-warn">
-              Approval needed
-            </span>
+            <span className="font-display font-semibold text-warn">Approval needed</span>
             {pa.risk_tier && (
               <span className="ml-2 rounded border border-warn/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-warn">
                 {pa.risk_tier} risk

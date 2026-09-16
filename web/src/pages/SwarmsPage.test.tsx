@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { LastRunLine, swarmMatches } from "./SwarmsPage";
+import { LastRunLine } from "./SwarmsPage";
+import { swarmMatches } from "../lib/swarmFilter";
 import type { SwarmSummary } from "../lib/types";
 
 function swarm(over: Partial<SwarmSummary>): SwarmSummary {
@@ -66,9 +67,18 @@ describe("the swarm card's run line", () => {
 
 describe("filtering the swarm list", () => {
   const list = [
-    swarm({ name: "github-digest-to-slack", description: "Summarise a repo's newest open issues and post the digest to Slack." }),
-    swarm({ name: "get-paid", description: "Find every overdue invoice and send each reminder once approved." }),
-    swarm({ name: "morning-brief", description: "Triage the inbox and prep today's meetings into one brief." }),
+    swarm({
+      name: "github-digest-to-slack",
+      description: "Summarise a repo's newest open issues and post the digest to Slack.",
+    }),
+    swarm({
+      name: "get-paid",
+      description: "Find every overdue invoice and send each reminder once approved.",
+    }),
+    swarm({
+      name: "morning-brief",
+      description: "Triage the inbox and prep today's meetings into one brief.",
+    }),
   ];
   const matching = (q: string) => list.filter((s) => swarmMatches(s, q)).map((s) => s.name);
 

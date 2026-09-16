@@ -28,9 +28,7 @@ export function applyTheme(theme: Theme) {
  * OS and can change without any interaction here. */
 export function resolvedTheme(theme: Theme): "light" | "dark" {
   if (theme !== "system") return theme;
-  return window.matchMedia?.("(prefers-color-scheme: light)").matches
-    ? "light"
-    : "dark";
+  return window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark";
 }
 
 /** Every useTheme() caller subscribes to this, so they can't disagree.

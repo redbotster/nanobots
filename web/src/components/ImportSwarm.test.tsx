@@ -49,7 +49,9 @@ describe("ImportSwarm", () => {
 
   it("reports a bundle it cannot read instead of failing silently", async () => {
     vi.spyOn(api, "importSwarm").mockRejectedValue(
-      new Error("this is not a swarm bundle — if it is a plain swarm YAML, copy it into examples/swarms/ instead"),
+      new Error(
+        "this is not a swarm bundle — if it is a plain swarm YAML, copy it into examples/swarms/ instead",
+      ),
     );
     render(<ImportSwarm onImported={() => {}} onClose={() => {}} />);
     paste("kind: Nanoswarm\n");

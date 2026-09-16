@@ -36,9 +36,7 @@ export function SchedulePicker({
 }) {
   // Open automatically when the composer already picked one, so a schedule
   // that was chosen for you is never hidden behind a click.
-  const [custom, setCustom] = useState(
-    value !== "" && !PRESETS.some((p) => p.expr === value),
-  );
+  const [custom, setCustom] = useState(value !== "" && !PRESETS.some((p) => p.expr === value));
   // Described by the server, using the same parser that decides whether it
   // fires — so what this says and what actually happens cannot drift. It
   // also validates as you type: a cron the scheduler cannot read says so
@@ -53,7 +51,9 @@ export function SchedulePicker({
     const id = setTimeout(() => {
       api
         .describeSchedule(value)
-        .then((r) => live && setDescribed({ ok: r.ok, text: r.ok ? (r.human ?? "") : (r.error ?? "") }))
+        .then(
+          (r) => live && setDescribed({ ok: r.ok, text: r.ok ? (r.human ?? "") : (r.error ?? "") }),
+        )
         .catch(() => live && setDescribed(null));
     }, 250);
     return () => {

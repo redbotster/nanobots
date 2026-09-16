@@ -17,8 +17,14 @@ export function BotLibrary() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const reload = () => {
-    api.listBots().then(setBots).catch((e) => setError(String(e)));
-    api.listConnections().then(setConnections).catch(() => {});
+    api
+      .listBots()
+      .then(setBots)
+      .catch((e) => setError(String(e)));
+    api
+      .listConnections()
+      .then(setConnections)
+      .catch(() => {});
   };
   useEffect(() => {
     reload();
@@ -89,10 +95,9 @@ export function BotLibrary() {
     <div className="h-full overflow-auto p-5 sm:p-6">
       <h1 className="font-display text-xl font-medium text-ink">Bot library</h1>
       <p className="mt-1 hidden text-sm text-muted sm:block">
-        Every bot declares typed ports — any bot here can be snapped into a
-        swarm you build, including ones nobody's thought of yet. Flip a
-        service's switch to connect an account and make that bot run for
-        real instead of on demo data.
+        Every bot declares typed ports — any bot here can be snapped into a swarm you build,
+        including ones nobody's thought of yet. Flip a service's switch to connect an account and
+        make that bot run for real instead of on demo data.
       </p>
 
       <input
@@ -115,7 +120,11 @@ export function BotLibrary() {
             onClick={() => setCollapsed((c) => ({ ...c, [category]: !c[category] }))}
             className="flex items-center gap-1.5 py-1 font-display text-xs font-semibold uppercase tracking-wider text-muted hover:text-ink"
           >
-            <span className={`inline-block transition-transform ${collapsed[category] ? "-rotate-90" : ""}`}>▾</span>
+            <span
+              className={`inline-block transition-transform ${collapsed[category] ? "-rotate-90" : ""}`}
+            >
+              ▾
+            </span>
             {category}
             <span className="font-normal normal-case tracking-normal">({groupBots.length})</span>
             {category === OTHER && (
@@ -141,13 +150,9 @@ export function BotLibrary() {
         </section>
       ))}
 
-      {bots === null && !error && (
-        <p className="mt-5 text-sm text-muted/60">Loading bots…</p>
-      )}
+      {bots === null && !error && <p className="mt-5 text-sm text-muted/60">Loading bots…</p>}
       {bots?.length === 0 && (
-        <p className="mt-6 text-sm text-muted">
-          No bots found in the bots/ directory.
-        </p>
+        <p className="mt-6 text-sm text-muted">No bots found in the bots/ directory.</p>
       )}
       {bots && bots.length > 0 && filtered.length === 0 && (
         <p className="mt-8 text-sm text-muted">No bots match "{q}".</p>

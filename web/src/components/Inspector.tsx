@@ -2,7 +2,15 @@ import * as Switch from "@radix-ui/react-switch";
 import type { BotSummary } from "../lib/types";
 import { useStatus } from "../lib/useStatus";
 
-function ReadOnlyToggle({ checked, label, hint }: { checked: boolean; label: string; hint?: string }) {
+function ReadOnlyToggle({
+  checked,
+  label,
+  hint,
+}: {
+  checked: boolean;
+  label: string;
+  hint?: string;
+}) {
   return (
     <div className="flex items-center justify-between py-2">
       <div>
@@ -37,9 +45,7 @@ export function Inspector({ bot }: { bot: BotSummary }) {
       <p className="mt-2 text-[13px] leading-relaxed text-muted">{bot.description}</p>
 
       <div className="mt-5 border-t border-edge pt-4">
-        <h4 className="font-display text-[11px] font-semibold tracking-wide text-muted">
-          HARNESS
-        </h4>
+        <h4 className="font-display text-[11px] font-semibold tracking-wide text-muted">HARNESS</h4>
         <div className="mt-2 text-sm text-ink">{bot.harness}</div>
       </div>
 
@@ -56,7 +62,9 @@ export function Inspector({ bot }: { bot: BotSummary }) {
         <ReadOnlyToggle
           checked={guarded && (g.pii === "redact" || g.pii === "block")}
           label="Redact personal data"
-          hint={guarded ? "Before anything reaches the model" : "Asked for, but nothing is applying it"}
+          hint={
+            guarded ? "Before anything reaches the model" : "Asked for, but nothing is applying it"
+          }
         />
         <ReadOnlyToggle
           checked={guarded && (g.injection_threshold ?? 0) > 0}
@@ -103,9 +111,8 @@ export function Inspector({ bot }: { bot: BotSummary }) {
       </div>
 
       <div className="mt-5 rounded border border-edge px-3 py-2.5 text-[11px] leading-relaxed text-muted">
-        <span className="text-ink">Your keys stay in 1Claw.</span> This bot
-        never sees a token or an API key — every real call is signed through
-        your vault.
+        <span className="text-ink">Your keys stay in 1Claw.</span> This bot never sees a token or an
+        API key — every real call is signed through your vault.
       </div>
     </div>
   );

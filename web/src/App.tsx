@@ -47,8 +47,11 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
   const [uiMode, setUiMode] = useUIMode();
   const { status, unreachable: apiUnreachable } = useStatus();
   const [counts, setCounts] = useState<{ bots: number; swarms: number } | null>(null);
-  const { count: pendingApprovals, permission: notifyPermission, requestPermission: enableNotifications } =
-    useApprovalNotifications();
+  const {
+    count: pendingApprovals,
+    permission: notifyPermission,
+    requestPermission: enableNotifications,
+  } = useApprovalNotifications();
   const { theme, resolved: resolvedTheme, setTheme } = useTheme();
 
   // Basic mode hides the bot library nav entry entirely — if a user was on
@@ -150,11 +153,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
               <>
                 <StatusDot
                   tone={
-                    status.llm_backend === "none"
-                      ? "warn"
-                      : status.llm_guardrails
-                        ? "ok"
-                        : "muted"
+                    status.llm_backend === "none" ? "warn" : status.llm_guardrails ? "ok" : "muted"
                   }
                 />
                 <span className="hidden truncate sm:inline">
@@ -212,7 +211,13 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
       <main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
         <PrereqBanners status={status} onOpenSettings={() => setPage("settings")} />
         <div className="min-h-0 flex-1 overflow-hidden">
-          {page === "swarm" && <SwarmsPage uiMode={uiMode} status={status} onOpenSettings={() => setPage("settings")} />}
+          {page === "swarm" && (
+            <SwarmsPage
+              uiMode={uiMode}
+              status={status}
+              onOpenSettings={() => setPage("settings")}
+            />
+          )}
           {page === "bots" && <BotLibrary />}
           {page === "team" && <TeamPage />}
           {page === "runs" && <RunsPage onOpenSettings={() => setPage("settings")} />}

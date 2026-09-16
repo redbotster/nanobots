@@ -81,12 +81,9 @@ export const api = {
     }),
   listBots: () => req<BotSummary[]>("/api/bots"),
   listSwarms: () => req<SwarmSummary[]>("/api/swarms"),
-  plan: (path: string) =>
-    req<PlanResult>(`/api/swarms/plan?path=${encodeURIComponent(path)}`),
-  swarmYAML: (path: string) =>
-    reqText(`/api/swarms/yaml?path=${encodeURIComponent(path)}`),
-  swarmFull: (path: string) =>
-    req<SwarmFull>(`/api/swarms/full?path=${encodeURIComponent(path)}`),
+  plan: (path: string) => req<PlanResult>(`/api/swarms/plan?path=${encodeURIComponent(path)}`),
+  swarmYAML: (path: string) => reqText(`/api/swarms/yaml?path=${encodeURIComponent(path)}`),
+  swarmFull: (path: string) => req<SwarmFull>(`/api/swarms/full?path=${encodeURIComponent(path)}`),
   describeSchedule: (expr: string) =>
     req<{ ok: boolean; human?: string; error?: string; next_run_at?: string }>(
       `/api/schedule/describe?expr=${encodeURIComponent(expr)}`,
@@ -129,8 +126,7 @@ export const api = {
     }),
   connectGoogleStart: () =>
     req<ConnectionStatus>("/api/connections/google/start", { method: "POST" }),
-  connectXStart: () =>
-    req<ConnectionStatus>("/api/connections/x/start", { method: "POST" }),
+  connectXStart: () => req<ConnectionStatus>("/api/connections/x/start", { method: "POST" }),
   connectLinkedInStart: () =>
     req<ConnectionStatus>("/api/connections/linkedin/start", { method: "POST" }),
   setBotServiceConnection: (botId: string, serviceId: string, live: boolean) =>
@@ -152,8 +148,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  setRole: (id: string, body: { name?: string; focus?: string; retired?: boolean; always?: boolean }) =>
-    req<RoleLibrary>(`/api/roles/${id}`, { method: "POST", body: JSON.stringify(body) }),
+  setRole: (
+    id: string,
+    body: { name?: string; focus?: string; retired?: boolean; always?: boolean },
+  ) => req<RoleLibrary>(`/api/roles/${id}`, { method: "POST", body: JSON.stringify(body) }),
   resetRole: (id: string) => req<RoleLibrary>(`/api/roles/${id}/reset`, { method: "POST" }),
   setBotInstructions: (botId: string, instructions: string) =>
     req<BotSummary>(`/api/bots/${botId}/instructions`, {

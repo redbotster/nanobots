@@ -13,7 +13,10 @@ import type { CanvasSnap, PlacedBot } from "./BuilderCanvas";
  * The server-side round-trip test covers the API. Nothing covered this
  * mapping, because it lived inside a React page.
  */
-export function placeBots(bots: DraftBot[], position: (i: number) => { x: number; y: number }): PlacedBot[] {
+export function placeBots(
+  bots: DraftBot[],
+  position: (i: number) => { x: number; y: number },
+): PlacedBot[] {
   return bots.map((b, i) => {
     const [botId] = b.use.split("@");
     const pos = position(i);

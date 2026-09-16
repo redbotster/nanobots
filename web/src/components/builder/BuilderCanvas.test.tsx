@@ -120,11 +120,15 @@ describe("zoom", () => {
     render(<BuilderCanvas bots={BOTS} botDefs={DEFS} snaps={SNAPS} {...canvasProps} />);
     const out = screen.getByRole("button", { name: "Zoom out" });
     for (let i = 0; i < 20; i++) if (!out.hasAttribute("disabled")) fireEvent.click(out);
-    expect(Number(screen.getByText(/^\d+%$/).textContent!.replace("%", ""))).toBeGreaterThanOrEqual(20);
+    expect(Number(screen.getByText(/^\d+%$/).textContent!.replace("%", ""))).toBeGreaterThanOrEqual(
+      20,
+    );
 
     const inBtn = screen.getByRole("button", { name: "Zoom in" });
     for (let i = 0; i < 20; i++) if (!inBtn.hasAttribute("disabled")) fireEvent.click(inBtn);
-    expect(Number(screen.getByText(/^\d+%$/).textContent!.replace("%", ""))).toBeLessThanOrEqual(150);
+    expect(Number(screen.getByText(/^\d+%$/).textContent!.replace("%", ""))).toBeLessThanOrEqual(
+      150,
+    );
   });
 
   it("keeps the connector count across a zoom change", () => {

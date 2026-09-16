@@ -146,8 +146,8 @@ export function SwarmView({
             {swarm.trigger_type === "webhook" && <WebhookPanel swarm={swarm} />}
             {swarm.schedule_error && (
               <p className="mt-1.5 text-[12px] text-danger">
-                ⏰ This swarm's schedule can't be read ({swarm.schedule_expr}), so it
-                never fires on its own: {swarm.schedule_error}
+                ⏰ This swarm's schedule can't be read ({swarm.schedule_expr}), so it never fires on
+                its own: {swarm.schedule_error}
               </p>
             )}
           </div>
@@ -179,11 +179,7 @@ export function SwarmView({
             <span className="flex items-center gap-1.5 text-xs text-muted">
               <StatusDot
                 tone={
-                  run.status === "succeeded"
-                    ? "ok"
-                    : run.status === "failed"
-                      ? "danger"
-                      : "warn"
+                  run.status === "succeeded" ? "ok" : run.status === "failed" ? "danger" : "warn"
                 }
               />
               {run.status.replace("_", " ")}
@@ -231,8 +227,7 @@ export function SwarmView({
 
         {plan && !plan.ok && (
           <div className="mt-6 max-w-xl rounded border border-danger/40 bg-danger/5 px-4 py-3 text-sm text-danger">
-            This swarm doesn't type-check yet — fix the ports, not the
-            planner.
+            This swarm doesn't type-check yet — fix the ports, not the planner.
           </div>
         )}
       </section>

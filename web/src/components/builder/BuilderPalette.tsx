@@ -7,7 +7,13 @@ import { categoryOf } from "../../lib/botCategory";
  * today), "live"/"not connected" only apply once a bot's connection: is
  * switched away from demo, cross-checked against whether that provider's
  * account is actually connected (from GET /api/connections). */
-function ConnectionPills({ bot, connections }: { bot: BotSummary; connections: ConnectionStatus[] }) {
+function ConnectionPills({
+  bot,
+  connections,
+}: {
+  bot: BotSummary;
+  connections: ConnectionStatus[];
+}) {
   const seen = new Set<string>();
   const pills = bot.services.filter((s) => {
     if (seen.has(s.provider)) return false;
@@ -21,7 +27,11 @@ function ConnectionPills({ bot, connections }: { bot: BotSummary; connections: C
         const isDemo = (s.connection ?? "demo") === "demo";
         const live = connections.find((c) => c.service === s.provider)?.connected;
         const label = isDemo ? "demo" : live ? "live" : "not connected";
-        const tone = isDemo ? "text-muted border-edge" : live ? "text-ok border-ok/40" : "text-warn border-warn/40";
+        const tone = isDemo
+          ? "text-muted border-edge"
+          : live
+            ? "text-ok border-ok/40"
+            : "text-warn border-warn/40";
         return (
           <span key={s.provider} className={`rounded-full border px-1.5 py-0.5 text-[9px] ${tone}`}>
             {s.provider} · {label}
@@ -82,9 +92,15 @@ export function BuilderPalette({
               onClick={() => setCollapsed((c) => ({ ...c, [category]: !c[category] }))}
               className="flex w-full items-center gap-1.5 px-1 py-1 text-left font-display text-[10px] font-semibold uppercase tracking-wider text-muted hover:text-ink"
             >
-              <span className={`inline-block transition-transform ${collapsed[category] ? "-rotate-90" : ""}`}>▾</span>
+              <span
+                className={`inline-block transition-transform ${collapsed[category] ? "-rotate-90" : ""}`}
+              >
+                ▾
+              </span>
               {category}
-              <span className="ml-auto font-normal normal-case tracking-normal">{groupBots.length}</span>
+              <span className="ml-auto font-normal normal-case tracking-normal">
+                {groupBots.length}
+              </span>
             </button>
             {!collapsed[category] &&
               groupBots.map((bot) => (
@@ -102,9 +118,7 @@ export function BuilderPalette({
               ))}
           </div>
         ))}
-        {filtered.length === 0 && (
-          <p className="p-2 text-xs text-muted">No bots match "{q}".</p>
-        )}
+        {filtered.length === 0 && <p className="p-2 text-xs text-muted">No bots match "{q}".</p>}
       </div>
     </div>
   );

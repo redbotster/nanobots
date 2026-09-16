@@ -13,13 +13,7 @@ import type { CanvasSnap, PlacedBot } from "./BuilderCanvas";
  * isn't validated here — it surfaces as a real type-mismatch error from
  * the same planner a save goes through, the same way any other bad snap
  * already does. */
-function WiredFromField({
-  from,
-  onChange,
-}: {
-  from: string;
-  onChange: (newFrom: string) => void;
-}) {
+function WiredFromField({ from, onChange }: { from: string; onChange: (newFrom: string) => void }) {
   const parts = from.split(".");
   const base = parts.slice(0, 2).join(".");
   const [suffix, setSuffix] = useState(parts.slice(2).join("."));

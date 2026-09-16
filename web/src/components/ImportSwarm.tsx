@@ -88,8 +88,8 @@ export function ImportSwarm({
             <>
               {preview.acts?.length ? (
                 <p className="text-warn">
-                  ⚠ When it runs it can write to: {preview.acts.join(", ")}. Read it
-                  before running it, the same as any script someone sends you.
+                  ⚠ When it runs it can write to: {preview.acts.join(", ")}. Read it before running
+                  it, the same as any script someone sends you.
                 </p>
               ) : (
                 <p className="text-muted">It doesn't write anywhere when it runs.</p>

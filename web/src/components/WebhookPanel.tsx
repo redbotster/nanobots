@@ -96,9 +96,9 @@ export function WebhookPanel({ swarm }: { swarm: SwarmSummary }) {
             </pre>
           </div>
           <p className="text-[11px] text-muted/70">
-            The body arrives as <code className="text-muted">{"{{trigger.payload}}"}</code> in
-            this swarm's input templates. Anything else posting here needs the same
-            token — this endpoint starts runs, and runs send mail.
+            The body arrives as <code className="text-muted">{"{{trigger.payload}}"}</code> in this
+            swarm's input templates. Anything else posting here needs the same token — this endpoint
+            starts runs, and runs send mail.
           </p>
         </div>
       )}

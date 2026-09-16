@@ -59,8 +59,13 @@ and the read.
 
 ```sh
 go build ./... && go vet ./... && go test ./... -race
-cd web && npx tsc -b && npm run test
+cd web && npx tsc -b && npm run lint && npm run format:check && npm run test
 ```
+
+`npm run format` rewrites; `format:check` only reports. ESLint keeps
+react-hooks' compiler-era rules on except three, each switched off in
+`eslint.config.js` with the reason and the finding count — read that before
+turning any of them back on.
 
 Some claims check themselves, in `internal/contract` — the README's test
 count, bot count and swarm count; that every doc is linked from the README;

@@ -34,7 +34,10 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
       .catch((e) => setConnectionsError(String(e)));
 
   useEffect(() => {
-    api.listBots().then(setBots).catch(() => {});
+    api
+      .listBots()
+      .then(setBots)
+      .catch(() => {});
     reloadConnections();
   }, []);
 
@@ -95,7 +98,13 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
           {status?.oneclaw_configured && <PostureRow />}
 
           <StatusRow
-            tone={!status || status.llm_backend === "none" ? "warn" : status.llm_guardrails ? "ok" : "muted"}
+            tone={
+              !status || status.llm_backend === "none"
+                ? "warn"
+                : status.llm_guardrails
+                  ? "ok"
+                  : "muted"
+            }
             label="Model"
             detail={
               status
@@ -107,18 +116,17 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
           >
             {status && status.llm_backend === "none" && (
               <p className="text-[12px] leading-snug text-muted">
-                Every ai.generate step returns canned fixture text until there's a
-                model behind it. Set <code className="text-ink">ONECLAW_API_KEY</code>{" "}
-                for 1Claw token billing, or any one of{" "}
-                <code className="text-ink">ANTHROPIC_API_KEY</code>,{" "}
+                Every ai.generate step returns canned fixture text until there's a model behind it.
+                Set <code className="text-ink">ONECLAW_API_KEY</code> for 1Claw token billing, or
+                any one of <code className="text-ink">ANTHROPIC_API_KEY</code>,{" "}
                 <code className="text-ink">OPENAI_API_KEY</code> or{" "}
                 <code className="text-ink">GEMINI_API_KEY</code> — see docs/llm.md.
               </p>
             )}
             {status && status.llm_backend !== "none" && !status.llm_guardrails && (
               <p className="text-[12px] leading-snug text-muted">
-                Prompts go straight to the provider. No spend ceiling, no PII
-                redaction and no injection screening — 1Claw adds those, and{" "}
+                Prompts go straight to the provider. No spend ceiling, no PII redaction and no
+                injection screening — 1Claw adds those, and{" "}
                 <code className="text-ink">ONECLAW_API_KEY</code> switches to it.
               </p>
             )}
@@ -140,21 +148,17 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
               <p className="text-[12px] leading-snug text-muted">
                 {status.memory_recall_bots.length > 0 ? (
                   <>
-                    <span className="text-ink">
-                      {status.memory_recall_bots.join(", ")}
-                    </span>{" "}
-                    {status.memory_recall_bots.length === 1 ? "asks" : "ask"} memory
-                    what happened before, and{" "}
-                    {status.memory_recall_bots.length === 1 ? "is" : "are"} running
-                    without an answer — falling back to static rules instead of what
-                    you've actually done. Runs still succeed; they're just worse.{" "}
+                    <span className="text-ink">{status.memory_recall_bots.join(", ")}</span>{" "}
+                    {status.memory_recall_bots.length === 1 ? "asks" : "ask"} memory what happened
+                    before, and {status.memory_recall_bots.length === 1 ? "is" : "are"} running
+                    without an answer — falling back to static rules instead of what you've actually
+                    done. Runs still succeed; they're just worse.{" "}
                   </>
                 ) : (
                   <>No bot currently asks memory a question. </>
                 )}
                 Set <code className="text-ink">NANOBOTS_MEMORY=honcho</code> with a{" "}
-                <code className="text-ink">HONCHO_URL</code> to change it — see
-                docs/memory.md.
+                <code className="text-ink">HONCHO_URL</code> to change it — see docs/memory.md.
               </p>
             )}
           </StatusRow>
@@ -175,12 +179,10 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
         <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-4">
           <h2 className="font-display text-sm font-semibold text-ink">Connect a service</h2>
           <p className="mt-1 text-[13px] text-muted">
-            Every credential goes straight into your 1Claw vault — never onto
-            this machine's disk, never into a bot container.
+            Every credential goes straight into your 1Claw vault — never onto this machine's disk,
+            never into a bot container.
           </p>
-          {connectionsError && (
-            <p className="mt-3 text-[13px] text-danger">{connectionsError}</p>
-          )}
+          {connectionsError && <p className="mt-3 text-[13px] text-danger">{connectionsError}</p>}
           <div className="mt-4 flex flex-col divide-y divide-edge">
             <OAuthConnectRow
               provider="google"
@@ -241,9 +243,8 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
       <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-4">
         <h2 className="font-display text-sm font-semibold text-ink">Services in use</h2>
         <p className="mt-1 text-[13px] text-muted">
-          How each bot's declared services get connected — every service
-          resolves to one of a few standard strategies, never a raw API key
-          in a bot's hands.
+          How each bot's declared services get connected — every service resolves to one of a few
+          standard strategies, never a raw API key in a bot's hands.
         </p>
         <div className="mt-4 flex flex-col divide-y divide-edge">
           {[...services.entries()].map(([id, s]) => (
@@ -253,9 +254,7 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
                 <div className="text-sm text-ink">
                   {id} <span className="text-muted">· {s.provider}</span>
                 </div>
-                <div className="text-[11px] text-muted">
-                  used by {s.usedBy.join(", ")}
-                </div>
+                <div className="text-[11px] text-muted">used by {s.usedBy.join(", ")}</div>
               </div>
               <div className="rounded border border-edge px-2 py-1 text-[11px] text-ink">
                 {CONNECTION_LABEL[s.connection] ?? s.connection}
@@ -264,12 +263,10 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
           ))}
         </div>
         <p className="mt-4 text-[12px] text-muted">
-          Every bot ships on demo data by default, even after you connect a
-          service above — switch a specific bot's <code>connection:</code> in
-          its <code>nanobot.yaml</code> (or the visual builder, soon) to use
-          it for real. See the README for the full story on why Gmail/Drive
-          specifically needed a dedicated Google sign-in rather than 1Claw's
-          own OAuth registry.
+          Every bot ships on demo data by default, even after you connect a service above — switch a
+          specific bot's <code>connection:</code> in its <code>nanobot.yaml</code> (or the visual
+          builder, soon) to use it for real. See the README for the full story on why Gmail/Drive
+          specifically needed a dedicated Google sign-in rather than 1Claw's own OAuth registry.
         </p>
       </section>
     </div>
@@ -296,7 +293,11 @@ function SpendLine() {
   }, []);
 
   if (error) {
-    return <p className="mt-1.5 text-[12px] text-muted">Couldn't reach 1Claw for a spend figure: {error}</p>;
+    return (
+      <p className="mt-1.5 text-[12px] text-muted">
+        Couldn't reach 1Claw for a spend figure: {error}
+      </p>
+    );
   }
   if (!spend) return null;
   if (!spend.metered) {
@@ -313,9 +314,7 @@ function SpendLine() {
       </span>{" "}
       this billing period
       {spend.known && spend.period_from && <span> · since {spend.period_from}</span>}
-      {!!spend.credit_usd && (
-        <span> · ${spend.credit_usd.toFixed(2)} credit left</span>
-      )}
+      {!!spend.credit_usd && <span> · ${spend.credit_usd.toFixed(2)} credit left</span>}
       {spend.warning && <p className="mt-1 text-warn">{spend.warning}</p>}
     </div>
   );
@@ -366,7 +365,10 @@ function StatusRow({
 function PostureRow() {
   const [p, setP] = useState<PostureResponse | null>(null);
   useEffect(() => {
-    api.posture().then(setP).catch(() => {});
+    api
+      .posture()
+      .then(setP)
+      .catch(() => {});
   }, []);
   if (!p || !p.configured) return null;
 
@@ -391,15 +393,14 @@ function PostureRow() {
     >
       {p.nanobots_agents > 0 && (
         <p className="text-[12px] leading-snug text-muted">
-          {p.nanobots_agents} of them were made by this app, one per bot name you've
-          run.
+          {p.nanobots_agents} of them were made by this app, one per bot name you've run.
           {p.agents_near_cap && (
             <>
               {" "}
               <span className="text-warn">
-                That is close to the {p.tier} plan's limit. A run that needs a new bot
-                will fail with "Agent limit reached" — delete one you don't need from
-                1Claw to free a slot (docs/oneclaw-bridge.md).
+                That is close to the {p.tier} plan's limit. A run that needs a new bot will fail
+                with "Agent limit reached" — delete one you don't need from 1Claw to free a slot
+                (docs/oneclaw-bridge.md).
               </span>
             </>
           )}

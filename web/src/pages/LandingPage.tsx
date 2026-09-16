@@ -21,11 +21,7 @@ export function LandingPage({ onLogin }: { onLogin: () => void }) {
         </div>
         <nav className="ml-auto hidden items-center gap-6 sm:flex">
           {NAV_LINKS.map((link) => (
-            <a
-              key={link.label}
-              href={link.href}
-              className="text-sm text-muted hover:text-ink"
-            >
+            <a key={link.label} href={link.href} className="text-sm text-muted hover:text-ink">
               {link.label}
             </a>
           ))}
@@ -43,10 +39,9 @@ export function LandingPage({ onLogin }: { onLogin: () => void }) {
           Legos for AI.
         </h1>
         <p className="mt-4 max-w-lg text-[15px] leading-relaxed text-muted">
-          Snap micro-agents together into workflows that run on your own
-          machine. Every credential, every approval, every guardrail lives in
-          1Claw — nanobots never sees a token, and nothing leaves your inbox
-          without you saying so.
+          Snap micro-agents together into workflows that run on your own machine. Every credential,
+          every approval, every guardrail lives in 1Claw — nanobots never sees a token, and nothing
+          leaves your inbox without you saying so.
         </p>
         <Button variant="primary" onClick={onLogin} className="mt-8 px-6 py-2.5 text-sm">
           Login
@@ -69,9 +64,8 @@ export function LandingPage({ onLogin }: { onLogin: () => void }) {
             </span>
           </div>
           <p className="mt-2 text-[12px] leading-relaxed text-muted">
-            No YAML, no drag-and-drop tutorial — the "head nanobot" snaps
-            together a real, validated draft from the actual bot catalog and
-            hands it to you to review.
+            No YAML, no drag-and-drop tutorial — the "head nanobot" snaps together a real, validated
+            draft from the actual bot catalog and hands it to you to review.
           </p>
         </div>
 
@@ -98,12 +92,8 @@ export function LandingPage({ onLogin }: { onLogin: () => void }) {
             },
           ].map((f) => (
             <div key={f.title}>
-              <h3 className="font-display text-sm font-semibold text-ink">
-                {f.title}
-              </h3>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
-                {f.body}
-              </p>
+              <h3 className="font-display text-sm font-semibold text-ink">{f.title}</h3>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-muted">{f.body}</p>
             </div>
           ))}
         </div>
@@ -112,16 +102,10 @@ export function LandingPage({ onLogin }: { onLogin: () => void }) {
       <footer className="flex flex-col items-center gap-2 border-t border-edge px-6 py-6 text-xs text-muted sm:flex-row sm:justify-between sm:px-10">
         <div>nanobots · local-first · MIT licensed</div>
         <div className="flex gap-4">
-          <a
-            href="https://github.com/redbotster/nanobots"
-            className="hover:text-ink"
-          >
+          <a href="https://github.com/redbotster/nanobots" className="hover:text-ink">
             GitHub
           </a>
-          <a
-            href="https://docs.1claw.co"
-            className="hover:text-ink"
-          >
+          <a href="https://docs.1claw.co" className="hover:text-ink">
             1Claw docs
           </a>
         </div>

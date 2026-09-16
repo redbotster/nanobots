@@ -76,12 +76,7 @@ export interface PlanResult {
   ok: boolean;
 }
 
-export type RunStatus =
-  | "pending"
-  | "running"
-  | "awaiting_approval"
-  | "succeeded"
-  | "failed";
+export type RunStatus = "pending" | "running" | "awaiting_approval" | "succeeded" | "failed";
 
 export interface LogEntry {
   time: string;
@@ -96,7 +91,7 @@ export interface PendingApproval {
   step: string;
   summary: string;
   risk_tier: string;
-  created: string;  /** What this bot may touch outside the machine — its own
+  created: string; /** What this bot may touch outside the machine — its own
    * guardrails.writes_allowed, so the prompt can show the blast radius of
    * "yes" instead of only the subject line. */
   writes?: string[];
@@ -344,7 +339,8 @@ export interface SwarmFull {
   snaps: DraftSnap[];
 }
 
-export type ConnectableService = "google" | "slack" | "github" | "stripe" | "hubspot" | "x" | "linkedin";
+export type ConnectableService =
+  "google" | "slack" | "github" | "stripe" | "hubspot" | "x" | "linkedin";
 
 export interface ConnectionStatus {
   service: ConnectableService;

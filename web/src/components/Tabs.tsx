@@ -40,11 +40,7 @@ export function Tabs({
         {right && <div className="ml-auto pr-3 text-xs text-muted">{right}</div>}
       </div>
       {tabs.map((t) => (
-        <RadixTabs.Content
-          key={t.value}
-          value={t.value}
-          className="min-h-0 flex-1 overflow-auto"
-        >
+        <RadixTabs.Content key={t.value} value={t.value} className="min-h-0 flex-1 overflow-auto">
           {t.content}
         </RadixTabs.Content>
       ))}

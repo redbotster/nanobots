@@ -1,23 +1,13 @@
 import * as Tooltip from "@radix-ui/react-tooltip";
 
-export function PortBadge({
-  name,
-  type,
-  dim,
-}: {
-  name: string;
-  type: string;
-  dim?: boolean;
-}) {
+export function PortBadge({ name, type, dim }: { name: string; type: string; dim?: boolean }) {
   return (
     <Tooltip.Provider delayDuration={150}>
       <Tooltip.Root>
         <Tooltip.Trigger asChild>
           <span
             className={`inline-block h-3 w-3 cursor-help rounded-full border-2 ${
-              dim
-                ? "border-muted"
-                : "border-tron shadow-[0_0_6px_theme(colors.tron)]"
+              dim ? "border-muted" : "border-tron shadow-[0_0_6px_theme(colors.tron)]"
             } bg-void`}
           />
         </Tooltip.Trigger>

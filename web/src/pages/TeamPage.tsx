@@ -95,20 +95,18 @@ function MemberRow({ member, onChanged }: { member: TeamMember; onChanged: () =>
  *
  * The list stays what you've tuned rather than the whole catalog — that is
  * the point of this page — so adding someone is a deliberate act, here. */
-export function TuneAnother({
-  tuned,
-  onChanged,
-}: {
-  tuned: Set<string>;
-  onChanged: () => void;
-}) {
+export function TuneAnother({ tuned, onChanged }: { tuned: Set<string>; onChanged: () => void }) {
   const [all, setAll] = useState<BotSummary[] | null>(null);
   const [open, setOpen] = useState(false);
   const [drafting, setDrafting] = useState<BotSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open && all === null) api.listBots().then(setAll).catch((e: unknown) => setError(String(e)));
+    if (open && all === null)
+      api
+        .listBots()
+        .then(setAll)
+        .catch((e: unknown) => setError(String(e)));
   }, [open, all]);
 
   // Only bots that actually take instructions — the rest have nothing to
@@ -234,8 +232,8 @@ export function TeamPage() {
               content: (
                 <div className="h-full overflow-auto pt-4">
                   <p className="max-w-2xl text-[13px] leading-snug text-muted">
-                    The bots you've told how to do their job. Each keeps what it
-                    shipped with, so you can always put it back.
+                    The bots you've told how to do their job. Each keeps what it shipped with, so
+                    you can always put it back.
                   </p>
 
                   {error && (
@@ -248,9 +246,9 @@ export function TeamPage() {
                   )}
                   {team !== null && team.members.length === 0 && (
                     <p className="mt-4 max-w-xl text-[13px] leading-snug text-muted">
-                      Nothing tuned yet. Every bot with an LLM step ships with a
-                      suggested way of working — "Anything mentioning data loss or
-                      billing is top priority" — and changing one brings it here.
+                      Nothing tuned yet. Every bot with an LLM step ships with a suggested way of
+                      working — "Anything mentioning data loss or billing is top priority" — and
+                      changing one brings it here.
                     </p>
                   )}
                   {team !== null && team.members.length > 0 && (

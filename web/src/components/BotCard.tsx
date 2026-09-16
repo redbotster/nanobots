@@ -108,7 +108,11 @@ function ServiceToggle({
         {!busy && !isLive && !connected && !showTokenInput && (
           <span className="text-[10px] text-muted">(connect &amp; go live)</span>
         )}
-        {error && <span className="text-[10px] text-danger" title={error}>failed</span>}
+        {error && (
+          <span className="text-[10px] text-danger" title={error}>
+            failed
+          </span>
+        )}
       </div>
       {showTokenInput && (
         <div className="mt-1.5 flex items-center gap-1.5">
@@ -122,10 +126,20 @@ function ServiceToggle({
             disabled={busy}
             className="min-w-0 flex-1 rounded border border-edge-strong bg-void px-2 py-1 text-[11px] text-ink placeholder:text-muted focus:border-tron focus:outline-none disabled:opacity-60"
           />
-          <Button variant="primary" className="px-2 py-1 text-[11px]" onClick={submitToken} disabled={busy || !token.trim()}>
+          <Button
+            variant="primary"
+            className="px-2 py-1 text-[11px]"
+            onClick={submitToken}
+            disabled={busy || !token.trim()}
+          >
             Connect
           </Button>
-          <Button variant="ghost" className="px-2 py-1 text-[11px]" onClick={() => setShowTokenInput(false)} disabled={busy}>
+          <Button
+            variant="ghost"
+            className="px-2 py-1 text-[11px]"
+            onClick={() => setShowTokenInput(false)}
+            disabled={busy}
+          >
             Cancel
           </Button>
         </div>
@@ -215,8 +229,8 @@ export function InstructionsEditor({
         className="mt-1 w-full resize-none rounded border border-edge bg-void px-2 py-1.5 text-[12px] text-ink placeholder:text-muted focus:border-tron focus:outline-none"
       />
       <p className="mt-1 text-[10px] leading-snug text-muted">
-        Shapes how it does its job. It can't change what the bot produces, or
-        any rule about sending, publishing or paying.
+        Shapes how it does its job. It can't change what the bot produces, or any rule about
+        sending, publishing or paying.
       </p>
       {error && <p className="mt-1 text-[11px] text-danger">{error}</p>}
       <div className="mt-1.5 flex gap-1.5">
@@ -260,12 +274,8 @@ export function BotCard({
       <div className="flex items-center justify-between font-display text-[11px] tracking-wide text-tron">
         {bot.id} <span className="text-muted">v{bot.version}</span>
       </div>
-      <h2 className="mt-1 font-display text-base font-semibold text-ink">
-        {bot.name}
-      </h2>
-      <p className="mt-1 text-[13px] leading-snug text-muted">
-        {bot.description}
-      </p>
+      <h2 className="mt-1 font-display text-base font-semibold text-ink">{bot.name}</h2>
+      <p className="mt-1 text-[13px] leading-snug text-muted">{bot.description}</p>
 
       <div className="mt-3 flex flex-col gap-1.5">
         {(bot.services ?? []).map((s) =>
@@ -283,9 +293,7 @@ export function BotCard({
               className="inline-block w-fit rounded border border-edge px-2 py-0.5 text-[11px] text-ink"
             >
               {s.id}
-              {(s.connection ?? "demo") === "demo" && (
-                <span className="text-warn"> · demo</span>
-              )}
+              {(s.connection ?? "demo") === "demo" && <span className="text-warn"> · demo</span>}
             </span>
           ),
         )}
@@ -320,8 +328,7 @@ export function BotCard({
  */
 function PortSignature({ inputs, outputs }: { inputs: Port[]; outputs: Port[] }) {
   const list = (ports: Port[]) => ports.map((p) => p.name).join(" · ") || "—";
-  const detail = (ports: Port[]) =>
-    ports.map((p) => `${p.name}: ${p.type}`).join("\n") || "none";
+  const detail = (ports: Port[]) => ports.map((p) => `${p.name}: ${p.type}`).join("\n") || "none";
   return (
     <div className="mt-3 space-y-0.5 border-t border-edge pt-2 text-[11px]">
       <div className="flex gap-2" title={detail(inputs)}>

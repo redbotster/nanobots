@@ -10,7 +10,11 @@ import type {
   SaveSwarmRequest,
   SwarmSummary,
 } from "../lib/types";
-import { BuilderCanvas, type CanvasSnap, type PlacedBot } from "../components/builder/BuilderCanvas";
+import {
+  BuilderCanvas,
+  type CanvasSnap,
+  type PlacedBot,
+} from "../components/builder/BuilderCanvas";
 import { placeBots, toCanvasSnaps } from "../components/builder/hydrate";
 import { BuilderPalette } from "../components/builder/BuilderPalette";
 import { BuilderInspector } from "../components/builder/BuilderInspector";
@@ -75,7 +79,9 @@ export function BuilderPage({
   const [botDefs, setBotDefs] = useState<Record<string, BotSummary>>({});
   const [connections, setConnections] = useState<ConnectionStatus[]>([]);
   const [name, setName] = useState(existing?.name ?? composedDraft?.name ?? "");
-  const [description, setDescription] = useState(existing?.description ?? composedDraft?.description ?? "");
+  const [description, setDescription] = useState(
+    existing?.description ?? composedDraft?.description ?? "",
+  );
   // Only tracked for a *new* swarm. Editing an existing one leaves its
   // trigger alone — the builder does not model triggers, and sending a
   // value here on every save would unschedule anything you opened.
@@ -95,13 +101,31 @@ export function BuilderPage({
   const savedRef = useRef(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
+  // The catalog and the connection list do not depend on which swarm is
+  // being edited, so they load once.
   useEffect(() => {
     api.listBots().then((list) => {
       setBotDefs(Object.fromEntries(list.map((b) => [b.id, b])));
     });
-    api.listConnections().then(setConnections).catch(() => {});
-    if (!existing) api.listSwarms().then(setTemplates).catch(() => {});
+    api
+      .listConnections()
+      .then(setConnections)
+      .catch(() => {});
   }, []);
+
+  // Templates are only offered when starting from nothing, so this one does
+  // depend on `existing` — and is split out rather than folded above so
+  // saying so does not also refetch the whole bot catalog. Keyed on the
+  // path rather than the object: the swarm list is polled now, so its
+  // objects are new on every tick even when the swarm has not changed.
+  const existingPath = existing?.path;
+  useEffect(() => {
+    if (existingPath) return;
+    api
+      .listSwarms()
+      .then(setTemplates)
+      .catch(() => {});
+  }, [existingPath]);
 
   // Places a loaded swarm's bots in a simple grid and pre-fills manual input
   // values — shared by hydrating an existing swarm to edit, cloning one as a
@@ -129,7 +153,10 @@ export function BuilderPage({
   // "use:" field only carries "<dir-id>@<version>", already what we need).
   useEffect(() => {
     if (!existing) return;
-    api.swarmFull(existing.path).then(hydrateFrom).catch((e) => setLoadError(String(e)));
+    api
+      .swarmFull(existing.path)
+      .then(hydrateFrom)
+      .catch((e) => setLoadError(String(e)));
   }, [existing]);
 
   // The AI composer already validated this draft server-side (see
@@ -173,7 +200,9 @@ export function BuilderPage({
           snaps,
         })
         .then(setValidation)
-        .catch((e) => setValidation({ swarm: "draft", bots: [], snaps: [], ok: false, error: String(e) }))
+        .catch((e) =>
+          setValidation({ swarm: "draft", bots: [], snaps: [], ok: false, error: String(e) }),
+        )
         .finally(() => setValidating(false));
     }, 350);
     return () => clearTimeout(t);
@@ -187,7 +216,11 @@ export function BuilderPage({
 
   const removeBot = (instanceId: string) => {
     setBots((prev) => prev.filter((b) => b.instanceId !== instanceId));
-    setSnaps((prev) => prev.filter((s) => !s.from.startsWith(instanceId + ".") && !s.to.startsWith(instanceId + ".")));
+    setSnaps((prev) =>
+      prev.filter(
+        (s) => !s.from.startsWith(instanceId + ".") && !s.to.startsWith(instanceId + "."),
+      ),
+    );
     setInputValues((prev) => {
       const { [instanceId]: _drop, ...rest } = prev;
       return rest;
@@ -271,7 +304,10 @@ export function BuilderPage({
   const dirty = bots.length > 0 && !savedRef.current;
 
   const leave = () => {
-    if (dirty && !window.confirm("Leave the builder? Your unsaved changes to this swarm will be lost.")) {
+    if (
+      dirty &&
+      !window.confirm("Leave the builder? Your unsaved changes to this swarm will be lost.")
+    ) {
       return;
     }
     onDone();
@@ -288,10 +324,7 @@ export function BuilderPage({
   return (
     <div className="grid h-full grid-rows-[auto_1fr]">
       <header className="flex flex-wrap items-center gap-3 border-b border-edge px-4 py-3 sm:px-6">
-        <button
-          onClick={leave}
-          className="font-display text-xs text-muted hover:text-ink"
-        >
+        <button onClick={leave} className="font-display text-xs text-muted hover:text-ink">
           ← Swarms
         </button>
         <input
@@ -414,22 +447,22 @@ export function BuilderPage({
               close button always on screen. */}
           {selectedBot && selectedDef && (
             <div className="absolute inset-x-0 bottom-0 z-30 max-h-[70%] border-t border-edge-strong bg-void shadow-glow sm:static sm:z-auto sm:max-h-none sm:border-t-0 sm:shadow-none">
-            <BuilderInspector
-              bot={selectedBot}
-              def={selectedDef}
-              snaps={snaps}
-              values={inputValues[selectedBot.instanceId] ?? {}}
-              onChange={(port, value) =>
-                setInputValues((prev) => ({
-                  ...prev,
-                  [selectedBot.instanceId]: { ...prev[selectedBot.instanceId], [port]: value },
-                }))
-              }
-              onEditSnapFrom={editSnapFrom}
-              onEditSnapJoin={editSnapJoin}
-              onEditOnError={(v) => editBotOnError(selectedBot.instanceId, v)}
-              onClose={() => setSelected(null)}
-            />
+              <BuilderInspector
+                bot={selectedBot}
+                def={selectedDef}
+                snaps={snaps}
+                values={inputValues[selectedBot.instanceId] ?? {}}
+                onChange={(port, value) =>
+                  setInputValues((prev) => ({
+                    ...prev,
+                    [selectedBot.instanceId]: { ...prev[selectedBot.instanceId], [port]: value },
+                  }))
+                }
+                onEditSnapFrom={editSnapFrom}
+                onEditSnapJoin={editSnapJoin}
+                onEditOnError={(v) => editBotOnError(selectedBot.instanceId, v)}
+                onClose={() => setSelected(null)}
+              />
             </div>
           )}
 

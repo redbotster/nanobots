@@ -69,9 +69,7 @@ function FailureBanner({
               {remedy.action.label}
             </button>
           )}
-          {remedy.docs && (
-            <code className="text-[11px] text-muted/70">{remedy.docs}</code>
-          )}
+          {remedy.docs && <code className="text-[11px] text-muted/70">{remedy.docs}</code>}
         </div>
       )}
       {hasMore && (
@@ -245,9 +243,7 @@ export function RunDetail({
           ← Runs
         </button>
         <div className="flex items-center gap-2">
-          <h1 className="font-display text-xl font-medium text-ink">
-            {run?.swarm_name ?? "run"}
-          </h1>
+          <h1 className="font-display text-xl font-medium text-ink">{run?.swarm_name ?? "run"}</h1>
           {run && (
             <span className="flex items-center gap-1.5 text-xs text-muted">
               <StatusDot tone={run.stopped_by_user ? "muted" : (tone[run.status] ?? "muted")} />

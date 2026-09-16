@@ -99,7 +99,9 @@ export function PinFixtures({ runId }: { runId: string }) {
   if (error) return null;
   if (entries.length === 0) return null;
 
-  const chosen = Object.entries(selected).filter(([, v]) => v).map(([k]) => k);
+  const chosen = Object.entries(selected)
+    .filter(([, v]) => v)
+    .map(([k]) => k);
 
   const pin = async () => {
     setBusy(true);
@@ -127,8 +129,8 @@ export function PinFixtures({ runId }: { runId: string }) {
         Keep this run as test data
       </span>
       <p className="mt-1 text-[12px] leading-snug text-muted">
-        These bots' fixtures are what <code className="text-ink">nanobots conform</code> and the test
-        suite replay offline. They're hand-written today — this is what actually came back.
+        These bots' fixtures are what <code className="text-ink">nanobots conform</code> and the
+        test suite replay offline. They're hand-written today — this is what actually came back.
       </p>
 
       {entries.map(([bot, files]) => (

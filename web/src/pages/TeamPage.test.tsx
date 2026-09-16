@@ -28,7 +28,9 @@ describe("adding a bot to the team", () => {
   // returned 200, the picker closed, and the page still said "Nothing tuned
   // yet". Picking a bot did nothing at all, silently.
   it("opens the bot's instructions instead of saving them unchanged", async () => {
-    vi.spyOn(api, "listBots").mockResolvedValue([bot("inbox-triage", "Billing is urgent.")] as never);
+    vi.spyOn(api, "listBots").mockResolvedValue([
+      bot("inbox-triage", "Billing is urgent."),
+    ] as never);
     const save = vi.spyOn(api, "setBotInstructions").mockResolvedValue({} as never);
 
     render(<TuneAnother tuned={new Set()} onChanged={vi.fn()} />);
@@ -44,7 +46,9 @@ describe("adding a bot to the team", () => {
   });
 
   it("saves what you actually changed, which is what puts it in the team", async () => {
-    vi.spyOn(api, "listBots").mockResolvedValue([bot("inbox-triage", "Billing is urgent.")] as never);
+    vi.spyOn(api, "listBots").mockResolvedValue([
+      bot("inbox-triage", "Billing is urgent."),
+    ] as never);
     const save = vi.spyOn(api, "setBotInstructions").mockResolvedValue({} as never);
     const onChanged = vi.fn();
 

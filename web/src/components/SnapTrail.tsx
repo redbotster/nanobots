@@ -30,7 +30,11 @@ export function SnapTrail({
         (extra ? ` (+${extra} more)` : "")
       }
     >
-      <svg viewBox="0 0 200 120" preserveAspectRatio="none" className="h-full w-full overflow-visible">
+      <svg
+        viewBox="0 0 200 120"
+        preserveAspectRatio="none"
+        className="h-full w-full overflow-visible"
+      >
         <path
           d="M0 52 C 60 52, 60 60, 100 60 S 140 68, 200 68"
           fill="none"
