@@ -6,7 +6,7 @@ metadata:
   description: Fetch recent posts that mentioned you on X.
   tags: [social, x, listening]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

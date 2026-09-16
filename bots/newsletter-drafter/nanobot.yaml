@@ -6,7 +6,7 @@ metadata:
   description: Assemble a newsletter draft from links, notes, and recent posts.
   tags: [content, newsletter, gmail]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

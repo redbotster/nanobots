@@ -428,4 +428,11 @@ That practice has also caught real bugs no unit test would have over the course 
 
 ## License
 
-MIT
+Source-available, **not** open source. Nanobots is distributed under the
+[Sustainable Use License](LICENSE.md) — the same license n8n uses — with one
+deliberate change: n8n permits use "for your own internal business purposes",
+and this one does not.
+
+Non-commercial and personal use, and evaluation, are free. **Any commercial
+use requires express written permission** from Kevin Jones Enterprises Inc.,
+the author of Nanobots.

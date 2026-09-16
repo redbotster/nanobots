@@ -6,7 +6,7 @@ metadata:
   description: Pull receipts and invoices out of mail and log a row per batch.
   tags: [receipts, bookkeeping, sheets]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

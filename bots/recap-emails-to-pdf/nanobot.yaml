@@ -6,7 +6,7 @@ metadata:
   description: Summarise unread Gmail since last run and save a PDF recap to Google Drive.
   tags: [email, reporting, gmail, drive]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

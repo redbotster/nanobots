@@ -6,7 +6,7 @@ metadata:
   description: Decide which perspectives should review a piece of work, and brief them.
   tags: [supervisor, review, planning]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

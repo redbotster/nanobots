@@ -6,7 +6,7 @@ metadata:
   description: Find overdue invoices and draft reminders that escalate in tone by age.
   tags: [invoicing, stripe, gmail]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

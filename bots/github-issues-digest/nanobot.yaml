@@ -6,7 +6,7 @@ metadata:
   description: Summarise a repo's newest open issues into a short plain-text digest.
   tags: [github, digest, reporting]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

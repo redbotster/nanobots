@@ -6,7 +6,7 @@ metadata:
   description: Turn one idea into an X thread that reads like a person wrote it.
   tags: [content, social, x, writing]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

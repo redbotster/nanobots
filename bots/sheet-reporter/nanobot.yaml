@@ -6,7 +6,7 @@ metadata:
   description: Answer a plain-English question about a spreadsheet and produce a short report with a chart.
   tags: [sheets, reporting, analytics]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

@@ -6,7 +6,7 @@ metadata:
   description: Draft replies to comments on your posts, and say which ones deserve no reply.
   tags: [social, support, writing]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

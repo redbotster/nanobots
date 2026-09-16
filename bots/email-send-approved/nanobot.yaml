@@ -6,7 +6,7 @@ metadata:
   description: Send an existing draft after a human taps approve.
   tags: [email, gmail, send]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

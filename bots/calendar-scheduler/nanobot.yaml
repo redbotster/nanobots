@@ -6,7 +6,7 @@ metadata:
   description: Read a scheduling request and draft a reply with three open slots.
   tags: [calendar, gmail, scheduling]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

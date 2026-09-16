@@ -6,7 +6,7 @@ metadata:
   description: Publish approved posts to X and LinkedIn.
   tags: [content, social, publishing]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

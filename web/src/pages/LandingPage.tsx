@@ -100,7 +100,7 @@ export function LandingPage({ onLogin }: { onLogin: () => void }) {
       </main>
 
       <footer className="flex flex-col items-center gap-2 border-t border-edge px-6 py-6 text-xs text-muted sm:flex-row sm:justify-between sm:px-10">
-        <div>nanobots · local-first · MIT licensed</div>
+        <div>nanobots · local-first · source-available</div>
         <div className="flex gap-4">
           <a href="https://github.com/redbotster/nanobots" className="hover:text-ink">
             GitHub

@@ -6,7 +6,7 @@ metadata:
   description: Sort new mail into reply today / read later / ignore and label it.
   tags: [email, gmail, triage]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

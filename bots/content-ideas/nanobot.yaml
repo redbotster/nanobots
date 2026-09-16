@@ -6,7 +6,7 @@ metadata:
   description: Suggest ten post ideas for my niche based on what I've written.
   tags: [content, social, ideas]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

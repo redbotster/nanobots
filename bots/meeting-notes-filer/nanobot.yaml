@@ -6,7 +6,7 @@ metadata:
   description: Turn a transcript into notes, decisions, and action items; file them to Drive.
   tags: [meetings, drive, notes]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

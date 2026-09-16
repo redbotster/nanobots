@@ -37,7 +37,7 @@ metadata:
   description: Summarise unread Gmail since last run and save a PDF recap to Drive.
   tags: [email, reporting, gmail, drive]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   # Which agent loop drives this brick. "bare" = deterministic steps only.

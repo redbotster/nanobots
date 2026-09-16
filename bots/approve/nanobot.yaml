@@ -6,7 +6,7 @@ metadata:
   description: Pause the swarm until a human approves on web or phone.
   tags: [utility, approval]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

@@ -6,7 +6,7 @@ metadata:
   description: Save a file to a folder and return the link.
   tags: [drive, utility]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

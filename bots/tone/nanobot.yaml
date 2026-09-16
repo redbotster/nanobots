@@ -6,7 +6,7 @@ metadata:
   description: Rewrite text so it reads like a person wrote it, not a model.
   tags: [writing, editing, voice]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

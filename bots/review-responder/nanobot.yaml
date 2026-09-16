@@ -6,7 +6,7 @@ metadata:
   description: Draft replies to new customer reviews in the business's tone.
   tags: [reviews, reputation, drafts]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

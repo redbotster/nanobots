@@ -6,7 +6,7 @@ metadata:
   description: Render Markdown or HTML to a PDF file.
   tags: [pdf, utility]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   # No LLM loop, no external services — but its own job needs real Chrome to

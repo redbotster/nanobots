@@ -6,7 +6,7 @@ metadata:
   description: Categorise new support mail, draft a reply, and flag anything needing a human.
   tags: [support, email, triage]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

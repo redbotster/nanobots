@@ -6,7 +6,7 @@ metadata:
   description: Take a webhook payload (Typeform, Tally, website form) and append a row.
   tags: [sheets, utility, webhook]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

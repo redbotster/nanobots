@@ -6,7 +6,7 @@ metadata:
   description: For each meeting today, pull related mail and write a one-page brief.
   tags: [calendar, gmail, meetings]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

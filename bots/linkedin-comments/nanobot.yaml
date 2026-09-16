@@ -6,7 +6,7 @@ metadata:
   description: Fetch the comments on one of your LinkedIn posts.
   tags: [social, linkedin, listening]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

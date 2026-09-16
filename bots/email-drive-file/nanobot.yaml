@@ -6,7 +6,7 @@ metadata:
   description: Email a link (or attachment) to a Google Drive file when it appears.
   tags: [email, gmail, drive, notify]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

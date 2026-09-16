@@ -6,7 +6,7 @@ metadata:
   description: Given a name, email, or company, find public context and score fit against my ICP.
   tags: [sales, crm, leads]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

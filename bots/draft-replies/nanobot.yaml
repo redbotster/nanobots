@@ -6,7 +6,7 @@ metadata:
   description: Write a reply draft in my voice for each thread you're given; never send.
   tags: [email, gmail, drafts]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

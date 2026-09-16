@@ -6,7 +6,7 @@ metadata:
   description: Turn a request into a priced quote PDF from my price sheet.
   tags: [quotes, sheets, drive]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:

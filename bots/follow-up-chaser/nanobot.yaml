@@ -6,7 +6,7 @@ metadata:
   description: Find threads I sent that got no reply in N days and draft a polite nudge.
   tags: [email, gmail, follow-up]
   author: nanobots-community
-  license: MIT
+  license: LicenseRef-Nanobots-SUL
 
 spec:
   harness:
