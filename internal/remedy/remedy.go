@@ -132,13 +132,20 @@ func For(raw string) *Remedy {
 	// time. "Run it again" is deliberately not the advice: the next
 	// scheduled run at 7am goes unanswered exactly the same way.
 	if strings.Contains(m, "nobody answered") {
+		// This used to say "connect 1Claw so the question reaches your
+		// phone". It does not. RunQueueApprover tries to mirror the
+		// approval into 1Claw's queue and cannot: the human key is refused
+		// with "Only agents can request approvals" and an agent key is not
+		// valid on that host at all (the evidence is in that function). The
+		// account this was written against already had 1Claw connected, so
+		// the advice was both wrong and unactionable — the worst kind, since
+		// it sends someone to check a setting that was never the problem.
 		return &Remedy{
 			Advice: "The bot asked for approval and nobody answered in time, so it was " +
-				"stopped. If this runs on a schedule while you're away, connect 1Claw so " +
-				"the question reaches your phone — or take the approval off this step if " +
-				"it doesn't need one.",
-			Action: settings("Open Settings"),
-			Docs:   "docs/approvals.md",
+				"stopped. An approval can only be answered while the run is waiting, so a " +
+				"scheduled run needs someone around when it fires: move it to a time you " +
+				"are, or take the approval off this step if it doesn't need one.",
+			Docs: "docs/approvals.md",
 		}
 	}
 

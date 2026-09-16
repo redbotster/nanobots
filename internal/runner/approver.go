@@ -84,6 +84,32 @@ func (a *RunQueueApprover) Approve(summary, riskTier string) (bool, string, erro
 // local queue is the one that must work. A 1Claw outage should cost you the
 // convenience of approving from your phone, not the ability to approve at
 // all.
+//
+// Dormant as of this writing, and worth knowing why before spending time on
+// it. Two things have to be true and neither is:
+//
+//  1. agentID is "" for every approving bot in the catalog. needsOneClawAgent
+//     grants an agent for ai.generate, memory.* or a live non-native service,
+//     and approve/email-drive-file/email-send-approved/post-publisher have
+//     none of those. So this returns at its first line, which is why 108 runs
+//     that opened an approval logged neither of the two lines below.
+//
+//  2. Giving them an agent does not help, because 1Claw will not accept
+//     either credential for this endpoint. Probed against the live API:
+//
+//     human key (1ck_ -> bearer)   POST /v1/approvals/request -> 403
+//     "Only agents can request approvals."
+//     agent key (ocv_) as bearer   POST /v1/approvals/request -> 401
+//     "Invalid or expired token"   (same on GET /v1/approvals, and the
+//     agent key cannot be exchanged at /v1/auth/api-key-token either)
+//
+//     An agent's ocv_ key authenticates on shroud.1claw.co and nowhere else.
+//
+// So the code stays, because the day 1Claw accepts an agent-authenticated
+// approval request it is one line in needsOneClawAgent — but nothing in this
+// app should tell a user that approvals reach their phone, because they do
+// not. See docs/oneclaw-bridge.md and the "nobody answered" remedy in
+// internal/remedy, both of which used to say otherwise.
 func (a *RunQueueApprover) mirror(localID, summary, riskTier string, done <-chan struct{}) {
 	agentID := a.AgentID
 	if a.AgentIDFn != nil {

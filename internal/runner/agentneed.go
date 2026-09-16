@@ -37,8 +37,20 @@ var nativeProviders = map[string]bool{
 //   - a live (non-demo) service with no native client here, which reaches the
 //     provider through 1Claw's generic binding, addressed by agent id.
 //
-// Approvals are not on that list: BuildDeps always installs the local
-// RunQueueApprover, so an `approve` step never touches 1Claw's own queue.
+// Approvals are not on that list, and the reason is not the one this comment
+// used to give. It said "BuildDeps always installs the local
+// RunQueueApprover, so an `approve` step never touches 1Claw's own queue",
+// which is untrue: the approver does try to mirror the approval into 1Claw
+// so it can be answered from a phone. It simply never succeeds. mirror()
+// needs an agent id, no approving bot in the catalog qualifies above, and so
+// across 108 runs on this machine that opened an approval, not one logged
+// either "also asked on 1Claw" or "could not also ask on 1Claw".
+//
+// Giving approving bots an agent was tried, and the path is blocked further
+// up regardless — see RunQueueApprover.mirror for the two credentials and
+// the two refusals. So they stay off this list: provisioning four more
+// agents to feed a call that cannot succeed would cost real slots for a
+// logged error per approval.
 func needsOneClawAgent(nb *schema.Nanobot) bool {
 	for _, s := range nb.Spec.Steps {
 		if s.Type == "ai.generate" || strings.HasPrefix(s.Type, "memory.") {
