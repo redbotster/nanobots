@@ -1,5 +1,7 @@
 # Nanobots
 
+[![CI](https://github.com/redbotster/nanobots/actions/workflows/ci.yml/badge.svg)](https://github.com/redbotster/nanobots/actions/workflows/ci.yml)
+
 *Legos for AI. Snap micro-agents together, run them anywhere, keep the keys in 1Claw.*
 
 Nanobots is a local-first system for composing single-job AI/deterministic containers ("nanobots") into typed, DAG-shaped workflows ("nanoswarms"), with secrets, OAuth, LLM routing, and guardrails delegated to [1Claw](https://docs.1claw.co).
