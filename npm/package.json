@@ -1,0 +1,10 @@
+{
+  "name": "nanobots",
+  "version": "0.0.0-dev",
+  "description": "Legos for AI, compose micro-agents into workflows that run on your own machine",
+  "license": "SEE LICENSE IN https://github.com/redbotster/nanobots/blob/main/LICENSE.md",
+  "repository": { "type": "git", "url": "https://github.com/redbotster/nanobots.git" },
+  "bin": { "nanobots": "bin/nanobots.js" },
+  "files": ["bin/nanobots.js"],
+  "engines": { "node": ">=18" }
+}

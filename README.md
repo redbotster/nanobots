@@ -100,26 +100,44 @@ The toggle only changes which entry points are visible. It never changes how a s
 
 ## Quick start
 
-Requires Go 1.25+, Node 22+, and Docker running (for real bot execution — everything else works without it).
+One binary. It serves the WebUI and the API on one port, so there is nothing
+to run in a second terminal.
 
 ```
-go build ./...
-go test ./...
-
-# type-check any example swarm and print its run DAG
-go run ./cmd/nanobots plan -f examples/swarms/daily-email-recap.yaml
-
-# run it for real (needs Docker running)
-go run ./cmd/nanobots run -f examples/swarms/daily-email-recap.yaml
-
-# or drive it from the WebUI instead — visit http://localhost:5173
-go run ./cmd/nanobots up &
-cd web && npm install && npm run dev
+git clone https://github.com/redbotster/nanobots && cd nanobots
+make build          # WebUI + binary. Needs Go 1.25+ and Node 22+
+./bin/nanobots up
 ```
 
-`nanobotd` reads your 1Claw Human API key from `$NANOBOTS_ENV_FILE` (default `~/.secrets/nanobots.env`, `ONECLAW_API_KEY=...`) at startup only — it's never written into this repo, logged, or handed to a bot container (see `docs/oneclaw-bridge.md`). Without *any* model configured, every bot runs in demo mode against its fixtures. 1Claw is the best option — it's the only one that bills against a per-agent budget, redacts PII and secrets, and screens for injection — but it is no longer the only one: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` (including any chat-completions gateway, via `OPENAI_BASE_URL`) or `GEMINI_API_KEY` each work on their own, for bots and for the composer alike (`docs/llm.md`).
+Then open <http://127.0.0.1:7474>.
 
-Once the WebUI is running, in **basic mode** (the default): type what you want automated into the box at the top of Swarms, review the draft that opens, and hit Save — or just pick one of the ready-made swarms in the gallery below it and click **Run**. Flip the header toggle to **Advanced** for the bot library and the manual canvas builder. **Settings** connects a real account — click **Connect** on Google (real OAuth consent screen) or paste a Slack/GitHub/Stripe/HubSpot token directly; every credential lands in a 1Claw vault secret, never on this machine's disk, and connecting an account never changes a bot's behavior by itself — each bot ships on `connection: demo` until you deliberately switch a specific service to a live connection in its `nanobot.yaml`.
+No 1Claw account, no model key and no OAuth app are needed to start: every
+bot ships on `connection: demo` and answers from this repo's own example
+inbox, invoices and files, so the first run does real work against fake data
+and touches nothing of yours. Docker does need to be running — every bot
+executes in its own container today.
+
+Once there is a tagged release, this becomes `brew install
+redbotster/tap/nanobots` or `npx nanobots`; the packaging is in
+`.goreleaser.yaml` and `npm/`, and neither is published yet.
+
+`make build` is `npm run build` plus `go build`. A plain `go build` also
+works and is what you want while developing — it produces a binary with no
+UI inside it, which says so when you open it, and you run `cd web && npm run
+dev` alongside for hot reload.
+
+Other things the CLI does:
+
+```
+nanobots plan -f examples/swarms/daily-email-recap.yaml   # type-check a swarm, print its DAG
+nanobots run  -f examples/swarms/daily-email-recap.yaml   # run it, printing the log
+nanobots conform bots                                     # check every bot honours the contract
+nanobots version
+```
+
+`nanobots` reads your 1Claw Human API key from `$NANOBOTS_ENV_FILE` (default `~/.secrets/nanobots.env`, `ONECLAW_API_KEY=...`) at startup only — it's never written into this repo, logged, or handed to a bot container (see `docs/oneclaw-bridge.md`). Without *any* model configured, every bot runs in demo mode against its fixtures. 1Claw is the best option — it's the only one that bills against a per-agent budget, redacts PII and secrets, and screens for injection — but it is no longer the only one: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` (including any chat-completions gateway, via `OPENAI_BASE_URL`) or `GEMINI_API_KEY` each work on their own, for bots and for the composer alike (`docs/llm.md`).
+
+Once it's running, in **basic mode** (the default): type what you want automated into the box at the top of Swarms, review the draft that opens, and hit Save — or just pick one of the ready-made swarms in the gallery below it and click **Run**. Flip the header toggle to **Advanced** for the bot library and the manual canvas builder. **Settings** connects a real account — click **Connect** on Google (real OAuth consent screen) or paste a Slack/GitHub/Stripe/HubSpot token directly; every credential lands in a 1Claw vault secret, never on this machine's disk, and connecting an account never changes a bot's behavior by itself — each bot ships on `connection: demo` until you deliberately switch a specific service to a live connection in its `nanobot.yaml`.
 
 ## What a bot and a swarm actually look like
 
@@ -436,6 +454,7 @@ Being explicit about this matters more here than in most projects, because so mu
 
 | Real | Simulated / not yet |
 |---|---|
+| One binary serves the WebUI and the API on a single port (`make build && nanobots up`) | Published packages: the GoReleaser config and the npx shim exist and validate, but no release is tagged, so `brew install` and `npx nanobots` do not work yet |
 | 1Claw Human API, Shroud, vault secrets, agent memory, approval requests | 1Claw's execution-intent bindings (`internal/oneclaw.Execute`) assume a binding already exists on the agent — provisioning one from a `nanobot.yaml` service isn't wired up |
 | Docker execution: non-root, read-only fs, real container-to-container I/O wiring | Guardrails' `network_egress` allowlist is reported per bot, not enforced as an actual container network policy |
 | The step interpreter, for every harness type, incl. `web.fetch` and PDF/PNG rendering | The *dynamic agent loop* a harness name like `openclaw` implies — every harness today runs the same fixed, pre-written `spec.steps` list, not an LLM deciding what to do (`docs/harnesses.md`) |
@@ -496,7 +515,7 @@ Per the project's own working style, expensive verification is a single consolid
 go build ./... && go vet ./... && go test ./...
 ```
 
-654 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
+657 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
 - `internal/contract`'s `TestRunConformanceOnLaunchBots` — auto-discovers and conformance-tests all 39 bots under `bots/` against their own fixtures, no Docker or network.
 - `internal/planner`'s `TestPlanAllExampleSwarms` — auto-discovers and type-checks all 16 swarms under `examples/swarms/`.
 - httptest-mocked 1Claw/Google/Slack/GitHub/Stripe/HubSpot/X/LinkedIn API clients, built against each provider's real, documented endpoint shapes (verified against `@1claw/openapi-spec` and each provider's own docs, not guessed).

@@ -17,6 +17,10 @@ coverage.*
 # Node / web
 web/node_modules/
 web/dist/
+# Copied from web/dist by `make ui`; only .gitkeep is committed, so a
+# fresh clone still compiles the //go:embed in internal/webui.
+internal/webui/dist/*
+!internal/webui/dist/.gitkeep
 web/*.tsbuildinfo
 node_modules/
 npm-debug.log*

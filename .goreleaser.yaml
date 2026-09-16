@@ -1,0 +1,64 @@
+# Release builds for nanobots.
+#
+# The UI is built first and copied into internal/webui/dist, so every
+# published binary serves the WebUI itself. A release without that step is a
+# binary that boots to a "UI not built" page, which is why it is a `before`
+# hook rather than something a release engineer has to remember.
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - sh -c "cd web && npm ci --no-audit --no-fund && npm run build"
+    - sh -c "rm -rf internal/webui/dist && mkdir -p internal/webui/dist && cp -R web/dist/. internal/webui/dist/"
+
+builds:
+  - id: nanobots
+    main: ./cmd/nanobots
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.Version={{.Version}}
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files: [README.md, LICENSE.md, docs/*]
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    # The commit subjects in this repo lead with the user-visible change, so
+    # the generated notes are readable as-is. Only the housekeeping is cut.
+    exclude: ["^test:", "^chore:", "^ci:"]
+
+homebrew_casks:
+  - name: nanobots
+    repository:
+      owner: redbotster
+      name: homebrew-tap
+    homepage: https://github.com/redbotster/nanobots
+    description: Legos for AI, compose micro-agents into workflows that run on your own machine
+    caveats: |
+      Start it with:
+        nanobots up
+
+      Docker is optional. Bots that need a headless browser need it; the
+      rest run without.
+    hooks:
+      post:
+        # The binary is not notarised, so macOS quarantines it and Gatekeeper
+        # refuses to run it. Stripping the attribute is what GoReleaser's own
+        # cask docs recommend until there is a signing identity to use.
+        install: |
+          if system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+            system_command "/usr/bin/xattr",
+                           args: ["-dr", "com.apple.quarantine", "#{staged_path}/nanobots"]
+          end

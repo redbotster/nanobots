@@ -18,6 +18,7 @@ import (
 	"github.com/redbotster/nanobots/internal/runner"
 	"github.com/redbotster/nanobots/internal/scheduler"
 	"github.com/redbotster/nanobots/internal/step"
+	"github.com/redbotster/nanobots/internal/webui"
 	"github.com/redbotster/nanobots/internal/wiring"
 )
 
@@ -147,6 +148,7 @@ func Run(opts Options) error {
 		Shroud:       shroudProxy,
 		Webhook:      webhookTrigger,
 		Roles:        roleStore,
+		UI:           webui.Handler(),
 	}
 
 	// Closes a real gap this build has had since its first commit: cron
@@ -167,7 +169,15 @@ func Run(opts Options) error {
 	}
 	go sched.Run(context.Background())
 
-	log.Printf("nanobotd listening on http://%s (bots: %s)", opts.Addr, opts.BotsDir)
+	if webui.Available() {
+		log.Printf("nanobots listening on http://%s — open that in a browser (bots: %s)", opts.Addr, opts.BotsDir)
+	} else {
+		// Said plainly rather than left for someone to discover as a blank
+		// page: a binary built without `make ui` is the normal development
+		// case, not a broken install.
+		log.Printf("nanobotd listening on http://%s (API only, no UI in this binary; run `cd web && npm run dev`) (bots: %s)",
+			opts.Addr, opts.BotsDir)
+	}
 	return http.ListenAndServe(opts.Addr, srv.Handler())
 }
 

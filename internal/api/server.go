@@ -89,6 +89,11 @@ type Server struct {
 	// nil leaves the route returning 404.
 	Webhook *WebhookTrigger
 
+	// UI serves the built WebUI on any path the API does not claim, so
+	// `nanobots up` is one command and one port. nil leaves "/" a 404,
+	// which is what the daemon binary and every test get.
+	UI http.Handler
+
 	// connCache holds the last /api/connections answer. Zero value is a
 	// cold cache, so nothing has to construct it. See connections.go for
 	// why an eight-round-trip read is worth caching at all.
@@ -175,6 +180,17 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /internal/steps/approve", s.handleStepApprove)
 	mux.HandleFunc("POST /internal/steps/notify", s.handleStepNotify)
 	mux.HandleFunc("POST /internal/steps/web_fetch", s.handleStepWebFetch)
+
+	// The WebUI, when one was built into this binary, on everything the API
+	// did not claim. Registered last and on "/" so it cannot shadow a route:
+	// http.ServeMux matches the most specific pattern, and every handler
+	// above is more specific than "/".
+	//
+	// nil UI means the caller did not wire one — cmd/nanobotd, or a test —
+	// and "/" stays unregistered so an unknown path 404s as it always did.
+	if s.UI != nil {
+		mux.Handle("/", s.UI)
+	}
 
 	return withCORS(mux)
 }
