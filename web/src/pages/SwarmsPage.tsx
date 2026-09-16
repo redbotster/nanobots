@@ -316,18 +316,26 @@ function ScheduleLine({ swarm }: { swarm: SwarmSummary }) {
   }
   if (!swarm.schedule) return null;
   return (
+    // The streak sits outside the truncating span deliberately. When the
+    // whole line truncated together, the failure warning was the first
+    // thing cut — it is last in the line — so a narrow card showed
+    // "Mondays at 8:00 AM · in 5d · 2 failed in ..." and dropped the only
+    // part that was asking for attention. A warning outranks a schedule you
+    // can read on the swarm's own page.
     <div
-      className="mt-2.5 truncate text-[11px] text-muted"
+      className="mt-2.5 flex items-baseline gap-1 text-[11px] text-muted"
       title={`${swarm.schedule_expr}${swarm.timezone ? ` (${swarm.timezone})` : ""}`}
     >
-      ⏰ {swarm.schedule}
-      {swarm.next_run_at && (
-        <span className="text-muted/70"> · {untilTime(swarm.next_run_at)}</span>
-      )}
+      <span className="truncate">
+        ⏰ {swarm.schedule}
+        {swarm.next_run_at && (
+          <span className="text-muted/70"> · {untilTime(swarm.next_run_at)}</span>
+        )}
+      </span>
       {/* Said on the way down, not only once it has stopped — two failures
           in a row is worth knowing before the fifth. */}
       {(swarm.failure_streak ?? 0) > 1 && (
-        <span className="text-warn"> · {swarm.failure_streak} failed in a row</span>
+        <span className="shrink-0 text-warn">· {swarm.failure_streak} failed in a row</span>
       )}
     </div>
   );
@@ -463,14 +471,17 @@ export function SwarmsPage({
             Saved graphs of bots snapped together — pick one to see it run, live.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        {/* w-full below sm so the filter and the buttons get their own line
+            rather than sharing one with the heading — three controls in a
+            375px row is what made the button labels fold. */}
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           {(swarms?.length ?? 0) > SEARCH_THRESHOLD && (
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Filter swarms"
               aria-label="Filter swarms by name or description"
-              className="w-40 rounded border border-edge-strong bg-void px-2.5 py-1.5 text-xs text-ink placeholder:text-muted focus:border-tron focus:outline-none sm:w-52"
+              className="w-full min-w-0 flex-1 rounded border border-edge-strong bg-void px-2.5 py-1.5 text-xs text-ink placeholder:text-muted focus:border-tron focus:outline-none sm:w-52 sm:flex-none"
             />
           )}
           <ImportSwarmButton onClick={() => setMode({ kind: "import" })} />
