@@ -73,6 +73,21 @@ type SwarmSummary struct {
 	// StreakError is the most recent failure's message — the one worth
 	// showing, since a streak is nearly always the same fact repeated.
 	StreakError string `json:"streak_error,omitempty"`
+
+	// NeedsApproval is set when one of this swarm's bots stops to ask a
+	// human before it acts.
+	//
+	// Harmless on its own, and the whole point of the approval feature. It
+	// matters next to a schedule: a swarm that fires at 7am and then waits
+	// for a person only works if a person is there, and when nobody is, the
+	// run holds a container until the bot's max_runtime_secs and dies. That
+	// combination is 7 of the 16 catalog swarms, and it is the single
+	// largest source of failed runs on the machine this was built on — 54
+	// of them, 27 hours of container time.
+	//
+	// Nothing in the UI said so. A card showed "⏰ Weekdays at 7:00 AM" and
+	// left you to discover the rest from a run that failed overnight.
+	NeedsApproval bool `json:"needs_approval,omitempty"`
 }
 
 // describeSchedule fills in the schedule fields from a swarm's trigger,
@@ -132,13 +147,19 @@ func lastRunFor(runs []*runner.Run, swarmName string) *runner.Run {
 	return latest
 }
 
-// countLiveServices resolves every bot a swarm references (the same
-// planner.Resolve every real plan/save already goes through) and counts
-// how many of their declared services are switched off connection: demo.
-func countLiveServices(sw *schema.Nanoswarm, botsDir string) (live, total int) {
+// inspectSwarm resolves every bot a swarm references (the same
+// planner.Resolve every real plan/save already goes through) and reports
+// two things about the set: how many of their declared services are
+// switched off connection: demo, and whether any of them stops to ask a
+// human.
+//
+// Both come from one Resolve because Resolve is the expensive part, and
+// asking it twice for two facts about the same bots would be the kind of
+// waste this file has been trimmed for before.
+func inspectSwarm(sw *schema.Nanoswarm, botsDir string) (live, total int, needsApproval bool) {
 	resolved, err := planner.Resolve(sw, botsDir)
 	if err != nil {
-		return 0, 0
+		return 0, 0, false
 	}
 	for _, b := range resolved.Bots {
 		for _, svc := range b.Nanobot.Spec.Services {
@@ -147,8 +168,13 @@ func countLiveServices(sw *schema.Nanoswarm, botsDir string) (live, total int) {
 				live++
 			}
 		}
+		for _, st := range b.Nanobot.Spec.Steps {
+			if st.Type == "approve" {
+				needsApproval = true
+			}
+		}
 	}
-	return live, total
+	return live, total, needsApproval
 }
 
 // handleListSwarms scans examples/swarms/*.yaml — there's no swarm registry
@@ -180,10 +206,10 @@ func (s *Server) handleListSwarms(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			relPath = path
 		}
-		live, total := countLiveServices(sw, s.BotsDir)
+		live, total, needsApproval := inspectSwarm(sw, s.BotsDir)
 		summary := SwarmSummary{
 			Path: relPath, Name: sw.Metadata.Name, Description: sw.Metadata.Description,
-			ServicesLive: live, ServicesTotal: total,
+			ServicesLive: live, ServicesTotal: total, NeedsApproval: needsApproval,
 		}
 		describeSchedule(&summary, sw.Spec.Trigger, time.Now())
 		if last := lastRunFor(allRuns, sw.Metadata.Name); last != nil {

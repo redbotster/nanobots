@@ -267,7 +267,7 @@ function PausedNotice({ swarm, onResume }: { swarm: SwarmSummary; onResume: () =
   );
 }
 
-function ScheduleLine({ swarm }: { swarm: SwarmSummary }) {
+export function ScheduleLine({ swarm }: { swarm: SwarmSummary }) {
   // A paused schedule outranks everything else this line could say — the
   // card renders PausedNotice below instead, so this stays quiet.
   if (swarm.schedule_paused) return null;
@@ -321,6 +321,20 @@ function ScheduleLine({ swarm }: { swarm: SwarmSummary }) {
           <span className="text-muted/70"> · {untilTime(swarm.next_run_at)}</span>
         )}
       </span>
+      {/* A schedule plus an approval gate means this only works if someone
+          is there when it fires. Seven of the sixteen catalog swarms are in
+          that position and the card never said so — it showed a time and
+          left you to find out from a run that died overnight. Not styled as
+          a warning: it is how the swarm is built, and it is fine if you are
+          around. */}
+      {swarm.needs_approval && (
+        <span
+          className="shrink-0 text-muted/70"
+          title="This swarm pauses for your approval when it runs. A scheduled run that nobody answers stops at the bot's timeout, so it only completes if you're there to say yes."
+        >
+          · pauses for you
+        </span>
+      )}
       {/* Said on the way down, not only once it has stopped — two failures
           in a row is worth knowing before the fifth. */}
       {(swarm.failure_streak ?? 0) > 1 && (

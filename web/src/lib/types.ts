@@ -222,6 +222,9 @@ export interface SwarmSummary {
   /** Set when the cron expression can't be parsed — such a swarm never
    * fires, and used to say so only in a daemon log line nobody reads. */
   schedule_error?: string;
+  /** One of this swarm's bots stops to ask a human before it acts. Only
+   * really interesting next to a schedule — see the card's schedule line. */
+  needs_approval?: boolean;
   /** "cron" | "event" | "webhook" | "manual" — the declared trigger. */
   trigger_type?: string;
   /** The event this swarm declares but that nothing in this build fires,

@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { LastRunLine } from "./SwarmsPage";
+import { LastRunLine, ScheduleLine } from "./SwarmsPage";
 import { swarmMatches } from "../lib/swarmFilter";
 import type { SwarmSummary } from "../lib/types";
 
@@ -110,5 +110,38 @@ describe("filtering the swarm list", () => {
 
   it("returns nothing rather than everything when nothing matches", () => {
     expect(matching("nonexistent")).toEqual([]);
+  });
+});
+
+describe("a swarm that pauses for you", () => {
+  // Seven of the sixteen catalog swarms fire on a timer and then wait for a
+  // human. That combination is the largest source of failed runs on the
+  // machine this was built on — 54 of them — and the card said nothing: it
+  // showed a time and left you to find out from a run that died overnight.
+  it("says so on the schedule line", () => {
+    render(
+      <ScheduleLine
+        swarm={swarm({
+          schedule: "Weekdays at 7:00 AM",
+          schedule_expr: "0 7 * * 1-5",
+          trigger_type: "cron",
+          needs_approval: true,
+        })}
+      />,
+    );
+    expect(screen.getByText(/pauses for you/i)).toBeTruthy();
+  });
+
+  it("stays quiet for a swarm that runs straight through", () => {
+    render(
+      <ScheduleLine
+        swarm={swarm({
+          schedule: "Weekdays at 7:00 AM",
+          schedule_expr: "0 7 * * 1-5",
+          trigger_type: "cron",
+        })}
+      />,
+    );
+    expect(screen.queryByText(/pauses for you/i)).toBeNull();
   });
 });

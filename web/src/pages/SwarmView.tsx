@@ -143,6 +143,18 @@ export function SwarmView({
                 <span className="ml-1.5 text-muted/60">{swarm.schedule_expr}</span>
               </p>
             )}
+            {/* The card only has room to flag this; here there is room to
+                say what it costs. Worth spelling out because the failure it
+                predicts is the most common one in this app: a scheduled run
+                that asks a sleeping human dies at the bot's timeout, and the
+                run log calls it a container timeout unless you know why. */}
+            {swarm.needs_approval && swarm.schedule && (
+              <p className="mt-1.5 text-[12px] text-muted">
+                ⏸ It pauses for your approval part-way through. On a schedule that only finishes if
+                you are there to answer — otherwise the run waits, then stops at the bot's own time
+                limit.
+              </p>
+            )}
             {swarm.trigger_type === "webhook" && <WebhookPanel swarm={swarm} />}
             {swarm.schedule_error && (
               <p className="mt-1.5 text-[12px] text-danger">
