@@ -1,0 +1,92 @@
+# The house verification, run on every push and pull request.
+#
+# It is deliberately the same commands CLAUDE.md tells a human to run, in the
+# same order, rather than a CI-flavoured variant of them. A pipeline that
+# checks something subtly different from what you run locally is a pipeline
+# that goes green on a broken tree, or red on a good one, and either teaches
+# people to stop reading it.
+#
+# Nothing here needs Docker, a 1Claw account, or a model provider. The tests
+# that do are gated behind NANOBOTS_LIVE_TEST=1 and skip without it, which is
+# what makes this repo's suite runnable by someone who has just cloned it.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to the same branch makes the first run pointless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      # -race because several of the things this repo got wrong were
+      # concurrency bugs found only by the detector: a run's status read
+      # without its mutex, a shared cache written from eight goroutines.
+      - name: Test
+        run: go test ./... -race
+
+      # gofmt is also asserted by internal/contract's own test, so this is
+      # belt and braces — but it fails in one line instead of inside a test
+      # log, which is the difference between fixing it and scrolling for it.
+      - name: Formatted
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt would change these files — run 'gofmt -w .':"
+            echo "$unformatted"
+            exit 1
+          fi
+
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # npm ci, not npm install: it installs exactly the lockfile and fails
+      # if package.json and the lock disagree, which is the whole point of
+      # having committed one.
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc -b
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Formatted
+        run: npm run format:check
+
+      - name: Test
+        run: npm run test
