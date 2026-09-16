@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"sort"
 
+	"github.com/redbotster/nanobots/internal/remedy"
 	"github.com/redbotster/nanobots/internal/runner"
 )
 
@@ -127,7 +128,8 @@ func runToJSON(run *runner.Run) map[string]any {
 	approvals := run.PendingApprovals()
 	pending := make([]*runner.PendingApproval, len(approvals))
 	copy(pending, approvals)
-	return map[string]any{
+	errMsg := run.GetError()
+	out := map[string]any{
 		"id":           run.ID,
 		"swarm_name":   run.SwarmName,
 		"status":       run.GetStatus(),
@@ -146,12 +148,21 @@ func runToJSON(run *runner.Run) map[string]any {
 		// Bots that failed while the swarm was told to continue without
 		// them. A run carrying one of these is a success with a hole in
 		// it, and the UI renders it as a warning rather than plain green.
-		"tolerated": run.GetTolerated(),
+		// Each carries its own remedy for the same reason the run does.
+		"tolerated": toleratedWithRemedies(run.GetTolerated()),
 		// Services this run reached through fixtures rather than a real
 		// account. A run made of demo data succeeds and looks exactly like
 		// a real one, and that is the default.
 		"demo_services": run.DemoServices(),
 	}
+	// What to do about the failure, when there is a known answer. Computed
+	// here rather than in the browser so the CLI shows the same thing from
+	// the same table — see internal/remedy. Absent on a run that did not
+	// fail, and on a failure nobody has written a remedy for.
+	if r := remedy.For(errMsg); r != nil {
+		out["remedy"] = r
+	}
+	return out
 }
 
 // handleCancelRun stops a run that is still going.
@@ -175,4 +186,27 @@ func (s *Server) handleCancelRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": run.ID})
+}
+
+// toleratedFailure is a tolerated failure plus what to do about it.
+//
+// A swarm told to continue past a broken bot still failed at that bot, and
+// the fix is as knowable there as it is for a run that stopped. The web used
+// to compute this itself; it comes from internal/remedy now so the CLI's
+// "continued past a failure in X" can grow the same advice without a second
+// table to keep in step.
+type toleratedFailure struct {
+	Bot    string         `json:"bot"`
+	Error  string         `json:"error"`
+	Remedy *remedy.Remedy `json:"remedy,omitempty"`
+}
+
+func toleratedWithRemedies(in []runner.ToleratedFailure) []toleratedFailure {
+	// Non-nil so the field marshals as [] rather than null — the UI maps
+	// over it without a guard, and a null there was a crash waiting.
+	out := make([]toleratedFailure, 0, len(in))
+	for _, t := range in {
+		out = append(out, toleratedFailure{Bot: t.Bot, Error: t.Error, Remedy: remedy.For(t.Error)})
+	}
+	return out
 }

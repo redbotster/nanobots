@@ -282,13 +282,13 @@ func (s *Server) handleConnectLinkedInStart(w http.ResponseWriter, r *http.Reque
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-	s.connCache.invalidate()
+		s.connCache.invalidate()
 	} else {
 		if err := s.OneClaw.PutSecret(vault.ID, "linkedin/access_token", tr.AccessToken); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
-	s.connCache.invalidate()
+		s.connCache.invalidate()
 	}
 	writeJSON(w, http.StatusOK, connectionStatus{Service: "linkedin", Connected: true})
 }

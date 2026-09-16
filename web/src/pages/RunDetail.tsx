@@ -6,7 +6,8 @@ import { Tabs } from "../components/Tabs";
 import { RunLog } from "../components/RunLog";
 import { RunResults } from "../components/RunResults";
 import { StatusDot } from "../components/StatusDot";
-import { parseRunError, runRemedy } from "../lib/runError";
+import { parseRunError } from "../lib/runError";
+import type { RunRemedy } from "../lib/types";
 import type { ToleratedFailure } from "../lib/types";
 import { PinFixtures } from "../components/PinFixtures";
 
@@ -23,14 +24,19 @@ const tone: Record<string, "ok" | "warn" | "danger" | "muted"> = {
  * worth keeping, but it isn't what you're looking for when a run went red. */
 function FailureBanner({
   error,
+  // Computed by the server (internal/remedy) rather than here, so `nanobots
+  // run` in a terminal gets the same advice from the same table. The browser
+  // used to own this list, which is why the CLI printed a bare error for a
+  // locked vault or a missing model and left you to work it out.
+  remedy,
   onOpenSettings,
 }: {
   error: string;
+  remedy?: RunRemedy | null;
   onOpenSettings?: () => void;
 }) {
   const [showRaw, setShowRaw] = useState(false);
   const parts = parseRunError(error);
-  const remedy = runRemedy(error);
   if (!parts) return null;
   const hasMore = parts.message.trim() !== error.trim();
   return (
@@ -145,7 +151,7 @@ function ToleratedBanner({
       </p>
       {tolerated.map((t) => {
         const parts = parseRunError(t.error);
-        const remedy = runRemedy(t.error);
+        const remedy = t.remedy;
         return (
           <div key={t.bot} className="mt-2 border-t border-warn/20 pt-2">
             <span className="rounded border border-warn/30 px-1.5 py-0.5 text-[10px] text-warn/80">
@@ -286,7 +292,7 @@ export function RunDetail({
         {/* The backend has always sent this; nothing rendered it, so a failed
             run said "failed" and made you read the whole log to find out why. */}
         {run?.status === "failed" && run.error && !run.stopped_by_user && (
-          <FailureBanner error={run.error} onOpenSettings={onOpenSettings} />
+          <FailureBanner error={run.error} remedy={run.remedy} onOpenSettings={onOpenSettings} />
         )}
         {/* A run that finished with a hole in it. Rendered as a warning
             rather than left to the log, because the point of continuing

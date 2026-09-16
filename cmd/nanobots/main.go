@@ -24,6 +24,7 @@ import (
 	"github.com/redbotster/nanobots/internal/google"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/planner"
+	"github.com/redbotster/nanobots/internal/remedy"
 	"github.com/redbotster/nanobots/internal/roles"
 	"github.com/redbotster/nanobots/internal/runner"
 	"github.com/redbotster/nanobots/internal/schema"
@@ -557,6 +558,23 @@ func runRun(args []string) error {
 				}
 				if msg := run.GetError(); msg != "" {
 					fmt.Println("error:", msg)
+					// The WebUI has shown the fix for these since they
+					// existed; the CLI printed the bare error and left you
+					// to work it out. A locked vault, a missing model, an
+					// unconnected account all have a known one-sentence
+					// answer, and "a failure says what to do about it" is
+					// supposed to be true of this whole build, not just the
+					// half of it with a browser.
+					//
+					// The action is dropped on purpose — it names a WebUI
+					// page, and "click Settings" means nothing here.
+					if r := remedy.For(msg); r != nil {
+						fmt.Println()
+						fmt.Println(" ", r.Advice)
+						if r.Docs != "" {
+							fmt.Println("  see", r.Docs)
+						}
+					}
 					os.Exit(1)
 				}
 				return nil

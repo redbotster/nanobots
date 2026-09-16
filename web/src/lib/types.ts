@@ -144,6 +144,8 @@ export interface Run extends RunCore {
   pending_approvals: PendingApproval[] | null;
   outputs: Record<string, Record<string, unknown>>;
   tolerated?: ToleratedFailure[];
+  /** What to do about `error`, when the server recognises the failure. */
+  remedy?: RunRemedy | null;
   /** "<bot>.<service>" pairs this run reached through fixtures rather than
    * a real account. A run made of demo data succeeds and looks exactly like
    * a real one — and that is the default, since every bot ships on
@@ -272,6 +274,24 @@ export interface DraftBot {
 export interface ToleratedFailure {
   bot: string;
   error: string;
+  remedy?: RunRemedy | null;
+}
+
+/** What to do about a failure, computed by the server.
+ *
+ * This list used to live in web/src/lib/runError.ts, which meant `nanobots
+ * run` in a terminal printed a bare error for every one of them — a locked
+ * vault, a missing model, an unconnected account — while the browser showed
+ * the fix. It comes from internal/remedy now, so both callers read one
+ * table. */
+export interface RunRemedy {
+  /** One sentence: what to do about it. */
+  advice: string;
+  /** A Settings-level fix, when there is one. The CLI ignores it: "click
+   * Settings" means nothing in a terminal. */
+  action?: { label: string; page: "settings" };
+  /** Where to read more, when the fix isn't a button. */
+  docs?: string;
 }
 
 /** One connection in a swarm draft — internal/api/builder.go's builderSnap. */
