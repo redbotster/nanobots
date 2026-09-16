@@ -65,8 +65,13 @@ cd web && npx tsc -b && npm run test
 Some claims check themselves, in `internal/contract` — the README's test
 count, bot count and swarm count; that every doc is linked from the README;
 that `docs/bot-contract.md` names every step type; that `schemas/*.json`
-match the Go types. If you add a doc or a test, they will tell you. Fix the
-claim, don't weaken the test.
+match the Go types; that every Go file is gofmt-clean. If you add a doc or a
+test, they will tell you. Fix the claim, don't weaken the test.
+
+That last one is there because unformatted Go builds, vets and tests clean:
+two mis-indented lines from a scripted edit survived a full verification
+pass and several commits before being spotted by eye. Anything the four
+commands above cannot see is worth making into a test rather than a habit.
 
 ## Comments say why, with the evidence
 
