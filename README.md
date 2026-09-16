@@ -121,6 +121,109 @@ cd web && npm install && npm run dev
 
 Once the WebUI is running, in **basic mode** (the default): type what you want automated into the box at the top of Swarms, review the draft that opens, and hit Save — or just pick one of the ready-made swarms in the gallery below it and click **Run**. Flip the header toggle to **Advanced** for the bot library and the manual canvas builder. **Settings** connects a real account — click **Connect** on Google (real OAuth consent screen) or paste a Slack/GitHub/Stripe/HubSpot token directly; every credential lands in a 1Claw vault secret, never on this machine's disk, and connecting an account never changes a bot's behavior by itself — each bot ships on `connection: demo` until you deliberately switch a specific service to a live connection in its `nanobot.yaml`.
 
+## What a bot and a swarm actually look like
+
+Both are YAML you can read. These two are real files in this repo, not
+illustrations — `internal/contract`'s tests fail if they drift from what is
+quoted here.
+
+A **nanobot** declares typed ports and a fixed list of steps. Nothing else
+in the system needs to know how it works:
+
+```yaml
+  ports:
+    inputs:
+      - name: repo
+        type: string
+        required: true
+      - name: max_issues
+        type: string
+        default: "10"
+      - name: instructions
+        type: string
+        required: false
+        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
+        default: "Lead with anything blocking a release. Group by area, not by date."
+    outputs:
+      - name: digest
+        type: string
+
+  steps:
+    - name: fetch
+      type: service.call
+      service: github
+      op: issues.list
+      params: { repo: "{{inputs.repo}}", max: "{{inputs.max_issues}}" }
+    - name: summarise
+      type: ai.generate
+      prompt_file: ./prompts/digest.md
+      inputs: { issues: "{{steps.fetch.output}}", instructions: "{{inputs.instructions}}" }
+      outputs:
+        digest: "{{steps.summarise.output.digest}}"
+```
+
+That is `bots/github-issues-digest/nanobot.yaml`. `service.call` and
+`ai.generate` are callbacks to `nanobotd`, so the container never sees a
+GitHub token or a model key.
+
+A **nanoswarm** says which bots to run and how to wire them. A `snap`
+connects one bot's output port to another's input port, and the planner
+refuses the swarm if the types do not match:
+
+```yaml
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanoswarm
+metadata:
+  name: github-digest-to-slack
+  description: Every weekday morning, summarise a repo's newest open issues and post the digest to Slack.
+  owner: me@example.com
+
+spec:
+  defaults:
+    model: { provider: anthropic, name: claude-sonnet-4-6 }
+    guardrails:
+      pii: allow
+      injection_threshold: 0.7
+      daily_budget_usd: 5
+    resources: { preset: small }
+
+  vars:
+    repo: "redbotster/nanobots"
+    notify_channel: "slack:#eng"
+
+  trigger:
+    type: cron
+    expr: "0 8 * * 1-5"
+    timezone: America/Chicago
+
+  bots:
+    - id: digest
+      use: github-issues-digest@0.1.0
+      inputs:
+        repo: "{{vars.repo}}"
+        max_issues: "10"
+    - id: notifier
+      use: notify@0.1.0
+      inputs:
+        channel: "{{vars.notify_channel}}"
+      # A notification is the last thing this swarm does and nothing
+      # reads it. Losing it should not fail a run whose real work already
+      # succeeded — see docs/error-policy.md.
+      on_error: continue
+
+  snaps:
+    - from: digest.digest
+      to: notifier.message
+
+  deploy:
+    target: local
+```
+
+That is `examples/swarms/github-digest-to-slack.yaml`. Run it with
+`nanobots run -f examples/swarms/github-digest-to-slack.yaml`, or open it on
+the canvas. `on_error: continue` is why a failed Slack post leaves the
+digest itself intact — see `docs/error-policy.md`.
+
 ## Setup: going from demo data to real accounts
 
 Everything below is optional. With nothing configured at all, `nanobots up` runs
@@ -276,43 +379,38 @@ page shows a **DEMO DATA** banner naming them, and each log line says
 
 The design principle behind every layer here: a bot container never gets to touch a real credential, and a human never has to understand OAuth, an API key, or a redirect URI to connect a service. Concretely:
 
+```mermaid
+flowchart TB
+    swarm["<b>nanoswarm.yaml</b><br/>which bots, wired how"]
+    planner["<b>planner</b><br/>type-checks every snap, builds the DAG"]
+    runner["<b>runner</b><br/>one container per bot, in wave order"]
+    swarm --> planner --> runner
+
+    subgraph sandbox["Docker: non-root, read-only filesystem, no credentials inside"]
+        direction LR
+        a["<b>nanobot-agent</b><br/>runs bot A's spec.steps"]
+        b["<b>nanobot-agent</b><br/>runs bot B's spec.steps"]
+    end
+    runner --> a
+    runner --> b
+    a -- "output to input (a snap)" --> b
+
+    daemon["<b>nanobotd</b><br/>holds every credential<br/>REST + SSE on 127.0.0.1"]
+    a -. "service.call, ai.generate, approve...<br/>callback over a per-run token" .-> daemon
+    b -. " " .-> daemon
+
+    daemon --> fixtures["<b>demo fixtures</b><br/>connection: demo, the default"]
+    daemon --> oneclaw["<b>1Claw</b><br/>vault secrets, Shroud, approvals"]
+    daemon --> clients["<b>direct clients</b><br/>Gmail, Drive, Slack, GitHub,<br/>Stripe, HubSpot, X, LinkedIn"]
 ```
-nanoswarm.yaml  →  planner  →  runner  →  N Docker containers, wired together
-                                    │
-                                    ├─ each container runs cmd/nanobot-agent,
-                                    │  which executes the bot's spec.steps
-                                    │  against internal/step's universal
-                                    │  interpreter (same interpreter for every
-                                    │  harness type — see docs/harnesses.md)
-                                    │
-                                    └─ any step needing the outside world
-                                       (service.call, ai.generate, web.fetch,
-                                       memory, approve, notify) is a callback
-                                       to nanobotd over a random per-run
-                                       token — never a credential inside
-                                       the container
-                                             │
-                                             ▼
-                                    internal/step.LiveDeps
-                                       ├─ demo fixtures (connection: demo)
-                                       ├─ internal/oneclaw (1Claw Human API +
-                                       │  Shroud, for ai.generate/memory/
-                                       │  approvals/generic execute_intent)
-                                       ├─ internal/google (direct Gmail/
-                                       │  Drive/Sheets/Calendar, once
-                                       │  connection: oauth_native + a
-                                       │  connected account)
-                                       ├─ internal/x, internal/linkedin
-                                       │  (direct OAuth2+PKCE via the shared
-                                       │  internal/oauth2pkce core, once
-                                       │  connected)
-                                       ├─ internal/github, internal/slack,
-                                       │  internal/stripe, internal/hubspot
-                                       │  (direct REST, once connected)
-                                       └─ web.fetch (plain outbound GET +
-                                          text extraction — no vault, no
-                                          OAuth, nothing to connect)
-```
+
+Every step that needs the outside world — `service.call`, `ai.generate`,
+`web.fetch`, `memory.*`, `approve`, `notify` — is a callback to `nanobotd`
+rather than something the container does for itself. The container holds a
+random per-run token and nothing else; the credentials never leave the
+daemon. One interpreter (`internal/step`) runs every bot's steps whatever
+its harness, so a bot behaves identically on `bare`, `llm` and `openclaw` —
+see `docs/harnesses.md`.
 
 Every branch is reachable from the exact same `nanobot.yaml`, decided per-service by a single `connection:` field. A bot's steps never know or care which branch actually ran.
 
@@ -398,7 +496,7 @@ Per the project's own working style, expensive verification is a single consolid
 go build ./... && go vet ./... && go test ./...
 ```
 
-653 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
+654 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
 - `internal/contract`'s `TestRunConformanceOnLaunchBots` — auto-discovers and conformance-tests all 39 bots under `bots/` against their own fixtures, no Docker or network.
 - `internal/planner`'s `TestPlanAllExampleSwarms` — auto-discovers and type-checks all 16 swarms under `examples/swarms/`.
 - httptest-mocked 1Claw/Google/Slack/GitHub/Stripe/HubSpot/X/LinkedIn API clients, built against each provider's real, documented endpoint shapes (verified against `@1claw/openapi-spec` and each provider's own docs, not guessed).
