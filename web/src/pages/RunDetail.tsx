@@ -234,7 +234,20 @@ export function RunDetail({
   };
 
   return (
-    <div className="grid h-full grid-rows-[auto_1fr] p-5 sm:p-6">
+    // A scrolling column, not grid-rows-[auto_1fr].
+    //
+    // The banners above the tabs are all conditional — demo data, pinnable
+    // fixtures, a tolerated failure, a rerun error — and a run can carry
+    // several at once. In a grid whose first track is `auto` they take their
+    // full content height, the 1fr tab row collapses to nothing, and with no
+    // overflow anywhere the tab content is not merely below the fold but
+    // unreachable: on a 720px viewport a succeeded run with three banners
+    // left the Results panel 48 pixels tall and the page would not scroll.
+    //
+    // flex-1 keeps the tabs filling the space when there is some, min-h
+    // keeps them usable when there is not, and overflow-auto means anything
+    // that does not fit can still be scrolled to.
+    <div className="flex h-full flex-col overflow-auto p-5 sm:p-6">
       <div>
         <button
           onClick={onBack}
@@ -315,7 +328,7 @@ export function RunDetail({
         )}
       </div>
 
-      <div className="mt-4 min-h-0 rounded-lg border border-edge bg-panel/40">
+      <div className="mt-4 min-h-72 flex-1 rounded-lg border border-edge bg-panel/40">
         <Tabs
           defaultValue="log"
           tabs={[
