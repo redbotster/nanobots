@@ -429,3 +429,40 @@ func TestEnsureAgentExplainsTheCap(t *testing.T) {
 		t.Errorf("error still contains a raw JSON body: %q", msg)
 	}
 }
+
+// A Human key and an agent key are exchanged at different endpoints, and
+// sending one to the other's endpoint fails with a bare 401 that says
+// nothing useful. This is the seam that makes an agent able to open an
+// approval at all, so it is worth pinning which path each client uses.
+func TestAnAgentClientUsesTheAgentTokenEndpoint(t *testing.T) {
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		if strings.HasSuffix(r.URL.Path, "-token") {
+			fmt.Fprint(w, `{"access_token":"t","expires_in":3600}`)
+			return
+		}
+		fmt.Fprint(w, `{"vaults":[]}`)
+	}))
+	defer srv.Close()
+
+	human := NewClient("1ck_human")
+	human.BaseURL = srv.URL
+	if _, err := human.ListVaults(); err != nil {
+		t.Fatalf("human ListVaults: %v", err)
+	}
+
+	agent := NewAgentClient("ocv_agent")
+	agent.BaseURL = srv.URL
+	if _, err := agent.ListVaults(); err != nil {
+		t.Fatalf("agent ListVaults: %v", err)
+	}
+
+	joined := strings.Join(paths, " ")
+	if !strings.Contains(joined, "/v1/auth/api-key-token") {
+		t.Errorf("the human client did not use the human exchange: %v", paths)
+	}
+	if !strings.Contains(joined, "/v1/auth/agent-token") {
+		t.Errorf("the agent client did not use the agent exchange: %v", paths)
+	}
+}

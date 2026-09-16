@@ -65,6 +65,8 @@ func main() {
 		err = runUp(args)
 	case "run":
 		err = runRun(args)
+	case "init":
+		err = runInit(args)
 	case "connect":
 		err = runConnect(args)
 	case "service":
@@ -79,7 +81,7 @@ func main() {
 		err = runExport(args)
 	case "import":
 		err = runImport(args)
-	case "init", "add", "save", "publish", "compile":
+	case "add", "save", "publish", "compile":
 		fmt.Fprintf(os.Stderr, "nanobots %s: not implemented in this build yet\n", cmd)
 		os.Exit(1)
 	case "-v", "--version", "version":
@@ -143,6 +145,7 @@ commands:
   schema --out <dir>                      regenerate schemas/*.json from the Go types in internal/schema
   up [--addr host:port]                   start nanobotd (REST+SSE API) in the foreground
   run -f <swarm.yaml> [--bots <dir>]      run a swarm to completion, printing its log; prompts on approvals
+  init [--env <file>] [--no-browser]      first-run setup: 1Claw (or not), a model (or not), no text editor
   connect google                          link a real Gmail/Drive/Sheets account (one-time OAuth in your browser)
   service install|status|uninstall        keep nanobotd running across reboots, so cron triggers actually fire
   connectors list|register|install|status one place to register an OAuth app and wire it to a bot
@@ -151,7 +154,7 @@ commands:
   export -f <swarm.yaml> [-o <file>]      bundle a swarm to hand to someone else
   import <bundle.yaml>                    add a shared swarm to examples/swarms/
   version                                 print the build and Go toolchain
-  init, add, save, publish, compile       not implemented in this build yet`
+  add, save, publish, compile             not implemented in this build yet`
 
 func usage() { fmt.Fprintln(os.Stderr, usageText) }
 

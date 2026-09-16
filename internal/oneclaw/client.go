@@ -162,6 +162,10 @@ type Client struct {
 
 	apiKey string
 
+	// tokenPath is which exchange endpoint this client uses. Empty means
+	// the human one; NewAgentClient sets the agent one.
+	tokenPath string
+
 	mu          sync.Mutex
 	token       string
 	tokenExpiry time.Time
@@ -192,8 +196,38 @@ type tokenResponse struct {
 	ExpiresIn   int    `json:"expires_in"`
 }
 
-// ensureToken exchanges the API key for a bearer token via
-// POST /v1/auth/api-key-token, refreshing it a minute before expiry.
+// agentAuth switches the token exchange to the agent endpoint.
+//
+// Both endpoints take the same {"api_key": ...} body and return the same
+// {"access_token": ...}; only the path and the privilege differ. A Human
+// key (1ck_) goes to /v1/auth/api-key-token and can do everything. An agent
+// key (ocv_) goes to /v1/auth/agent-token and is deliberately narrower: it
+// reads and writes its own vault, requests approvals, and reads
+// automations, but the control plane refuses it — /v1/otel/* answers 403
+// "Control-plane token required", and installing a connector, creating a
+// binding or deciding an approval are all human-only.
+//
+// Worth having as one flag rather than a second client type: everything
+// else about talking to 1Claw is identical, and two near-copies of this
+// file would drift.
+const (
+	humanTokenPath = "/v1/auth/api-key-token"
+	agentTokenPath = "/v1/auth/agent-token"
+)
+
+// NewAgentClient authenticates as a 1Claw agent rather than as the human who
+// owns the account. Use it for anything an agent is allowed to do on its own
+// behalf — requesting an approval is the one that matters, since
+// /v1/approvals/request refuses a Human key with "Only agents can request
+// approvals".
+func NewAgentClient(agentKey string) *Client {
+	c := NewClient(agentKey)
+	c.tokenPath = agentTokenPath
+	return c
+}
+
+// ensureToken exchanges the API key for a bearer token, refreshing it a
+// minute before expiry.
 func (c *Client) ensureToken() (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -204,7 +238,11 @@ func (c *Client) ensureToken() (string, error) {
 		return "", fmt.Errorf("oneclaw: no API key configured")
 	}
 	body, _ := json.Marshal(map[string]string{"api_key": c.apiKey})
-	req, err := http.NewRequest(http.MethodPost, c.BaseURL+"/v1/auth/api-key-token", bytes.NewReader(body))
+	path := c.tokenPath
+	if path == "" {
+		path = humanTokenPath
+	}
+	req, err := http.NewRequest(http.MethodPost, c.BaseURL+path, bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}

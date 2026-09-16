@@ -6,7 +6,7 @@
 
 Nanobots is a local-first system for composing single-job AI/deterministic containers ("nanobots") into typed, DAG-shaped workflows ("nanoswarms"), with secrets, OAuth, LLM routing, and guardrails delegated to [1Claw](https://docs.1claw.co).
 
-The full product spec lives in [`context/NANOBOTS-BLUEPRINT.md`](context/NANOBOTS-BLUEPRINT.md) and [`context/NANOBOTS-CATALOG.md`](context/NANOBOTS-CATALOG.md). Treat those as the source of truth for the YAML schemas and the launch catalog; this README covers what's actually built, and is kept in sync with it — if something here contradicts the code, the code wins. `docs/` has one page per concept — contract, connections, harnesses, approvals, the 1Claw bridge, Browser Bridge, the foundry, the scheduler, run history, fan-out, memory, models, parallelism, error policy, supervisors, fixtures, connectors, sharing, webhooks — each ending in how to run it for real. [`docs/1claw-feature-requests.md`](docs/1claw-feature-requests.md) is the other direction: what nanobots needs from 1Claw that does not exist yet, what each gap blocks, and the workaround shipped meanwhile.
+The full product spec lives in [`context/NANOBOTS-BLUEPRINT.md`](context/NANOBOTS-BLUEPRINT.md) and [`context/NANOBOTS-CATALOG.md`](context/NANOBOTS-CATALOG.md). Treat those as the source of truth for the YAML schemas and the launch catalog; this README covers what's actually built, and is kept in sync with it — if something here contradicts the code, the code wins. `docs/` has one page per concept — contract, connections, harnesses, approvals, the 1Claw bridge, Browser Bridge, the foundry, the scheduler, run history, fan-out, memory, models, parallelism, error policy, supervisors, fixtures, connectors, sharing, webhooks, setup — each ending in how to run it for real. [`docs/1claw-feature-requests.md`](docs/1claw-feature-requests.md) is the other direction: what nanobots needs from 1Claw that does not exist yet, what each gap blocks, and the workaround shipped meanwhile.
 
 ## Why nanobots, not one big agent
 
@@ -106,12 +106,13 @@ to run in a second terminal.
 ```
 git clone https://github.com/redbotster/nanobots && cd nanobots
 make build          # WebUI + binary. Needs Go 1.25+ and Node 22+
+./bin/nanobots init # optional: 1Claw and a model, or skip both
 ./bin/nanobots up
 ```
 
 Then open <http://127.0.0.1:7474>.
 
-No 1Claw account, no model key and no OAuth app are needed to start: every
+[`docs/setup.md`](docs/setup.md) covers what `init` writes and the difference between the two kinds of 1Claw key. It is optional — skip it entirely and everything still runs. No 1Claw account, no model key and no OAuth app are needed to start: every
 bot ships on `connection: demo` and answers from this repo's own example
 inbox, invoices and files, so the first run does real work against fake data
 and touches nothing of yours. Docker does need to be running — every bot
@@ -515,7 +516,7 @@ Per the project's own working style, expensive verification is a single consolid
 go build ./... && go vet ./... && go test ./...
 ```
 
-657 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
+663 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
 - `internal/contract`'s `TestRunConformanceOnLaunchBots` — auto-discovers and conformance-tests all 39 bots under `bots/` against their own fixtures, no Docker or network.
 - `internal/planner`'s `TestPlanAllExampleSwarms` — auto-discovers and type-checks all 16 swarms under `examples/swarms/`.
 - httptest-mocked 1Claw/Google/Slack/GitHub/Stripe/HubSpot/X/LinkedIn API clients, built against each provider's real, documented endpoint shapes (verified against `@1claw/openapi-spec` and each provider's own docs, not guessed).
