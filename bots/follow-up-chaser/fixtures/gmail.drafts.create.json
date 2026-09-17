@@ -1,3 +1,12 @@
 {
-  "draft_ids": ["draft-demo-1"]
+  "draft_ids": [
+    "draft-demo-1"
+  ],
+  "drafts": [
+    {
+      "draft_id": "draft-demo-1",
+      "to": "jordan@example.com",
+      "subject": "Re: Proposal for Q4 engagement"
+    }
+  ]
 }

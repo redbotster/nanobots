@@ -82,3 +82,28 @@ the Sustainable Use License rather than OSI open source, so nothing here
 derives from its source. The difference in shape is that n8n pins data into
 the workflow for iteration; here it is written out as committed test data,
 because the thing worth keeping is a check that runs in CI.
+
+## A fixture is a claim about someone else's API
+
+`nanobots conform` replays fixtures offline, so a fixture that does not
+match what the real client returns keeps demo mode green and saves the truth
+for the day someone connects a real account. That is the worst shape a bug
+can have here.
+
+Two were found by comparing rather than reading. `x-mentions`' fixture had
+no `newest_id`, which is the field the live X dispatch returns and the bot
+needed to stop re-reading the same posts. And `gmail.drafts.create` returns
+`{draft_ids, drafts}`, which `invoice-chaser` and `draft-replies` both
+showed while `calendar-scheduler`, `follow-up-chaser` and
+`newsletter-drafter` showed only `draft_ids` — so anyone writing a bot
+against one of those three would have concluded `drafts` does not exist.
+
+`TestFixturesForOneOpAgreeOnItsShape` now requires every bot's fixture for
+one op to carry the same top-level keys. It compares the catalog's own
+copies rather than parsing the Go dispatchers, because "these two disagree,
+so one is wrong" needs no coupling to how the dispatcher is written and is
+the same evidence a reader would use.
+
+It cannot catch an op only one bot uses. For those, the check is the one
+that found `newest_id`: read what the live dispatch returns and make the
+fixture say the same thing.

@@ -1,3 +1,12 @@
 {
-  "draft_ids": ["draft-demo-1"]
+  "draft_ids": [
+    "draft-demo-1"
+  ],
+  "drafts": [
+    {
+      "draft_id": "draft-demo-1",
+      "to": "list@example.com",
+      "subject": "This week: three things worth your time"
+    }
+  ]
 }
