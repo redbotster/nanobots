@@ -22,10 +22,65 @@ Five of the eighteen catalog swarms have a wave wider than one:
 | `meeting-to-action` | 4 | 1, 1, 2 |
 | `support-desk-lite` | 3 | 1, 2 |
 
-The other thirteen are straight chains and gain nothing. Worth saying plainly:
-this is not a general speed-up, it is a speed-up for swarms that branch.
+The other thirteen are straight chains and gain nothing from *this*. Worth
+saying plainly: it is not a general speed-up, it is a speed-up for swarms
+that branch.
+
+## The other kind of branch: a fanned-out bot
+
+A fan-out is one bot run once per item, and the items are independent by
+definition — that is what fanning out means. They ran one after another
+anyway, which is a different sequential loop from the one above and was
+missed when that one was fixed.
+
+Found by reading one real run rather than the code. `supervisor-review`, 50
+seconds, every single second of it an `ai.generate` call:
+
+```
+  +   0.0s  (+  0.0s)  board   starting
+  +   9.1s  (+  9.1s)  board   ai.generate ./prompts/choose.md -> ok
+  +   9.1s  (+  0.0s)  panel   running once per item — 3 from board.roles.*.name
+  +  21.6s  (+ 12.5s)  panel   ai.generate ./prompts/review.md -> ok     item 1
+  +  28.7s  (+  7.1s)  panel   ai.generate ./prompts/review.md -> ok     item 2
+  +  35.5s  (+  6.9s)  panel   ai.generate ./prompts/review.md -> ok     item 3
+  +  50.1s  (+ 14.5s)  chair   ai.generate ./prompts/synthesise.md -> ok
+```
+
+Three reviewers reading the same work, 26.5 seconds one at a time. Nothing
+about the second review depended on the first.
+
+The items now run under the same cap a wave uses. Measured on the live
+swarm, three pairs of runs alternating the two settings:
+
+| | limit 1 | limit 4 |
+|---|---|---|
+| | 52.9s | 37.6s |
+| | 41.4s | 34.0s |
+| | 53.2s | 39.9s |
+
+Model latency varies a lot run to run, which is why it is three pairs and
+not one — but the direction is the same every time, around a quarter off.
+
+Six of the eighteen catalog swarms fan out: `inbox-autopilot`, `get-paid`,
+`support-desk-lite`, `supervisor-review`, `thread-from-an-idea`,
+`never-drop-a-thread`.
 
 ## Why it's safe
+
+A fanned-out bot's items were already isolated from each other before they
+ran at once — each has had its own `item-N` workspace since fan-out was
+written, and container names are UUIDs. The one thing that was *not* safe is
+why `runBotOnce` returns its outputs now rather than stashing them under the
+bot's name: twenty items writing to one slot and the loop reading it back
+between them is a race that pairs the wrong output with the wrong item,
+silently and only sometimes.
+
+A failure stops the items that have not begun. The ones already in flight
+finish rather than being cancelled — one mid-container would leave that
+container orphaned, the same reason a wave is allowed to finish — so a
+failed fan-out can do up to `limit-1` more items than the sequential version
+would have. The reported error is the lowest-numbered failure, not whichever
+lost the race, so the message is the one the sequential version produced.
 
 Bots in one wave have no path between them in the DAG, so nothing one
 produces can be read by another. That's the property that makes this
@@ -62,6 +117,13 @@ combined form. Later waves don't run after a failure.
 NANOBOTS_MAX_PARALLEL_BOTS=4    # default
 NANOBOTS_MAX_PARALLEL_BOTS=1    # the old strictly-sequential behaviour
 ```
+
+One cap, both kinds of branch. At 1, a fan-out is exactly the loop it
+replaced: one item at a time, in index order. Above 1 it guarantees item `i`
+is not launched until `i+1-limit` items have finished, so a run log stays
+roughly in order — but not that item `i`'s first instruction runs before
+item `i+1`'s. Once two goroutines are live the scheduler decides, and a test
+claiming otherwise failed on its first run.
 
 The cap is about the machine, not the model: each bot is a container plus a
 model call, four Chromium-bearing containers already want a couple of

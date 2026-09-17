@@ -1,13 +1,16 @@
 package runner
 
 import (
-	"testing"
-
-	"github.com/redbotster/nanobots/internal/schema"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"testing"
 	"time"
+
+	"github.com/redbotster/nanobots/internal/schema"
 )
 
 func TestNeedsRealPDFRender(t *testing.T) {
@@ -231,5 +234,168 @@ func TestLLMBotThatRendersIsPromoted(t *testing.T) {
 	}}
 	if got := imageFor(nb, NewRun("s"), "bot"); got != "openclaw" {
 		t.Errorf("imageFor = %q, want openclaw for a bot that renders", got)
+	}
+}
+
+// A fanned-out bot's items are independent by definition, and used to run
+// one after another anyway. Measured on a real supervisor-review run:
+// three panel reviews of the same work, 12.5s + 7.1s + 6.9s, sequentially,
+// out of a 50s run in which every second was an ai.generate call.
+//
+// These cover the parts that are easy to get wrong and invisible when they
+// are: pairing, ordering, and what happens after a failure.
+func TestFanOutItemsKeepTheirOwnResults(t *testing.T) {
+	// Deliberately finishing in reverse order, so anything appending by
+	// completion rather than assigning by index pairs the wrong output with
+	// the wrong item — the exact bug that made runBotOnce return its
+	// outputs instead of stashing them under the bot's name.
+	out, errs := runItems(5, 5, func(i int) (map[string]any, error) {
+		time.Sleep(time.Duration(5-i) * 10 * time.Millisecond)
+		return map[string]any{"n": i}, nil
+	})
+	for i := range out {
+		if errs[i] != nil {
+			t.Fatalf("item %d: %v", i, errs[i])
+		}
+		if out[i]["n"] != i {
+			t.Errorf("slot %d holds item %v — results and items came apart", i, out[i]["n"])
+		}
+	}
+}
+
+// Item i is not launched until i+1-limit items have finished, because that
+// is when a slot frees up. It is what keeps a run log roughly in order —
+// item 17 cannot appear before item 2 — and it is the honest version of a
+// claim I first wrote as "item i starts before item i+1", which is not true
+// once two goroutines are live and failed on the first run.
+func TestNoItemJumpsAheadOfItsSlot(t *testing.T) {
+	for _, limit := range []int{1, 2, 4} {
+		var mu sync.Mutex
+		done := 0
+		var jumped []string
+		runItems(12, limit, func(i int) (map[string]any, error) {
+			mu.Lock()
+			if want := i + 1 - limit; done < want {
+				jumped = append(jumped, fmt.Sprintf("item %d began with %d finished, want >= %d", i, done, want))
+			}
+			mu.Unlock()
+			time.Sleep(3 * time.Millisecond)
+			mu.Lock()
+			done++
+			mu.Unlock()
+			return nil, nil
+		})
+		if len(jumped) > 0 {
+			t.Errorf("limit %d: %v", limit, jumped)
+		}
+	}
+}
+
+// A limit of 1 is the loop this replaced: one at a time, in order. The env
+// var documents exactly that, and it is how the two are compared.
+func TestALimitOfOneIsStrictlySequential(t *testing.T) {
+	var mu sync.Mutex
+	inFlight, peak := 0, 0
+	var order []int
+	runItems(6, 1, func(i int) (map[string]any, error) {
+		mu.Lock()
+		order = append(order, i)
+		inFlight++
+		if inFlight > peak {
+			peak = inFlight
+		}
+		mu.Unlock()
+		time.Sleep(5 * time.Millisecond)
+		mu.Lock()
+		inFlight--
+		mu.Unlock()
+		return nil, nil
+	})
+	if peak != 1 {
+		t.Errorf("peak concurrency %d at a limit of 1", peak)
+	}
+	for i, got := range order {
+		if got != i {
+			t.Errorf("a limit of 1 ran items %v — it must be the loop it replaced", order)
+			break
+		}
+	}
+}
+
+func TestFanOutRespectsTheLimit(t *testing.T) {
+	var mu sync.Mutex
+	inFlight, peak := 0, 0
+	runItems(20, 4, func(i int) (map[string]any, error) {
+		mu.Lock()
+		inFlight++
+		if inFlight > peak {
+			peak = inFlight
+		}
+		mu.Unlock()
+		time.Sleep(10 * time.Millisecond)
+		mu.Lock()
+		inFlight--
+		mu.Unlock()
+		return nil, nil
+	})
+	if peak > 4 {
+		t.Errorf("peak concurrency %d, want at most 4 — twenty invoices is twenty model calls", peak)
+	}
+	if peak < 2 {
+		t.Errorf("peak concurrency %d, so nothing actually ran at once", peak)
+	}
+}
+
+// A fanned-out bot is usually sending something, so a failure has to stop
+// the items that have not begun. The ones already in flight are left to
+// finish: cancelling one mid-container would orphan that container.
+func TestAFailedItemStopsTheOnesNotStartedYet(t *testing.T) {
+	var mu sync.Mutex
+	var ran []int
+	_, errs := runItems(20, 2, func(i int) (map[string]any, error) {
+		mu.Lock()
+		ran = append(ran, i)
+		mu.Unlock()
+		if i == 0 {
+			return nil, errors.New("the credential expired")
+		}
+		time.Sleep(5 * time.Millisecond)
+		return nil, nil
+	})
+	if errs[0] == nil {
+		t.Fatal("item 0 was supposed to fail")
+	}
+	mu.Lock()
+	n := len(ran)
+	mu.Unlock()
+	// Item 0 fails, item 1 may already be in flight beside it, and a third
+	// can be starting as the failure is recorded. Twenty would mean the
+	// stop did nothing.
+	if n > 4 {
+		t.Errorf("%d of 20 items ran after the first one failed", n)
+	}
+}
+
+// The reported failure is the lowest-numbered one, so the message is the
+// same one the sequential version produced rather than whichever item lost
+// a race.
+func TestTheFirstItemsFailureIsTheOneReported(t *testing.T) {
+	_, errs := runItems(4, 4, func(i int) (map[string]any, error) {
+		if i >= 1 {
+			time.Sleep(time.Duration(4-i) * 5 * time.Millisecond)
+			return nil, fmt.Errorf("item %d broke", i)
+		}
+		time.Sleep(30 * time.Millisecond)
+		return nil, errors.New("item 0 broke")
+	})
+	var first error
+	for _, err := range errs {
+		if err != nil {
+			first = err
+			break
+		}
+	}
+	if first == nil || first.Error() != "item 0 broke" {
+		t.Errorf("reported %v, want item 0's failure", first)
 	}
 }

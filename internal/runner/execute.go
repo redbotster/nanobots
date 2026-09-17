@@ -410,6 +410,81 @@ func waveError(wave []string, failures map[string]error) error {
 	return fmt.Errorf("%d bots in the same wave failed — %s", len(failed), strings.Join(failed, "; "))
 }
 
+// runItems runs a fanned-out bot's n items, at most limit at a time.
+//
+// Extracted so the awkward parts are testable without Docker, a model, or a
+// swarm: that results stay paired with their index, that items *start* in
+// order, and that a failure stops the ones that have not begun.
+//
+// Bounded, not unbounded. Twenty overdue invoices would otherwise be twenty
+// concurrent model calls, and remedy.go already carries a rate-limit entry
+// because that has been seen from a slower direction.
+// NANOBOTS_MAX_PARALLEL_BOTS=1 restores the strictly sequential behaviour,
+// which is the honest way to compare — and what to reach for on a small
+// machine, or when reading an interleaved run log is harder than waiting.
+func runItems(n, limit int, item func(i int) (map[string]any, error)) ([]map[string]any, []error) {
+	out := make([]map[string]any, n)
+	errs := make([]error, n)
+	if limit > n {
+		limit = n
+	}
+	if limit < 1 {
+		limit = 1
+	}
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	failed := false
+	slots := make(chan struct{}, limit)
+	for i := 0; i < n; i++ {
+		// The slot is taken here, in the loop, rather than inside the
+		// goroutine. Spawning all n at once and letting them race for a slot
+		// launches them in whatever order the scheduler feels like — item 3
+		// before item 1, observed on the first real run of this — and at a
+		// limit of 1 that is not the sequential behaviour the env var
+		// promises.
+		//
+		// Acquiring here gives two guarantees, and deliberately not a third.
+		// A limit of 1 is exactly the loop this replaced: one at a time, in
+		// order. And at any limit, item i is not launched until i+1-limit
+		// items have finished, so the run log stays roughly in order instead
+		// of item 17 appearing before item 2. What it does *not* promise is
+		// that item i's first instruction runs before item i+1's — once two
+		// goroutines are live the scheduler decides, and a test asserting
+		// otherwise failed on the first run for exactly that reason.
+		slots <- struct{}{}
+		// Stop starting items once one has failed. The sequential version
+		// stopped dead on the first error, and a fanned-out bot is usually
+		// sending something — so the fewer items that run after a failure,
+		// the closer this stays to what it replaced. Items already in flight
+		// are left to finish rather than cancelled: one mid-container would
+		// leave that container orphaned, the same reason a wave is allowed
+		// to finish.
+		mu.Lock()
+		stop := failed
+		mu.Unlock()
+		if stop {
+			<-slots
+			break
+		}
+		i := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-slots }()
+			o, err := item(i)
+			mu.Lock()
+			out[i], errs[i] = o, err
+			if err != nil {
+				failed = true
+			}
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+	return out, errs
+}
+
 // runBot runs one bot instance — once, or once per item when a snap into it
 // carries the fan-out marker (see planner/fanout.go).
 //
@@ -422,7 +497,12 @@ func (o *Orchestrator) runBot(run *Run, rs *planner.ResolvedSwarm, botID string,
 		return err
 	}
 	if fo == nil {
-		return o.runBotOnce(run, rs, botID, rb, noFan, 1, nil)
+		out, err := o.runBotOnce(run, rs, botID, rb, noFan, 1, nil)
+		if err != nil {
+			return err
+		}
+		run.SetBotOutputs(botID, out)
+		return nil
 	}
 
 	n, err := o.fanOutWidth(run, fo)
@@ -454,13 +534,31 @@ func (o *Orchestrator) runBot(run *Run, rs *planner.ResolvedSwarm, botID string,
 		},
 		Total: n,
 	}
-	perItem := make([]map[string]any, 0, n)
-	for i := 0; i < n; i++ {
-		if err := o.runBotOnce(run, rs, botID, rb, fanIndex(i), n, batch); err != nil {
+	// The items run concurrently, up to the same cap a wave uses.
+	//
+	// They are independent by definition — that is what fanning out means —
+	// and it showed. Measured on a real supervisor-review run: three panel
+	// reviews of the same work, 12.5s + 7.1s + 6.9s, one after another, for
+	// 26.5s of a 50s run in which every single second was an ai.generate
+	// call. Nothing about the second review depended on the first.
+	//
+	// What makes it safe was already true before this. Each item has had its
+	// own `item-N` workspace since fan-out was written, container names are
+	// UUIDs, and the run's log and outputs sit behind its mutex. The one
+	// thing that was not safe is why runBotOnce returns its outputs now
+	// rather than stashing them under the bot's name: twenty items writing
+	// to one slot and reading it back is a race that would have paired the
+	// wrong output with the wrong item, silently.
+	perItem, errs := runItems(n, parallelBots(), func(i int) (map[string]any, error) {
+		return o.runBotOnce(run, rs, botID, rb, fanIndex(i), n, batch)
+	})
+
+	// The lowest-numbered failure, so the message is the same one the
+	// sequential version produced rather than whichever item lost a race.
+	for i, err := range errs {
+		if err != nil {
 			return fmt.Errorf("item %d of %d: %w", i+1, n, err)
 		}
-		out, _ := run.BotOutputs(botID)
-		perItem = append(perItem, out)
 	}
 	run.SetBotOutputs(botID, aggregateOutputs(rb.Nanobot, perItem))
 	run.Log(botID, "", "done — %d item(s)", n)
@@ -514,7 +612,7 @@ func aggregateOutputs(nb *schema.Nanobot, perItem []map[string]any) map[string]a
 	return out
 }
 
-func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID string, rb *planner.ResolvedBot, at fanIndex, total int, batch step.Approver) error {
+func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID string, rb *planner.ResolvedBot, at fanIndex, total int, batch step.Approver) (map[string]any, error) {
 	nb := rb.Nanobot
 	inProcess, whyContainer := runsInProcess(nb)
 
@@ -542,13 +640,13 @@ func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID str
 		var err error
 		image, user, err = EnsureHarnessImage(harnessType, o.RepoRoot)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	inputs, err := o.resolveInputsAt(run, rs, botID, rb, at)
 	if err != nil {
-		return fmt.Errorf("resolve inputs: %w", err)
+		return nil, fmt.Errorf("resolve inputs: %w", err)
 	}
 
 	// Each item gets its own workspace, so one item's outputs can't be
@@ -558,14 +656,14 @@ func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID str
 		runDir = filepath.Join(runDir, fmt.Sprintf("item-%d", int(at)))
 	}
 	if err := os.MkdirAll(filepath.Join(runDir, "outputs"), 0o755); err != nil {
-		return err
+		return nil, err
 	}
 	inputsJSON, err := json.Marshal(inputs)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := os.WriteFile(filepath.Join(runDir, "inputs.json"), inputsJSON, 0o644); err != nil {
-		return err
+		return nil, err
 	}
 	// swarm_vars.json is separate from inputs.json on purpose — the bot
 	// contract (docs/bot-contract.md) keeps inputs.json a flat "one value
@@ -575,21 +673,21 @@ func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID str
 	if len(rs.Swarm.Spec.Vars) > 0 {
 		varsJSON, err := json.Marshal(rs.Swarm.Spec.Vars)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		if err := os.WriteFile(filepath.Join(runDir, "swarm_vars.json"), varsJSON, 0o644); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	agentID, agentAPIKey, err := o.agentFor(nb)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	blobs, err := step.NewFSBlobStore(o.BlobDir)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	deps := BuildDeps(run, botID, nb, o.OneClaw, agentID, agentAPIKey, blobs, o.Services, batch, o.memoryFor(agentID), o.LLM, o.approvalAgent)
 
@@ -622,15 +720,14 @@ func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID str
 		// should have to infer, and "which of my bots skipped the sandbox"
 		// is a fair question to be able to answer from the log alone.
 		if err := interpretInProcess(run, botID, nb, inputs, rs.Swarm.Spec.Vars, deps, blobs, runDir, maxRuntime); err != nil {
-			return describeTimeout(run, botID, maxRuntime, err)
+			return nil, describeTimeout(run, botID, maxRuntime, err)
 		}
 		outputs, err := collectOutputs(nb, blobs, filepath.Join(runDir, "outputs"))
 		if err != nil {
-			return fmt.Errorf("collect outputs: %w", err)
+			return nil, fmt.Errorf("collect outputs: %w", err)
 		}
-		run.SetBotOutputs(botID, outputs)
 		run.Log(botID, "", "done")
-		return nil
+		return outputs, nil
 	}
 	// Exit code and stderr are both already inside RunContainer's error.
 	// Follow the bot's log while it runs, rather than replaying it after.
@@ -666,16 +763,15 @@ func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID str
 		// container's stderr. Re-wrapping produced "container exited 1:
 		// container exited 1: <stderr> (<stderr>)" — the same text three
 		// times in the one line the Runs page shows you.
-		return describeTimeout(run, botID, maxRuntime, err)
+		return nil, describeTimeout(run, botID, maxRuntime, err)
 	}
 
 	outputs, err := collectOutputs(nb, blobs, filepath.Join(runDir, "outputs"))
 	if err != nil {
-		return fmt.Errorf("collect outputs: %w", err)
+		return nil, fmt.Errorf("collect outputs: %w", err)
 	}
-	run.SetBotOutputs(botID, outputs)
 	run.Log(botID, "", "done")
-	return nil
+	return outputs, nil
 }
 
 // memoryFor resolves this bot's memory store. Everything is decided at

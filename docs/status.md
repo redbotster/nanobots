@@ -47,6 +47,12 @@ is real and what is simulated](#whats-real-vs-simulated). The list first.
   Anthropic, Gemini, and OpenAI-or-anything-speaking-its-format. A bot asking
   for a model the backend cannot serve gets a substitute, logged into the run
   rather than swapped silently ([llm.md](llm.md)).
+- **A fanned-out bot's items run at once.** "For each of these, do that" is
+  independent by definition, and ran one after another anyway —
+  `supervisor-review` spent 26.5s of a 50s run on three reviewers reading the
+  same work in sequence. Same cap as a wave; about a quarter off that swarm,
+  measured over three pairs of live runs
+  ([parallelism.md](parallelism.md)).
 - **A swarm's independent branches run at once.** The planner always knew the
   DAG; the runner used to walk it one bot at a time. Five of the sixteen
   catalog swarms have a wave wider than one ([parallelism.md](parallelism.md)).
