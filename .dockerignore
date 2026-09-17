@@ -1,0 +1,34 @@
+# What the image build does not need to see.
+#
+# The build stage is `COPY . .`, so everything here is sent to the daemon
+# before a single layer is built. web/node_modules alone is 156MB of files
+# the Go stage cannot use — the UI stage installs its own from
+# package-lock.json — and .git is another 17MB of history.
+#
+# bin/ and internal/webui/dist are the sharper ones: they are *build output*,
+# so sending a local build into the image risks a stale UI landing in a layer
+# before the in-image build writes the real one.
+
+.git
+.github
+.gstack
+.claude
+.cursor
+
+web/node_modules
+web/dist
+node_modules
+
+bin
+internal/webui/dist
+
+context
+docs
+npm
+*.md
+
+.goreleaser.yaml
+.dockerignore
+Makefile
+compose.yaml
+.devcontainer

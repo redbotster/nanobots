@@ -1,0 +1,37 @@
+{
+  "name": "nanobots",
+  "image": "mcr.microsoft.com/devcontainers/go:1.25-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "22" },
+    // Docker in the dev container, for the 5 bots that drive a real headless
+    // browser and for the harness images the runner builds on first use.
+    // docker-outside-of-docker shares the host's daemon rather than nesting
+    // one, which is what makes an image built here the same image the host
+    // can see.
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+  "forwardPorts": [7474, 5173],
+  "portsAttributes": {
+    "7474": { "label": "nanobots (UI + API)", "onAutoForward": "notify" },
+    "5173": { "label": "vite dev server", "onAutoForward": "silent" }
+  },
+  // Everything the verification pass needs, so the first `make verify` in a
+  // fresh container is not also an npm install.
+  "postCreateCommand": "go mod download && cd web && npm ci --no-audit --no-fund",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bradlc.vscode-tailwindcss"
+      ]
+    }
+  },
+  // ~/.secrets/nanobots.env is deliberately NOT mounted. A dev container is
+  // a place to build nanobots, not a place to hold a real 1Claw key: the
+  // catalog runs end to end on this repo's example data, and anyone who
+  // wants live accounts can run `nanobots init` inside the container and
+  // keep that key separate from the host's.
+  "remoteUser": "vscode"
+}

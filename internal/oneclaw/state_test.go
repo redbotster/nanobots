@@ -49,6 +49,64 @@ func TestLoadEnvValueReadsAnyKeyFromTheSameFile(t *testing.T) {
 	}
 }
 
+// A container has no home directory to keep a dotenv in, so the process
+// environment is the fallback when no explicit path was given.
+//
+// The Dockerfile and `nanobots deploy 1claw` both described the daemon as
+// reading its key from the environment before it did. The image built, ran,
+// and served the whole catalog on fixtures with nothing saying why.
+func TestLoadEnvValueFallsBackToTheEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	// NANOBOTS_ENV_FILE is how DefaultEnvFilePath is steered, so this
+	// exercises the no-explicit-path branch without reading $HOME.
+	t.Setenv("NANOBOTS_ENV_FILE", filepath.Join(dir, "absent.env"))
+	t.Setenv("ONECLAW_API_KEY", "ocv_from_the_environment")
+
+	got, err := LoadAPIKey("")
+	if err != nil {
+		t.Fatalf("LoadAPIKey: %v", err)
+	}
+	if got != "ocv_from_the_environment" {
+		t.Errorf("got = %q, want the value from the environment", got)
+	}
+}
+
+// The file is what `nanobots init` writes and what Settings edits. A stale
+// exported variable silently overriding the key someone just saved is the
+// worse of the two surprises.
+func TestTheDotenvBeatsTheEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "nanobots.env")
+	if err := os.WriteFile(path, []byte("ONECLAW_API_KEY=1ck_from_the_file\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NANOBOTS_ENV_FILE", path)
+	t.Setenv("ONECLAW_API_KEY", "ocv_from_the_environment")
+
+	got, err := LoadAPIKey("")
+	if err != nil {
+		t.Fatalf("LoadAPIKey: %v", err)
+	}
+	if got != "1ck_from_the_file" {
+		t.Errorf("got = %q, want the value from the file", got)
+	}
+}
+
+// "Read the key from this file" has to mean that file. `nanobots init
+// --env <path>` checks whether that path is already configured before
+// offering to write it, and an exported variable answering yes would make
+// it refuse to set up a file that is still empty.
+func TestAnExplicitPathNeverFallsBackToTheEnvironment(t *testing.T) {
+	t.Setenv("ONECLAW_API_KEY", "ocv_from_the_environment")
+	got, err := LoadAPIKey(filepath.Join(t.TempDir(), "absent.env"))
+	if err != nil {
+		t.Fatalf("LoadAPIKey: %v", err)
+	}
+	if got != "" {
+		t.Errorf("got = %q, want empty for an explicitly named missing file", got)
+	}
+}
+
 func TestWriteEnvValueCreatesNewFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "sub", "nanobots.env")

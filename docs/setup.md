@@ -17,6 +17,25 @@ That file is the only place a 1Claw key can live: everything else nanobots
 holds goes into a 1Claw vault secret, and a vault cannot decrypt itself
 without the key that opens it.
 
+## Where the key is read from
+
+In order:
+
+1. The file named by `--env <path>`, if one was given. Taken literally —
+   nothing else is consulted, because "read the key from this file" has to
+   mean that file.
+2. Otherwise `$NANOBOTS_ENV_FILE`, or `~/.secrets/nanobots.env`.
+3. Otherwise the process environment — `ONECLAW_API_KEY` and friends.
+
+The file wins over the environment when it has the key. It is what `init`
+writes and what Settings edits, so a stale exported variable silently
+overriding the key you just saved would be the worse surprise.
+
+The environment fallback exists for containers, which have no home directory
+to keep a dotenv in and no way to get one there without baking a credential
+into an image. `compose.yaml` and `nanobots deploy 1claw` both rely on it;
+`docs/hosting.md` covers how each passes the value.
+
 ## The two kinds of 1Claw key
 
 They are not equivalent, and `init` defaults to the narrower one on purpose.

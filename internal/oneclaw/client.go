@@ -47,18 +47,39 @@ func DefaultEnvFilePath() (string, error) {
 // comments allowed, quotes around the value stripped). path="" uses
 // DefaultEnvFilePath(). Returns ("", nil) if the file or the key is absent —
 // callers decide what an absent value means for them.
+//
+// With no explicit path, the process environment is the fallback: a
+// container has no home directory to keep a dotenv in, and an environment
+// variable is the one channel every runtime has. The Dockerfile and
+// `nanobots deploy 1claw` both said the daemon read its key from the
+// environment before this was true, which meant the image built fine and
+// then ran entirely on fixtures with no explanation.
+//
+// The file wins when it has the key. It is what `nanobots init` writes and
+// what Settings edits, so a stale exported variable quietly overriding the
+// file someone just saved would be the worse surprise. An explicit path is
+// taken literally and never falls back — "read the key from this file" has
+// to mean that file.
 func LoadEnvValue(path, key string) (string, error) {
-	if path == "" {
+	explicit := path != ""
+	if !explicit {
 		var err error
 		path, err = DefaultEnvFilePath()
 		if err != nil {
 			return "", err
 		}
 	}
+	fromEnvironment := func() string {
+		if explicit {
+			return ""
+		}
+		return strings.TrimSpace(os.Getenv(key))
+	}
+
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", nil
+			return fromEnvironment(), nil
 		}
 		return "", err
 	}
@@ -76,9 +97,15 @@ func LoadEnvValue(path, key string) (string, error) {
 		}
 		v = strings.TrimSpace(v)
 		v = strings.Trim(v, `"'`)
+		if v == "" {
+			break // an empty line in the file is not a value; try the environment
+		}
 		return v, nil
 	}
-	return "", sc.Err()
+	if err := sc.Err(); err != nil {
+		return "", err
+	}
+	return fromEnvironment(), nil
 }
 
 // WriteEnvValue upserts one KEY=VALUE line in the same dotenv-style file

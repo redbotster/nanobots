@@ -1,0 +1,77 @@
+# nanobots, in one command:
+#
+#     docker compose up
+#
+# Then open http://127.0.0.1:7474. Nothing has to be configured first — with
+# no key anywhere, every bot answers from this repo's example data, which is
+# a real way to use it rather than a degraded one.
+#
+# What this does NOT give you: the five bots that drive a real headless
+# browser (`meeting-prep`, `quote-builder`, `recap-emails-to-pdf`,
+# `render-pdf`, `sheet-reporter`). They need Docker, and this container has
+# no Docker in it. Mounting the host's socket would hand the container
+# root-equivalent access to this machine to save five bots, which is not a
+# trade this file is going to make quietly. Run those with `make build`
+# locally, where the daemon has a real Docker to talk to.
+
+services:
+  nanobots:
+    build: .
+    image: nanobots:local
+    # Loopback on purpose. The callback surface under /internal/steps is
+    # authenticated by a per-run token and was written on the assumption
+    # that only this machine could reach it — publishing 7474 on 0.0.0.0
+    # would put that on the network. docs/hosting.md covers doing this
+    # properly somewhere else.
+    ports:
+      - "127.0.0.1:7474:7474"
+    environment:
+      # The daemon resolves ~/.nanobots from $HOME, and distroless has no
+      # passwd entry to infer one from. Naming it here is what makes the
+      # volume below the state directory rather than a directory nothing
+      # ever writes to.
+      HOME: /data
+      # Nothing sensitive: these two only say where to look.
+      NANOBOTS_ENV_FILE: /data/.secrets/nanobots.env
+    env_file:
+      # Your real dotenv, read by compose on the host and passed in as
+      # environment variables. required:false is what keeps `docker compose
+      # up` working on a machine that has never run `nanobots init`.
+      #
+      # The file itself is never mounted, never copied into the image, and
+      # never written to by the container. See docs/setup.md for why the
+      # key can travel as an environment variable at all.
+      #
+      # Watch for localhost in that file. HONCHO_URL=http://localhost:8000,
+      # OPENAI_BASE_URL pointed at Ollama, anything else on your machine —
+      # inside the container localhost is the container. Use
+      # host.docker.internal for those, and see docs/hosting.md.
+      - path: ${NANOBOTS_ENV_FILE:-${HOME}/.secrets/nanobots.env}
+        required: false
+    volumes:
+      # Run history, blobs, what bots remember, and the agent credentials
+      # 1Claw hands back. A named volume rather than a bind mount because
+      # the container runs as nonroot and would not be able to write into a
+      # directory this host created as you.
+      #
+      # It starts empty, which matters if you have already run nanobots on
+      # this machine with the same 1Claw key: agents are created per bot
+      # name and their keys are shown once, so the container cannot reuse
+      # the ones your host install enrolled. The run says exactly that when
+      # it happens. docs/hosting.md has the options.
+      - nanobots-data:/data
+    restart: unless-stopped
+    healthcheck:
+      # The binary is the only executable in the image — distroless has no
+      # shell, no curl and no wget — so this is the CLI GETting /api/status,
+      # the same endpoint the UI's status bar polls. Deliberately not
+      # `nanobots version`, which prints a string compiled into the binary
+      # and would report a dead daemon as healthy.
+      test: ["CMD", "nanobots", "health", "--addr", "127.0.0.1:7474", "--quiet"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  nanobots-data:

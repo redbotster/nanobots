@@ -29,6 +29,13 @@ COPY . .
 # compiled, which is the whole reason the stages are ordered this way.
 COPY --from=ui /src/web/dist ./internal/webui/dist
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/nanobots ./cmd/nanobots
+# An empty, correctly-owned state directory to copy into the final stage.
+# Distroless has no shell, so there is no RUN to mkdir one there — and
+# Docker seeds a fresh named volume from whatever the image has at the
+# mountpoint, ownership included. Without this the volume arrives owned by
+# root, the nonroot daemon cannot create ~/.nanobots inside it, and the
+# container restart-loops on "mkdir /data/.nanobots: permission denied".
+RUN mkdir -p /seed/data
 
 # --- what ships ------------------------------------------------------------
 FROM gcr.io/distroless/static-debian12:nonroot
@@ -39,6 +46,9 @@ COPY --from=build /out/nanobots /usr/local/bin/nanobots
 COPY --chown=nonroot:nonroot bots/ /app/bots/
 COPY --chown=nonroot:nonroot examples/ /app/examples/
 COPY --chown=nonroot:nonroot roles/ /app/roles/
+# Run history, blobs and memory. Mount a volume here to keep them; see
+# compose.yaml, which also sets HOME=/data so ~/.nanobots resolves into it.
+COPY --from=build --chown=nonroot:nonroot /seed/data /data
 
 USER nonroot:nonroot
 EXPOSE 7474

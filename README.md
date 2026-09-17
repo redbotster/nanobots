@@ -14,18 +14,42 @@ account is required to start, and every bot ships answering from this repo's
 own example data — so the first run does real work against fake data and
 touches nothing of yours.
 
-## Quick start
+## Install
+
+Three ways in. All of them end at <http://127.0.0.1:7474> with a working
+catalog and nothing configured.
+
+| | What you need | What you get |
+|---|---|---|
+| **Container** | Docker | Everything except the 5 browser bots, which need a Docker the container does not have |
+| **From source** | Go 1.25+, Node 22+ | Everything, including the 5 browser bots if Docker is running |
+| **Dev container** | Docker, VS Code or any devcontainer client | Everything, plus the toolchain and the verification pass ready to run |
+
+**Container** — one command, nothing to install but Docker:
 
 ```sh
 git clone https://github.com/redbotster/nanobots && cd nanobots
-make build          # WebUI + binary. Needs Go 1.25+ and Node 22+
+docker compose up
+```
+
+**From source** — one binary that serves the UI and the API together:
+
+```sh
+git clone https://github.com/redbotster/nanobots && cd nanobots
+make build          # WebUI + binary
 ./bin/nanobots init # optional: 1Claw and a model, or skip both
 ./bin/nanobots up
 ```
 
-Then open <http://127.0.0.1:7474>, type what you want automated into the box
-at the top of **Swarms**, and press **Automate it** — or pick a ready-made
-swarm from the gallery below it and press **Run**.
+**Dev container** — open the repo in VS Code and *Reopen in Container*.
+`.devcontainer/devcontainer.json` brings Go, Node and the host's Docker, and
+installs both dependency sets on create. It deliberately does not mount your
+`~/.secrets/nanobots.env`.
+
+Then type what you want automated into the box at the top of **Swarms** and
+press **Automate it** — or pick a ready-made swarm from the gallery below it
+and press **Run**. Nothing has to be configured first: every bot answers
+from this repo's example data until you connect an account.
 
 **Docker is optional.** 34 of the 39 bots run in this process; the 5 that
 need a container are the ones driving a real headless browser to render a
@@ -45,12 +69,14 @@ redbotster/tap/nanobots` or `npx nanobots`. The packaging is in
 nanobots plan -f examples/swarms/daily-email-recap.yaml   # type-check a swarm, print its DAG
 nanobots run  -f examples/swarms/daily-email-recap.yaml   # run it, printing the log
 nanobots conform bots                                     # check every bot honours the contract
+nanobots health                                           # is a running daemon answering?
 nanobots deploy 1claw --image <ref>                       # run it on a 1Claw Cloud Runtime
 ```
 
 Making it act on your real accounts is three optional layers — a model,
 1Claw to hold the credentials, then one account at a time:
-[docs/going-live.md](docs/going-live.md).
+[docs/going-live.md](docs/going-live.md). Running it somewhere other than
+your laptop is [docs/hosting.md](docs/hosting.md).
 
 ## Why nanobots, not one big agent
 

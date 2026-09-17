@@ -79,6 +79,8 @@ func main() {
 		err = runSpend(args)
 	case "webhook":
 		err = runWebhook(args)
+	case "health":
+		err = runHealth(args)
 	case "export":
 		err = runExport(args)
 	case "import":
@@ -154,6 +156,7 @@ commands:
   connectors list|register|install|status one place to register an OAuth app and wire it to a bot
   spend                                   what this account has spent on models
   webhook <swarm> [--addr host:port]      print where to post to fire a webhook swarm
+  health [--addr host:port] [--quiet]     ask a running daemon whether it is answering
   export -f <swarm.yaml> [-o <file>]      bundle a swarm to hand to someone else
   import <bundle.yaml>                    add a shared swarm to examples/swarms/
   version                                 print the build and Go toolchain
