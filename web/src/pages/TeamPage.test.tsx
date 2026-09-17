@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TuneAnother } from "./TeamPage";
+import { api } from "../lib/api";
 import * as bots from "../lib/botsCache";
 import type { BotSummary } from "../lib/types";
 
@@ -31,7 +32,7 @@ describe("adding a bot to the team", () => {
     vi.spyOn(bots, "listBotsCached").mockResolvedValue([
       bot("inbox-triage", "Billing is urgent."),
     ] as never);
-    const save = vi.spyOn(bots, "setBotInstructions").mockResolvedValue({} as never);
+    const save = vi.spyOn(api, "setBotInstructions").mockResolvedValue({} as never);
 
     render(<TuneAnother tuned={new Set()} onChanged={vi.fn()} />);
     fireEvent.click(screen.getByText("+ Tune how a bot works"));
@@ -49,7 +50,7 @@ describe("adding a bot to the team", () => {
     vi.spyOn(bots, "listBotsCached").mockResolvedValue([
       bot("inbox-triage", "Billing is urgent."),
     ] as never);
-    const save = vi.spyOn(bots, "setBotInstructions").mockResolvedValue({} as never);
+    const save = vi.spyOn(api, "setBotInstructions").mockResolvedValue({} as never);
     const onChanged = vi.fn();
 
     render(<TuneAnother tuned={new Set()} onChanged={onChanged} />);

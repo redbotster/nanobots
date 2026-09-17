@@ -105,13 +105,17 @@ polls it, so it cost nothing while you sat still and 30KB every time you
 moved between those pages.
 
 It carries an ETag now too, and `web/src/lib/botsCache.ts` holds the tag and
-the last copy for the whole tab. The invalidation is the part worth writing
-down: the three calls that change a bot — a service's demo/live switch,
-Settings' "use my account in all 24", and the instructions editor — are
-*exported from the cache module itself* rather than called on `api`
-directly. A cache whose invalidation is a rule call sites have to remember
-is a cache that serves a stale switch the first time someone adds a fourth
-one.
+the last copy for the whole tab.
+
+**It has nothing to invalidate, and that is the point.** Every read goes to
+the server; the held copy is only ever returned when the server has just
+answered 304, which it decides by hashing the body it would have sent. So a
+bot whose demo/live switch was flipped a millisecond ago comes back flipped,
+and no call site has to remember anything. The first version of this had an
+`invalidateBots()` and three mutator wrappers around the calls that change a
+bot — which guarded against staleness this shape of cache cannot have, and
+made a save that changed nothing cost a full 30KB where it would otherwise
+have been a 304.
 
 Measured in a browser, the same five-page browse (Swarms → Team → Settings →
 Runs → Swarms → a swarm), before and after both changes on this page:

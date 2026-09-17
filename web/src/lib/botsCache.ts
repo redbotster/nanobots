@@ -1,8 +1,8 @@
-import { api, getIfChanged, Unchanged } from "./api";
-import type { BotSummary, SetProviderConnectionResult } from "./types";
+import { getIfChanged, Unchanged } from "./api";
+import type { BotSummary } from "./types";
 
 /**
- * The bot catalog, fetched once and re-validated rather than re-downloaded.
+ * The bot catalog, revalidated rather than re-downloaded.
  *
  * It is 30KB and changes only when someone flips a service to live or edits
  * a bot's instructions. Five surfaces fetch it on mount — the bot library,
@@ -15,11 +15,17 @@ import type { BotSummary, SetProviderConnectionResult } from "./types";
  * runsFeed holds its own: these responses are `no-store`, so the browser
  * will not revalidate them on its own (see writeJSONCached).
  *
- * Deliberately not a poller. Nothing changes the catalog except this app,
- * and every call that changes it goes through one of the three mutators
- * below rather than through `api` directly — a cache whose invalidation is
- * a rule call sites have to remember is a cache that serves a stale live/demo
- * switch the first time someone adds a fourth one.
+ * **There is nothing to invalidate, deliberately.** Every call goes to the
+ * server; the held copy is only ever returned when the server has just said
+ * 304, which it computes by hashing the body it would have sent. So a bot
+ * changed a millisecond ago comes back changed, and no call site has to
+ * remember anything.
+ *
+ * This started out with an `invalidateBots()` and three mutator wrappers so
+ * the demo/live switch and the instructions editor could clear it. That was
+ * wrong twice over: it protected against staleness this cache cannot have,
+ * and dropping the tag made a save that changed nothing cost a full 30KB
+ * where it would otherwise have been a 304.
  */
 let etag: string | null = null;
 let cached: BotSummary[] | null = null;
@@ -34,37 +40,4 @@ export async function listBotsCached(): Promise<BotSummary[]> {
   etag = res.etag;
   cached = res.data;
   return res.data;
-}
-
-/** Forget the cache after something in this app changed a bot. */
-export function invalidateBots() {
-  etag = null;
-  cached = null;
-}
-
-// The three ways this app changes a bot. Each is `api.<name>` plus the
-// invalidation, so the next `listBotsCached()` re-fetches rather than
-// re-serving the shape the bot had before the edit.
-
-export function setBotServiceConnection(
-  botId: string,
-  serviceId: string,
-  live: boolean,
-): Promise<BotSummary> {
-  invalidateBots();
-  return api.setBotServiceConnection(botId, serviceId, live);
-}
-
-export function setBotInstructions(botId: string, instructions: string): Promise<BotSummary> {
-  invalidateBots();
-  return api.setBotInstructions(botId, instructions);
-}
-
-/** One switch in Settings, flipping every bot that uses the service. */
-export function setProviderConnection(
-  service: string,
-  live: boolean,
-): Promise<SetProviderConnectionResult> {
-  invalidateBots();
-  return api.setProviderConnection(service, live);
 }

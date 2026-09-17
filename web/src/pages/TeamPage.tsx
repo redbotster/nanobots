@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
-import { listBotsCached, setBotInstructions } from "../lib/botsCache";
+import { listBotsCached } from "../lib/botsCache";
 import { InstructionsEditor } from "../components/BotCard";
 import { RoleLibrarySection } from "../components/RoleLibrary";
 import { Tabs } from "../components/Tabs";
@@ -25,7 +25,7 @@ function MemberRow({ member, onChanged }: { member: TeamMember; onChanged: () =>
     setBusy(true);
     setError(null);
     try {
-      await setBotInstructions(member.bot_id, value);
+      await api.setBotInstructions(member.bot_id, value);
       onChanged();
     } catch (e) {
       setError(String(e));
