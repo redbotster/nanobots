@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { SchedulePicker } from "../components/builder/SchedulePicker";
 import { api } from "../lib/api";
 import { listBotsCached } from "../lib/botsCache";
+import { listSwarmsCached } from "../lib/swarmsCache";
 import type {
   BotSummary,
   ConnectionStatus,
@@ -117,14 +118,13 @@ export function BuilderPage({
   // Templates are only offered when starting from nothing, so this one does
   // depend on `existing` — and is split out rather than folded above so
   // saying so does not also refetch the whole bot catalog. Keyed on the
-  // path rather than the object: the swarm list is polled now, so its
-  // objects are new on every tick even when the swarm has not changed.
+  // path rather than the object: the swarm list is polled, so its objects
+  // can be new on a tick that changed a different swarm entirely.
   const existingPath = existing?.path;
   useEffect(() => {
     if (existingPath) return;
-    api
-      .listSwarms()
-      .then(setTemplates)
+    listSwarmsCached()
+      .then(({ swarms }) => setTemplates(swarms))
       .catch(() => {});
   }, [existingPath]);
 

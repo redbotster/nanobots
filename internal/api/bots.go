@@ -121,9 +121,9 @@ func outputFieldsOf(nb *schema.Nanobot) map[string][]string {
 // bot library, Settings, the Team page, a swarm view, the builder), which
 // made it the largest consumer left once the run list was behind a
 // conditional GET: 61KB of a 336KB five-page browse, measured in a browser.
-// The client holds the tag — see web/src/lib/botsCache.ts for why that is
-// its job rather than the browser's, and for why a client-side copy of this
-// list needs no invalidating when a bot changes.
+// The client holds the tag — see web/src/lib/revalidatingList.ts for why
+// that is its job rather than the browser's, and for why a client-side copy
+// of this list needs no invalidating when a bot changes.
 func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
 	bots, err := s.listBotSummaries()
 	if err != nil {

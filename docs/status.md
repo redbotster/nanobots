@@ -111,8 +111,9 @@ is real and what is simulated](#whats-real-vs-simulated). The list first.
   carries an ETag and answers 304 with no body, and the client holds the tag
   and returns early, so there is no parse and no re-render either. Measured
   in a browser: 7 polls over 14 seconds went from 638KB to 2.1KB. The bot
-  catalog got the same treatment for navigation rather than polling, and a
-  five-page browse went from 335.9KB to 144.3KB ([runs.md](runs.md)).
+  catalog and the swarm list are held the same way for navigating rather than
+  polling, and a five-page browse went from 335.9KB over 32 requests to
+  123.6KB over 30 ([runs.md](runs.md)).
 - **What you ask for gets scheduled.** Composing "every friday summarise my
   overdue invoices" used to produce a swarm that described itself as weekly
   and would never fire. The composer emits cron now, the builder shows it

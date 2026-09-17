@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { ImportSwarm, ImportSwarmButton } from "../components/ImportSwarm";
-import { api, getIfChanged, Unchanged } from "../lib/api";
+import { api } from "../lib/api";
+import { listSwarmsCached } from "../lib/swarmsCache";
 import { GettingStarted } from "../components/GettingStarted";
 import type { StatusResponse, ComposeGap, SaveSwarmRequest, SwarmSummary } from "../lib/types";
 import type { UIMode } from "../lib/uiMode";
@@ -360,9 +361,8 @@ export function SwarmsPage({
   const [query, setQuery] = useState("");
 
   const reload = () =>
-    api
-      .listSwarms()
-      .then(setSwarms)
+    listSwarmsCached()
+      .then(({ swarms }) => setSwarms(swarms))
       .catch((e) => setError(String(e)));
 
   // The landing page was a snapshot taken once on mount and never refreshed.
@@ -372,11 +372,16 @@ export function SwarmsPage({
   // approval while you were looking at it never said so — which is the one
   // thing this page most needs to be able to tell you.
   //
-  // Conditional GET, not a plain poll: /api/swarms is ~9KB and almost every
+  // Conditional GET, not a plain poll: /api/swarms is ~10KB and almost every
   // poll is byte-identical, so the server answers 304 with no body and this
   // skips both the parse and the React state update (see getIfChanged). An
   // idle list costs one empty round trip every four seconds and does not
   // re-render.
+  //
+  // The tag lives in ../lib/swarmsCache rather than in this effect, because
+  // this effect restarts every time you come back to the list — so the first
+  // tick after a trip to Runs used to re-download all 10KB to be told what
+  // it already had.
   //
   // Only while the list is on screen. The builder and the swarm view are
   // their own surfaces with their own loading, and polling underneath them
@@ -384,13 +389,11 @@ export function SwarmsPage({
   useEffect(() => {
     if (mode.kind !== "list") return;
     let alive = true;
-    let tag: string | null = null;
     const tick = async () => {
       try {
-        const res = await getIfChanged<SwarmSummary[]>("/api/swarms", tag);
-        if (!alive || res === Unchanged) return;
-        tag = res.etag;
-        setSwarms(res.data);
+        const res = await listSwarmsCached();
+        if (!alive || !res.changed) return;
+        setSwarms(res.swarms);
         setError(null);
       } catch (e) {
         // A failed poll is not worth replacing a good list with an error
@@ -439,7 +442,7 @@ export function SwarmsPage({
               reload();
               return;
             }
-            api.listSwarms().then((list) => {
+            listSwarmsCached().then(({ swarms: list }) => {
               setSwarms(list);
               const found = list.find((s) => s.path === savedPath);
               setMode(found ? { kind: "view", swarm: found } : { kind: "list" });

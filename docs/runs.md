@@ -104,35 +104,47 @@ library, Settings, the Team page, a swarm view and the builder. Nothing
 polls it, so it cost nothing while you sat still and 30KB every time you
 moved between those pages.
 
-It carries an ETag now too, and `web/src/lib/botsCache.ts` holds the tag and
-the last copy for the whole tab.
+`GET /api/swarms` had the opposite problem. It was 10KB and *already*
+conditional — but the tag lived inside the Swarms page's polling effect, and
+that effect restarts every time you come back to the list. So the shell's
+count-up, the poller's first tick, and the poller's first tick again after a
+trip to Runs each re-downloaded all 10KB to be told what they already had.
 
-**It has nothing to invalidate, and that is the point.** Every read goes to
-the server; the held copy is only ever returned when the server has just
-answered 304, which it decides by hashing the body it would have sent. So a
-bot whose demo/live switch was flipped a millisecond ago comes back flipped,
-and no call site has to remember anything. The first version of this had an
-`invalidateBots()` and three mutator wrappers around the calls that change a
-bot — which guarded against staleness this shape of cache cannot have, and
-made a save that changed nothing cost a full 30KB where it would otherwise
-have been a 304.
+Both now go through `web/src/lib/revalidatingList.ts`, which holds the tag
+and the last copy for the whole tab. Three properties, each one measured
+before it was written:
+
+- **Nothing to invalidate.** Every read goes to the server; the held copy is
+  only ever returned when the server has just answered 304, which it decides
+  by hashing the body it would have sent. So a bot whose demo/live switch was
+  flipped a millisecond ago comes back flipped, and no call site has to
+  remember anything. The first version of this had an `invalidateBots()` and
+  three mutator wrappers around the calls that change a bot — which guarded
+  against staleness this shape of cache cannot have, and made a save that
+  changed nothing cost a full 30KB where it would otherwise have been a 304.
+- **Readers that arrive together share one request.** The shell's count-up
+  and the Swarms page's first poll both mount at t=0, so neither had a tag
+  and both paid full price.
+- **`changed` is reported, not inferred.** The poller skips `setSwarms`
+  entirely on a 304 rather than setting state to an equal value and relying
+  on React to bail out.
 
 Measured in a browser, the same five-page browse (Swarms → Team → Settings →
-Runs → Swarms → a swarm), before and after both changes on this page:
+Runs → Swarms → a swarm), before and after everything on this page:
 
 | | before | after |
 |---|---|---|
-| `/api/bots` | 2 req, 61.0KB | 2 req, **30.5KB** (one 304) |
+| `/api/bots` | 2 req, 61.0KB | 2 req, **30.5KB** |
+| `/api/swarms` | 4 req, 30.8KB | 4 req, **10.3KB** |
 | `/api/runs` | 9 req, 241.7KB | 7 req, **80.6KB** |
-| all of `/api` | 32 req, 335.9KB | 30 req, **144.3KB** |
+| all of `/api` | 32 req, 335.9KB | 30 req, **123.6KB** |
 
 The `/api/runs` half of that is a second bug the measurement found:
 `GettingStarted` called `api.listRuns()` on every mount — a 91KB response —
 to compute one boolean, "has anything ever run here". It reads the shared
 `useRuns()` feed now, which was already fetching it.
 
-`/api/swarms` is the largest one left untouched at 30.8KB over four
-requests, for the same reason `/api/bots` was.
+What is left is one full copy of each list per tab, which is the floor.
 
 ## The run log is live now
 
