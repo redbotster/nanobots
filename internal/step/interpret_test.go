@@ -18,21 +18,23 @@ import (
 // interpreter's control flow without touching fixtures, Chrome, or a real
 // blob store.
 type fakeDeps struct {
-	serviceResult any
-	serviceErr    error
-	aiResult      string
-	aiErr         error
-	approve       bool
-	approvedBy    string
-	memory        map[string]string
-	recall        func(namespace, question string) string
-	recallErr     error // a backend that is reachable but failing
-	remembered    []string
-	notifyCalled  bool
-	renderResult  []byte
-	renderMime    string
-	blobs         BlobStore
-	gotPrompt     string
+	serviceResult   any
+	serviceErr      error
+	aiResult        string
+	aiErr           error
+	approve         bool
+	approvedBy      string
+	approveSummary  string
+	approveRiskTier string
+	memory          map[string]string
+	recall          func(namespace, question string) string
+	recallErr       error // a backend that is reachable but failing
+	remembered      []string
+	notifyCalled    bool
+	renderResult    []byte
+	renderMime      string
+	blobs           BlobStore
+	gotPrompt       string
 }
 
 func (f *fakeDeps) ServiceCall(svc schema.Service, op string, params map[string]any) (any, error) {
@@ -74,6 +76,7 @@ func (f *fakeDeps) MemoryPut(namespace, key, value string) error {
 	return nil
 }
 func (f *fakeDeps) Approve(summary, riskTier string) (bool, string, error) {
+	f.approveSummary, f.approveRiskTier = summary, riskTier
 	return f.approve, f.approvedBy, nil
 }
 func (f *fakeDeps) Notify(message, channel string) error { f.notifyCalled = true; return nil }
@@ -807,5 +810,49 @@ func TestADemoServiceCallSaysSoInTheLog(t *testing.T) {
 	// nothing.
 	if strings.Contains(liveLine, "demo") {
 		t.Errorf("a live call was marked demo: %q", liveLine)
+	}
+}
+
+// The risk tier a gate is opened at has to be the resolved one.
+//
+// bots/approve declares `risk_tier: "{{inputs.risk}}"`, and for the life of
+// that brick the interpreter passed the summary through the template
+// resolver and the risk tier straight past it. Every gate it opened asked a
+// person to approve something at "{{inputs.risk}}" risk — verbatim in the
+// CLI prompt and in the WebUI's risk badge — and, quieter and worse, told
+// 1Claw a tier it could not parse, which oneclaw.riskTierNumber maps to the
+// strictest one. Found by running the catalog's own approve brick and
+// reading what it printed.
+func TestAnApprovalsRiskTierIsResolvedLikeItsSummary(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		declared string
+		want     string
+	}{
+		{"a template, as bots/approve declares it", "{{inputs.risk}}", "high"},
+		{"a literal, as the other three declare it", "medium", "medium"},
+		{"absent", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			deps := &fakeDeps{approve: true, approvedBy: "test"}
+			bot := simpleBot([]schema.Step{{
+				Name:     "gate",
+				Type:     "approve",
+				Summary:  "Send {{inputs.what}}?",
+				RiskTier: tc.declared,
+				Outputs:  map[string]string{"approved": "{{steps.gate.output.approved}}"},
+			}}, []schema.OutputPort{{Name: "approved", Type: "boolean"}})
+
+			inputs := map[string]any{"risk": "high", "what": "the invoice"}
+			if _, err := Interpret(bot, inputs, nil, deps); err != nil {
+				t.Fatalf("Interpret: %v", err)
+			}
+			if deps.approveRiskTier != tc.want {
+				t.Errorf("risk tier = %q, want %q", deps.approveRiskTier, tc.want)
+			}
+			if deps.approveSummary != "Send the invoice?" {
+				t.Errorf("summary = %q, want it resolved too", deps.approveSummary)
+			}
+		})
 	}
 }

@@ -98,3 +98,34 @@ Three things were already known and thrown away. The risk tier is on the
 "Skip" became "Don't approve". Declining does not skip a step and carry on;
 it ends the run. A label that reads like *later* on a button that means
 *no* is the wrong kind of gentle.
+
+## Two things the prompt used to get wrong
+
+Both found by running the catalog's own `approve` brick and reading what it
+printed, which no test had ever done.
+
+**The risk tier was the template, not the tier.** `bots/approve` declares
+`risk_tier: "{{inputs.risk}}"`, and the interpreter resolved the summary but
+passed the tier straight through. Every gate that brick opened asked you to
+approve something at `{{inputs.risk}}` risk — printed verbatim in the CLI and
+in the WebUI's risk badge. Quieter and worse: the unresolved string is not
+`low`, `medium` or `high`, and 1Claw's `declared_risk_tier` mapping sends
+anything it does not recognise to the strictest tier, so every one of them
+was declared a tier-1 decision.
+
+**An answered question kept being asked.** The goroutine waiting on a gate
+is what removes it from the run's pending list, so for a moment after you
+answer, the approval is still listed. The CLI re-checks that list on every
+log line — and one line arriving in that window (the 1Claw mirror's, as it
+happens) was enough to prompt a second time, hit end-of-input on a drained
+stdin, and print:
+
+```
+declined — nobody — no terminal attached to ask
+```
+
+on a run that had just been approved. That second decision also set the
+run's `DeclinedByUser` flag, and would have blocked on the run's own mutex,
+holding it, if the waiter had not already drained the one-slot channel.
+`Decide` now refuses a second answer, and `PendingApprovals` stops listing a
+question the moment it is answered rather than when the waiter wakes.

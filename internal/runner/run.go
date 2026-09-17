@@ -55,6 +55,19 @@ type PendingApproval struct {
 	Writes []string `json:"writes,omitempty"`
 
 	decision chan approvalDecision
+	// decided guards against a second answer to the same question. The
+	// waiting goroutine removes an approval from the run's map, so between
+	// Decide and that removal the approval is still listed as pending —
+	// and anything that polls PendingApprovals in that window asks again.
+	//
+	// The CLI did exactly that: one log line arriving after an answer was
+	// enough to re-prompt, hit EOF on a drained stdin, and record
+	// "declined — nobody — no terminal attached to ask" on a run that had
+	// just been approved. That second Decide also set DeclinedByUser on an
+	// approved run, and would have blocked on this mutex holding the whole
+	// run's lock if the waiter had not already drained the buffered
+	// channel.
+	decided bool
 }
 
 type approvalDecision struct {
@@ -544,6 +557,10 @@ func (r *Run) Decide(approvalID string, approved bool, decidedBy string) error {
 	if !ok {
 		return fmt.Errorf("no pending approval %s on run %s (it may have timed out, or the run may have ended)", approvalID, r.ID)
 	}
+	if pa.decided {
+		return fmt.Errorf("approval %s on run %s was already answered", approvalID, r.ID)
+	}
+	pa.decided = true
 	if !approved {
 		r.DeclinedByUser = true
 	}
@@ -579,11 +596,19 @@ func (r *Run) releaseApprovals() {
 	}
 }
 
+// PendingApprovals is what still needs a human. An approval that has been
+// answered is not pending, even in the moment before the waiting goroutine
+// removes it from the map — a question you have answered must stop being
+// asked immediately, in the CLI prompt loop and in every browser tab
+// polling GET /api/runs/{id}.
 func (r *Run) PendingApprovals() []*PendingApproval {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	out := make([]*PendingApproval, 0, len(r.approvals))
 	for _, pa := range r.approvals {
+		if pa.decided {
+			continue
+		}
 		out = append(out, pa)
 	}
 	return out

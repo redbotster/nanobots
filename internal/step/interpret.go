@@ -227,9 +227,19 @@ func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, swarmVars map[
 
 		case "approve":
 			summary := fmt.Sprint(resolveValue(s.Summary, ctx))
+			// Resolved like the summary, and for a long time it was not.
+			// `bots/approve` declares `risk_tier: "{{inputs.risk}}"`, so
+			// every gate that brick opened asked the person to approve
+			// something at "{{inputs.risk}}" risk — printed verbatim in the
+			// CLI prompt and in the WebUI's risk badge. Worse quietly: the
+			// unresolved string is not "low", "medium" or "high", and
+			// riskTierNumber maps anything it does not recognise to the
+			// strictest tier, so 1Claw was told every one of them was a
+			// tier-1 decision.
+			riskTier := fmt.Sprint(resolveValue(s.RiskTier, ctx))
 			var approved bool
 			var decidedBy string
-			approved, decidedBy, err = deps.Approve(summary, s.RiskTier)
+			approved, decidedBy, err = deps.Approve(summary, riskTier)
 			out = map[string]any{"approved": approved, "decided_by": decidedBy}
 			if err == nil {
 				log(s.Name, "approve %q -> approved=%v by=%s", summary, approved, decidedBy)
