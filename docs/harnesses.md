@@ -161,3 +161,32 @@ container runs to 21-27s, and that swarm still puts two of its four bots in
 containers, so most of what remains is model latency rather than startup.
 The headline is not the seconds: `github-digest-to-slack` was run to success
 with `docker` removed from the daemon's PATH entirely.
+
+## A container that needs nothing gets nothing
+
+`guardrails.network_egress` has always been reported per bot and enforced on
+the host — `web.fetch` is checked in nanobotd's own dialer, and every
+credentialed step is a callback rather than something the container does for
+itself. What the container itself could still do was unchecked: an
+`openclaw` bot renders HTML in Chromium, and remote assets that HTML
+references are fetched by the browser, outside any policy.
+
+One part of that is now closed. A bot that declares no egress and has no
+step that reaches anything runs with `--network none`:
+
+```
+[renderer/] using the openclaw image: this bot renders a real PDF/PNG and needs Chrome
+[renderer/] container has no network (this bot declares no egress and calls nothing)
+[renderer/render] rendered ./templates/plain.html -> nbf://sha256/df82a4c…
+```
+
+`render-pdf` is that bot today — one `transform.render`, no services, no
+model, no memory — and it renders exactly as before with no interface at
+all. `runner.needsContainerNetwork` is the predicate, and it is
+deny-by-default: a step type it has never heard of keeps its network, so a
+new step fails loudly in review rather than silently at midnight.
+
+What is left is the allowlist. "None" is a Docker flag; "only
+googleapis.com" needs a per-run network and an egress proxy, and a bot that
+legitimately calls back to nanobotd still gets an open bridge. That part is
+still reported rather than enforced, and `docs/status.md` says so.

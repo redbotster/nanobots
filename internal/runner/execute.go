@@ -632,8 +632,14 @@ func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID str
 	go tail.follow(stopTail)
 	defer close(stopTail)
 
+	noNetwork := !needsContainerNetwork(nb)
+	if noNetwork {
+		// Said out loud for the same reason "in-process, no container" is:
+		// a sandbox nobody can see is a sandbox nobody trusts.
+		run.Log(botID, "", "container has no network (this bot declares no egress and calls nothing)")
+	}
 	_, _, err = RunContainer(run.Context(), ContainerSpec{
-		Image: image, User: user,
+		Image: image, User: user, NoNetwork: noNetwork,
 		BotDir: nb.SourcePath, RunDir: runDir, BlobDir: o.BlobDir,
 		Env: map[string]string{
 			"NANOBOTS_CALLBACK_URL": o.CallbackAddr,

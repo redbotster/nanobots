@@ -39,6 +39,49 @@ func TestDockerRunArgsIncludesSecurityFlags(t *testing.T) {
 	if args[len(args)-1] != spec.Image {
 		t.Errorf("image should be the last arg, got %q", args[len(args)-1])
 	}
+
+	// The default: a bridge, and a route to the host, because almost every
+	// bot calls back to nanobotd for anything that touches a credential.
+	if !strings.Contains(joined, "--network bridge") {
+		t.Errorf("a bot that calls back needs a network\ngot: %s", joined)
+	}
+	if !strings.Contains(joined, "--add-host host.docker.internal:host-gateway") {
+		t.Errorf("without host-gateway a callback cannot resolve the host on Linux\ngot: %s", joined)
+	}
+}
+
+// The one part of guardrails.network_egress Docker can enforce on its own.
+//
+// A bot that declares no egress and calls nothing gets no interface, so the
+// Chromium inside it cannot fetch a remote asset either — the hole the TODO
+// in dockerRunArgs describes, closed where closing it costs nothing.
+// `render-pdf` is that bot, and it really does render this way: verified in
+// a real container, not only here.
+func TestDockerRunArgsGiveAnOfflineBotNoNetwork(t *testing.T) {
+	spec := ContainerSpec{
+		Image:     "nanobots/harness-openclaw:local",
+		User:      "65532:65532",
+		BotDir:    "/repo/bots/render-pdf",
+		RunDir:    "/tmp/run-1",
+		NoNetwork: true,
+	}
+	joined := strings.Join(dockerRunArgs(spec, "nanobot-test-2"), " ")
+
+	if !strings.Contains(joined, "--network none") {
+		t.Errorf("an offline bot still got a network\ngot: %s", joined)
+	}
+	if strings.Contains(joined, "--network bridge") {
+		t.Errorf("both networks requested at once\ngot: %s", joined)
+	}
+	// Pointless with no interface, and its presence would suggest the
+	// container can still reach the host.
+	if strings.Contains(joined, "host-gateway") {
+		t.Errorf("a route to the host on a container with no network\ngot: %s", joined)
+	}
+	// Everything else it had, it keeps.
+	if !strings.Contains(joined, "--read-only") || !strings.Contains(joined, "-v /tmp/run-1:/run") {
+		t.Errorf("the rest of the sandbox went missing\ngot: %s", joined)
+	}
 }
 
 func TestEnsureHarnessImageRejectsUnknownHarness(t *testing.T) {

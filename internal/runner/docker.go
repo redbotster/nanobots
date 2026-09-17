@@ -123,6 +123,13 @@ type ContainerSpec struct {
 	BlobDir    string
 	Env        map[string]string
 	MaxRuntime time.Duration // 0 means use a conservative default
+	// NoNetwork runs the container with no network interface at all.
+	//
+	// Set for a bot that declares no network_egress and has no step that
+	// reaches anything — see needsContainerNetwork. It is the one part of
+	// guardrails.network_egress that Docker can enforce by itself: an
+	// allowlist needs a proxy, but "none" is a flag.
+	NoNetwork bool
 }
 
 func dockerRunArgs(spec ContainerSpec, name string) []string {
@@ -132,13 +139,24 @@ func dockerRunArgs(spec ContainerSpec, name string) []string {
 		"--name", name,
 		"--read-only",
 		"--tmpfs", "/tmp:size=256m",
-		"--network", "bridge", // outbound only; see guardrails.network_egress TODO below
-		// host.docker.internal resolves out of the box on Docker Desktop
-		// (macOS/Windows); this flag is what makes it resolve on Linux too.
-		"--add-host", "host.docker.internal:host-gateway",
 		"--user", spec.User,
 		"-v", spec.BotDir + ":/bot:ro",
 		"-v", spec.RunDir + ":/run",
+	}
+	if spec.NoNetwork {
+		// Nothing to reach and nothing that reaches: the bot declared no
+		// egress and calls back to nanobotd for nothing, so it gets no
+		// interface. Chromium inside it cannot fetch a remote asset either,
+		// which is the hole the TODO below is about — closed here for the
+		// bots where closing it costs nothing.
+		args = append(args, "--network", "none")
+	} else {
+		args = append(args,
+			"--network", "bridge", // outbound only; see the TODO below
+			// host.docker.internal resolves out of the box on Docker
+			// Desktop (macOS/Windows); this flag is what makes it resolve
+			// on Linux too.
+			"--add-host", "host.docker.internal:host-gateway")
 	}
 	if spec.BlobDir != "" {
 		args = append(args, "-v", spec.BlobDir+":/blobs:ro")
@@ -152,10 +170,14 @@ func dockerRunArgs(spec ContainerSpec, name string) []string {
 	// web.fetch, is a callback to nanobotd. web.fetch is the one that takes
 	// an arbitrary URL from a bot's inputs, and it is checked there.
 	//
+	// A bot that needs nothing gets nothing: ContainerSpec.NoNetwork above.
+	//
 	// TODO(nanobots#egress-container): what remains uncovered is a real
-	// browser. An openclaw bot renders HTML in Chromium in here, and remote
-	// assets that HTML references are fetched by the browser, outside any
-	// check. Closing it needs a per-run network plus an egress proxy.
+	// browser in a bot that *does* call back. An openclaw bot renders HTML
+	// in Chromium in here, and remote assets that HTML references are
+	// fetched by the browser, outside any check. Narrowing that to an
+	// allowlist needs a per-run network plus an egress proxy; "none" is the
+	// only part Docker can express on its own.
 	return append(args, spec.Image)
 }
 
