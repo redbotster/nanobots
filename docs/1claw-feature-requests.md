@@ -8,6 +8,11 @@ paths) or a live call, not against the prose docs — the prose doc set
 currently reports several shipped features as absent, so it is not a safe
 source for "does this exist".
 
+The spec is not proof either. A route that answers is not a route that
+works: memory search is in the spec, accepts every request, and returns
+nothing for any non-empty query (#12). Before building on an endpoint,
+call it with real data and check the answer, not the status code.
+
 Format: **what we need** / **what it blocks** / **what we do instead**.
 
 ---
