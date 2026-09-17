@@ -404,11 +404,25 @@ func (s *Server) handleSaveSwarm(w http.ResponseWriter, r *http.Request) {
 // guard), this always joins against the known-safe dir, so no directory
 // component the caller supplies, ".." or otherwise, can ever take effect;
 // filepath.Base strips it before dir even sees it.
+// An absent or empty path is refused by name rather than resolved:
+// filepath.Base("") is ".", so an omitted field used to resolve to the
+// swarms directory itself, pass os.Stat because a directory exists, and
+// fail four layers down as `read /app/examples/swarms: is a directory` —
+// a message that names a path the caller never sent. The same family as
+// the filepath.Base("..") trap in CLAUDE.md: Base is not a validator.
 func swarmPathFromRequest(dir, relPath string) (string, error) {
 	base := filepath.Base(relPath)
+	if relPath == "" || base == "." || base == ".." || base == string(filepath.Separator) {
+		return "", fmt.Errorf("no swarm named: send the file name of one in %s, like `morning-brief.yaml`",
+			filepath.Base(dir))
+	}
 	abs := filepath.Join(dir, base)
-	if _, err := os.Stat(abs); err != nil {
+	info, err := os.Stat(abs)
+	if err != nil {
 		return "", fmt.Errorf("swarm %q not found: %w", relPath, err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("swarm %q is not a file", base)
 	}
 	return abs, nil
 }
