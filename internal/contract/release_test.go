@@ -190,3 +190,43 @@ func TestTheEmbeddedUIPlaceholderIsCommitted(t *testing.T) {
 			"internal/webui's //go:embed: %v\n%s", path, err, out)
 	}
 }
+
+// Every `bot@version` the docs mention has to be the version that bot
+// actually declares.
+//
+// The README said the catalog was "all at 0.1.0". Two bots were not —
+// email-drive-file at 1.1.0 and recap-emails-to-pdf at 0.3.0 — and the
+// swarms that use them pin those versions correctly, so the only thing
+// wrong was the sentence. Found by reading a bot card in the library and
+// noticing the number did not match the front page.
+//
+// A version in prose is the same kind of claim as a count, and rots the
+// same way: someone bumps a bot, every swarm that pins it keeps working,
+// and the docs quietly describe a catalog that no longer exists.
+func TestEveryVersionTheDocsNameIsReal(t *testing.T) {
+	root := repoRoot(t)
+	corpus := docsCorpus(t, root)
+
+	ref := regexp.MustCompile("`([a-z0-9-]+)@([0-9]+\\.[0-9]+\\.[0-9]+)`")
+	seen := 0
+	for _, m := range ref.FindAllStringSubmatch(corpus, -1) {
+		id, claimed := m[1], m[2]
+		raw, err := os.ReadFile(filepath.Join(root, "bots", id, "nanobot.yaml"))
+		if err != nil {
+			continue // not a catalog bot; an illustration is allowed to be one
+		}
+		seen++
+		actual := regexp.MustCompile(`(?m)^\s+version:\s*"?([0-9]+\.[0-9]+\.[0-9]+)"?`).
+			FindStringSubmatch(string(raw))
+		if actual == nil {
+			t.Errorf("bots/%s/nanobot.yaml declares no version", id)
+			continue
+		}
+		if actual[1] != claimed {
+			t.Errorf("the docs say `%s@%s`; that bot is at %s", id, claimed, actual[1])
+		}
+	}
+	if seen == 0 {
+		t.Error("no bot@version references found in the docs — this test is checking nothing")
+	}
+}
