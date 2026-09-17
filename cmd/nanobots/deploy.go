@@ -80,6 +80,22 @@ func runDeploy(args []string) error {
 }
 
 func deployTo1Claw(opts deployOptions, in *os.File, out *os.File) error {
+	// Arguments before credentials. A missing --image is a usage error and
+	// does not depend on how the machine is configured, so checking the key
+	// first made the command answer "no 1Claw key configured" to someone who
+	// had also forgotten the one flag it cannot run without — and made
+	// TestDeployRefusesWithoutAnImage pass on a laptop with a key in
+	// ~/.secrets/nanobots.env while failing in CI, which has none.
+	if opts.Image == "" {
+		return fmt.Errorf(
+			"--image is required: there is no `nanobots` runtime template yet, so this deploys " +
+				"from a container image.\nBuild and push one from this repo's Dockerfile, then:\n" +
+				"    nanobots deploy 1claw --image ghcr.io/you/nanobots:v1")
+	}
+	if opts.Slug == "" {
+		opts.Slug = "nanobots"
+	}
+
 	key, err := oneclaw.LoadAPIKey(opts.EnvFilePath)
 	if err != nil {
 		return err
@@ -90,16 +106,6 @@ func deployTo1Claw(opts deployOptions, in *os.File, out *os.File) error {
 	client := oneclaw.NewClient(key)
 	if strings.HasPrefix(key, "ocv_") {
 		client = oneclaw.NewAgentClient(key)
-	}
-
-	if opts.Image == "" {
-		return fmt.Errorf(
-			"--image is required: there is no `nanobots` runtime template yet, so this deploys " +
-				"from a container image.\nBuild and push one from this repo's Dockerfile, then:\n" +
-				"    nanobots deploy 1claw --image ghcr.io/you/nanobots:v1")
-	}
-	if opts.Slug == "" {
-		opts.Slug = "nanobots"
 	}
 
 	// The agent the runtime runs as. Reusing the composer's rather than
