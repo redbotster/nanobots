@@ -25,6 +25,35 @@ no authentication beyond a per-run token, because it was written on the
 assumption that only this machine can reach it. Do not bind it to `0.0.0.0`
 on a network you do not control.
 
+### The UI is served out of the binary, compressed
+
+`make ui` copies `web/dist` into `internal/webui/dist` and `//go:embed`
+carries it into the binary, so `nanobots up` is one command and one port.
+
+`http.FileServer` over an `embed.FS` gives you neither compression nor a
+cache tag, and both were measured in a browser rather than guessed:
+
+| | before | after |
+|---|---|---|
+| `index.html` | 1.2KB | **702B** |
+| `assets/index-*.js` | 352.2KB | **110.1KB** |
+| `assets/index-*.css` | 34.3KB | **7.0KB** |
+| a cold load | 387.7KB | **117.8KB** |
+
+That is more than twice every API saving in this repo put together, and it
+was paid on every load: an `embed.FS` file has a zero modtime, so net/http
+emitted no `Last-Modified` and no `ETag`, and there was nothing for the
+browser to revalidate against.
+
+`internal/webui/serve.go` gzips and tags the whole build once at startup —
+about 120KB of extra process memory against a compression pass on every
+request. Everything under `/assets` is content-hashed by Vite, so it is
+served `public, max-age=31536000, immutable` and a reload does not ask for
+it at all; `index.html` is the file that *names* the hashed ones, so it is
+`no-cache` and revalidates every time. A ranged request always gets the
+uncompressed copy, because a range into compressed bytes is not the range
+that was asked for.
+
 ## In a container
 
 ```

@@ -113,7 +113,10 @@ is real and what is simulated](#whats-real-vs-simulated). The list first.
   in a browser: 7 polls over 14 seconds went from 638KB to 2.1KB. The bot
   catalog and the swarm list are held the same way for navigating rather than
   polling, and a five-page browse went from 335.9KB over 32 requests to
-  123.6KB over 30 ([runs.md](runs.md)).
+  123.6KB over 30 ([runs.md](runs.md)). The bigger one was the app itself:
+  the embedded UI was served uncompressed and untagged, so a cold load was
+  387.7KB and a reload paid it again. It is 117.8KB now, and a reload asks
+  for nothing ([hosting.md](hosting.md)).
 - **What you ask for gets scheduled.** Composing "every friday summarise my
   overdue invoices" used to produce a swarm that described itself as weekly
   and would never fire. The composer emits cron now, the builder shows it

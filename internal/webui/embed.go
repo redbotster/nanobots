@@ -56,18 +56,24 @@ func Handler() http.Handler {
 	if !Available() {
 		return notBuilt()
 	}
-	files := http.FileServer(http.FS(sub))
+	// Compressed and ETagged once, up front — see serve.go for the 352KB
+	// of uncompressed JavaScript that made this worth doing.
+	assets := loadedAssets(sub)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
 		if name == "" || name == "." {
 			name = "index.html"
 		}
-		if _, err := fs.Stat(sub, name); err != nil {
+		a, ok := assets[name]
+		if !ok {
 			// Not a file we have. Hand the app its own route.
-			r = r.Clone(r.Context())
-			r.URL.Path = "/"
+			a = assets["index.html"]
 		}
-		files.ServeHTTP(w, r)
+		if a == nil {
+			http.NotFound(w, r)
+			return
+		}
+		a.serve(w, r)
 	})
 }
 
