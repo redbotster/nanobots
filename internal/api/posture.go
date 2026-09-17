@@ -70,9 +70,7 @@ func (s *Server) handlePosture(w http.ResponseWriter, r *http.Request) {
 		writeJSONCached(w, r, http.StatusOK, PostureResponse{})
 		return
 	}
-	out, err := s.postureCache.do(postureTTL, func() (PostureResponse, error) {
-		return s.readPosture()
-	})
+	out, err := s.postureCache.doStale(postureTTL, s.readPosture)
 	if err != nil {
 		// 200 with an error field, not a 5xx: this is one row on a settings
 		// page, and a page that fails to render because a status widget

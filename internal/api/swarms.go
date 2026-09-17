@@ -191,6 +191,19 @@ func (s *Server) handleListSwarms(w http.ResponseWriter, r *http.Request) {
 	if s.Runs != nil {
 		allRuns = s.Runs.List()
 	}
+	// Grouped once rather than scanned per swarm.
+	//
+	// lastRunFor and Breaker.Check each walked the whole history looking for
+	// one swarm's runs, so 18 swarms against 200 runs was 7,200 iterations —
+	// every one of them taking the run's mutex three times, for GetStatus,
+	// WasStoppedByUser and WasDeclinedByUser. This endpoint is polled every
+	// four seconds while the swarm list is on screen, and it costs that even
+	// to answer 304: the body has to be built before its hash can be
+	// compared.
+	bySwarm := make(map[string][]*runner.Run, len(allRuns))
+	for _, r := range allRuns {
+		bySwarm[r.SwarmName] = append(bySwarm[r.SwarmName], r)
+	}
 
 	var swarms []SwarmSummary
 	for _, e := range entries {
@@ -212,14 +225,18 @@ func (s *Server) handleListSwarms(w http.ResponseWriter, r *http.Request) {
 			ServicesLive: live, ServicesTotal: total, NeedsApproval: needsApproval,
 		}
 		describeSchedule(&summary, sw.Spec.Trigger, time.Now())
-		if last := lastRunFor(allRuns, sw.Metadata.Name); last != nil {
+		mine := bySwarm[sw.Metadata.Name]
+		if last := lastRunFor(mine, sw.Metadata.Name); last != nil {
 			summary.LastRunID = last.ID
 			summary.LastRunStatus = string(last.GetStatus())
 			summary.LastRunAt = last.StartedAt.Format(time.RFC3339)
 			summary.LastRunTrigger = last.TriggeredBy
 		}
 		if s.ScheduleBreaker != nil {
-			st := s.ScheduleBreaker.Check(sw.Metadata.Name, allRuns)
+			// Check's first act is to discard every run belonging to another
+			// swarm, so handing it the pre-filtered slice is the same answer
+			// with the loop already done.
+			st := s.ScheduleBreaker.Check(sw.Metadata.Name, mine)
 			summary.FailureStreak = st.Failures
 			summary.StreakError = st.LastError
 			// Only a cron swarm has a schedule to pause. A manual swarm can

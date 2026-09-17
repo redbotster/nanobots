@@ -141,3 +141,142 @@ func TestInvalidateForcesTheNextReadToRecompute(t *testing.T) {
 		t.Errorf("after invalidate = %d, want a recomputed 2", v)
 	}
 }
+
+// An expired value is served immediately and corrected behind the request.
+//
+// The blocking version made the TTL something a person waits for:
+// /api/connections is 3.5s cold, so with a one-minute TTL whichever page
+// load first crossed the minute paid 3.5s again — on an endpoint four
+// screens fetch on mount, one of them the landing page's own.
+func TestAnExpiredValueIsServedWhileItIsRefreshed(t *testing.T) {
+	var c ttlCache[string]
+	var calls atomic.Int32
+	slow := func() (string, error) {
+		calls.Add(1)
+		time.Sleep(60 * time.Millisecond)
+		return "fresh", nil
+	}
+
+	if v, _ := c.doStale(time.Minute, func() (string, error) { return "first", nil }); v != "first" {
+		t.Fatalf("cold read = %q", v)
+	}
+
+	// Expire it, then read with a computation slow enough that a blocking
+	// implementation could not possibly return in time.
+	c.mu.Lock()
+	c.at = time.Now().Add(-time.Hour)
+	c.mu.Unlock()
+
+	start := time.Now()
+	v, err := c.doStale(time.Minute, slow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v != "first" {
+		t.Errorf("got %q — an expired read waited for the new value instead of serving the held one", v)
+	}
+	if took := time.Since(start); took > 30*time.Millisecond {
+		t.Errorf("an expired read took %s, so the caller waited for the refresh", took)
+	}
+
+	// And the refresh really happened, so the next reader gets the new one.
+	waitFor(t, func() bool { return calls.Load() == 1 })
+	waitFor(t, func() bool {
+		v, _ := c.doStale(time.Minute, slow)
+		return v == "fresh"
+	})
+}
+
+// A cold cache blocks, and must. There is nothing to be stale with, and
+// answering "nothing is connected" because the answer has not arrived would
+// be the app claiming something untrue about a real account.
+func TestAColdReadStillWaitsForARealAnswer(t *testing.T) {
+	var c ttlCache[string]
+	v, err := c.doStale(time.Minute, func() (string, error) {
+		time.Sleep(20 * time.Millisecond)
+		return "real", nil
+	})
+	if err != nil || v != "real" {
+		t.Errorf("cold doStale returned (%q, %v) — it did not wait for the answer", v, err)
+	}
+}
+
+// The distinction the whole design rests on. invalidate() is what this app
+// calls when it has just connected an account, and that reader is watching
+// for the change — so it zeroes the value and the next read blocks for a
+// fresh one. Only TTL expiry gets the stale treatment.
+func TestAnInvalidatedValueIsNotServedStale(t *testing.T) {
+	var c ttlCache[string]
+	if _, err := c.doStale(time.Minute, func() (string, error) { return "before", nil }); err != nil {
+		t.Fatal(err)
+	}
+	c.invalidate()
+
+	v, err := c.doStale(time.Minute, func() (string, error) { return "after", nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v != "after" {
+		t.Errorf("got %q — a read after the app changed something served the answer from before it", v)
+	}
+}
+
+func waitFor(t *testing.T, cond func() bool) {
+	t.Helper()
+	for i := 0; i < 200; i++ {
+		if cond() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("condition never became true")
+}
+
+// The bug the first version of doStale had, which only a stopwatch found.
+//
+// It served stale only when no flight was in progress, so the *second*
+// request to arrive during a refresh fell through to do() and waited on it.
+// Against the live daemon that read 0.97ms, then 3.29s, then 2ms — the
+// three-second wait had moved rather than gone, and it landed on whoever
+// loaded a page a moment after someone else.
+func TestEveryReaderDuringARefreshIsServedImmediately(t *testing.T) {
+	var c ttlCache[string]
+	var calls atomic.Int32
+	release := make(chan struct{})
+	slow := func() (string, error) {
+		calls.Add(1)
+		<-release // held open for the whole test
+		return "fresh", nil
+	}
+
+	if _, err := c.doStale(time.Minute, func() (string, error) { return "held", nil }); err != nil {
+		t.Fatal(err)
+	}
+	c.mu.Lock()
+	c.at = time.Now().Add(-time.Hour)
+	c.mu.Unlock()
+
+	// The first read starts the refresh; the next three arrive while it is
+	// still running and must not wait for it.
+	for i := 0; i < 4; i++ {
+		start := time.Now()
+		v, err := c.doStale(time.Minute, slow)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v != "held" {
+			t.Errorf("read %d returned %q, want the held value", i, v)
+		}
+		if took := time.Since(start); took > 50*time.Millisecond {
+			t.Fatalf("read %d waited %s for a refresh that is still running", i, took)
+		}
+	}
+
+	close(release)
+	// And exactly one refresh ran for all four, which is the other half of
+	// the promise: this must not turn into a call per reader.
+	waitFor(t, func() bool { return calls.Load() == 1 })
+	if n := calls.Load(); n != 1 {
+		t.Errorf("%d refreshes ran, want 1", n)
+	}
+}

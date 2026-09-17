@@ -456,3 +456,29 @@ func recallerName(r memory.Recaller) string {
 	}
 	return "recall"
 }
+
+// Warm fills the caches a page load would otherwise wait on, in the
+// background, so the first one does not.
+//
+// /api/connections is 3.5s cold: eight vault secrets at roughly 900ms of
+// round trip, concurrently, against a service that throttles concurrent
+// reads. Four screens fetch it on mount, one of them the landing page's own
+// getting-started card — so the app's very first screen opened by waiting
+// on it. doStale removed the recurring cost at every TTL expiry, but the
+// cold case has nothing to be stale with and correctly blocks.
+//
+// The daemon binds its port some seconds before a human has a browser
+// pointed at it, and that gap is free. Failures are dropped on purpose:
+// this is a prefetch of something the handler will ask for again, and a
+// 1Claw that is down at startup should not be reported through a warm-up
+// nobody asked for.
+//
+// Nothing here is required for correctness — the handlers work identically
+// with a cold cache, which is what the tests run against.
+func (s *Server) Warm() {
+	if s.OneClaw == nil || !s.OneClaw.Configured() {
+		return
+	}
+	go func() { _, _ = s.connCache.do(0, s.readConnections) }()
+	go func() { _, _ = s.postureCache.do(0, s.readPosture) }()
+}

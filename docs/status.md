@@ -118,7 +118,10 @@ is real and what is simulated](#whats-real-vs-simulated). The list first.
   387.7KB and a reload paid it again. Compressing and tagging it, then
   splitting the pages nobody has navigated to out of the main chunk, takes a
   cold load to 71.1KB — and a reload asks for nothing
-  ([hosting.md](hosting.md)).
+  ([hosting.md](hosting.md)). The slowest thing left was not bytes at all:
+  `GET /api/connections` reads eight throttled vault secrets and four
+  screens fetch it on mount, including the landing page's. A first page load
+  went from 3.5s to 0.99ms ([connections.md](connections.md)).
 - **What you ask for gets scheduled.** Composing "every friday summarise my
   overdue invoices" used to produce a swarm that described itself as weekly
   and would never fire. The composer emits cron now, the builder shows it

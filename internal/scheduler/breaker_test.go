@@ -229,3 +229,46 @@ func TestARealFailureStillPausesAfterADecline(t *testing.T) {
 		t.Errorf("counted %d failures, want 2 — the decline should not be one", st.Failures)
 	}
 }
+
+// Check's answer must not depend on being handed other swarms' runs.
+//
+// handleListSwarms relies on this. It used to pass the whole history to
+// Check once per swarm — 18 swarms against 200 runs, each run's mutex taken
+// three times, on an endpoint polled every four seconds and paying that
+// even to answer 304. It now groups the runs by swarm once and passes each
+// swarm only its own, which is the same answer only if Check genuinely
+// discards the rest rather than, say, using the full list to order
+// something.
+func TestCheckIsTheSameAnswerWithOrWithoutOtherSwarmsRuns(t *testing.T) {
+	base := time.Now().Add(-time.Hour)
+	mine := []*runner.Run{
+		finished("desk", base.Add(1*time.Minute), runner.StatusFailed, "boom"),
+		finished("desk", base.Add(3*time.Minute), runner.StatusFailed, "boom"),
+		finished("desk", base.Add(5*time.Minute), runner.StatusFailed, "boom"),
+	}
+	// The same runs with three other swarms' runs interleaved by time, so a
+	// Check that looked at position rather than name would see them.
+	all := []*runner.Run{
+		finished("other", base.Add(0*time.Minute), runner.StatusSucceeded, ""),
+		mine[0],
+		finished("other", base.Add(2*time.Minute), runner.StatusSucceeded, ""),
+		mine[1],
+		finished("third", base.Add(4*time.Minute), runner.StatusFailed, "unrelated"),
+		mine[2],
+		finished("other", base.Add(6*time.Minute), runner.StatusSucceeded, ""),
+	}
+
+	b := &Breaker{MaxFailures: 3}
+	withOthers := b.Check("desk", all)
+	justMine := b.Check("desk", mine)
+
+	if withOthers.Paused != justMine.Paused ||
+		withOthers.Failures != justMine.Failures ||
+		withOthers.LastError != justMine.LastError {
+		t.Errorf("Check disagreed depending on what else it was given:\n  all runs: %+v\n  only its own: %+v",
+			withOthers, justMine)
+	}
+	if !justMine.Paused {
+		t.Error("three failures against MaxFailures 3 did not pause — the test proves nothing")
+	}
+}

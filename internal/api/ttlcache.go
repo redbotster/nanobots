@@ -27,6 +27,9 @@ type ttlCache[T any] struct {
 	// result that was already overtaken — see do().
 	gen    uint64
 	flight *flight[T]
+	// refreshing guards doStale's background refresh, which is claimed
+	// before its goroutine exists — see doStale.
+	refreshing bool
 }
 
 // flight is one in-progress computation that later arrivals wait on rather
@@ -93,6 +96,73 @@ func (c *ttlCache[T]) do(ttl time.Duration, fn func() (T, error)) (T, error) {
 	close(f.done)
 
 	return f.val, f.err
+}
+
+// doStale is do(), except that an *expired* value is served immediately and
+// refreshed behind the request.
+//
+// The blocking version made the TTL something a person waits for. Measured
+// against the live daemon: /api/connections is 3.5s cold, and with a
+// one-minute TTL that is 3.5s paid again by whichever page load first
+// crosses the minute — on an endpoint four screens fetch on mount,
+// including the landing page's own. Browsing for ten minutes paid it about
+// ten times.
+//
+// The distinction that makes this safe is already in this file. A change
+// *this app* makes calls invalidate(), which zeroes the value, so there is
+// no stale answer to serve and the next call blocks for a fresh one — which
+// is what it should do, because someone just connected an account and is
+// watching for it. Only TTL expiry lands here, and the TTL exists solely as
+// a backstop for a secret added or removed somewhere this app cannot see.
+// Serving one request's worth of already-accepted staleness while correcting
+// it in the background is the same guarantee, without the wait.
+//
+// A cold cache still blocks. There is nothing to be stale with, and
+// answering "nothing is connected" because the answer has not arrived yet
+// would be the app claiming something untrue about a real account.
+func (c *ttlCache[T]) doStale(ttl time.Duration, fn func() (T, error)) (T, error) {
+	c.mu.Lock()
+	if c.set && time.Since(c.at) > ttl {
+		stale := c.val
+		// Whether to *start* a refresh depends on whether one is running.
+		// Whether to *wait* for it does not — and conflating the two is how
+		// the first version of this went wrong. It only served stale when
+		// no flight was in progress, so the second request to arrive during
+		// a refresh fell through to do() and waited on it: measured against
+		// the live daemon, 0.97ms, then 3.29s, then 2ms. The cost had moved
+		// rather than gone.
+		//
+		// `refreshing` rather than `c.flight == nil` alone: do() registers
+		// the flight inside the goroutine, so between spawning it and it
+		// taking the lock there is a window where the next reader also sees
+		// no flight and starts a second one. Claiming the slot here, under
+		// the lock this reader already holds, closes it. The race detector
+		// does not see this one — it is two goroutines doing legal things in
+		// an order that duplicates work — so it took a test that counts the
+		// calls.
+		needsRefresh := !c.refreshing && c.flight == nil
+		if needsRefresh {
+			c.refreshing = true
+		}
+		c.mu.Unlock()
+		if needsRefresh {
+			// do() rather than fn() directly: it single-flights, and it
+			// holds the generation check that stops a refresh started
+			// before an invalidation from overwriting one started after.
+			// Zero TTL because this has already decided the value is stale.
+			go func() {
+				defer func() {
+					c.mu.Lock()
+					c.refreshing = false
+					c.mu.Unlock()
+				}()
+				_, _ = c.do(0, fn)
+			}()
+		}
+		return stale, nil
+	}
+	c.mu.Unlock()
+	return c.do(ttl, fn)
 }
 
 // invalidate drops the cached value so the next do() recomputes.

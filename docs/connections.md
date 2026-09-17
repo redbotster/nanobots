@@ -94,6 +94,53 @@ and once connected:
 
 Each bot's `nanobot.yaml` is edited with the same surgical line editor the single-bot toggle uses, so every comment in the file survives, and the result is re-parsed before it is written — a text edit that produced something unloadable never reaches disk. A bot that fails to switch is reported by name rather than silently skipped or rolled back: the bots that did switch really did switch, and claiming otherwise would be worse.
 
+## Asking "what is connected" used to be the slowest thing in the app
+
+`GET /api/connections` reads eight vault secrets — seven services plus
+LinkedIn's fallback — and 1Claw is roughly 900ms away and throttles
+concurrent reads. Sequentially that was 7.8s. Concurrently it is 3.5s, not
+the ~1s the arithmetic suggests, because of the throttling.
+
+Four screens fetch it on mount: Settings, the bot library, the builder, and
+the getting-started card, which is on the landing page. So the app's very
+first screen opened by waiting on it.
+
+Three things fixed it, and they are independent — each covers a case the
+others do not:
+
+- **Single-flight.** A plain cache made the cold case *worse* than none: four
+  concurrent requests took 15.7s each, against 7.8s for one uncached
+  request, because each fans out to eight throttled reads and thirty-two at
+  once queue behind each other. Callers arriving together now wait on one
+  computation.
+- **Invalidate on write, not a short TTL.** Every handler that writes a
+  credential drops the cache, so connecting an account shows up immediately.
+  The TTL is only a backstop for a secret changed in 1Claw's own dashboard
+  or by another install.
+- **Serve the stale answer while refreshing.** The backstop used to be
+  something a *person* waited for: with a one-minute TTL, whichever page
+  load first crossed the minute paid 3.5s again. An expired value is now
+  returned immediately and corrected behind the request. A cold cache still
+  blocks — there is nothing to be stale with, and answering "nothing is
+  connected" because the answer has not arrived would be the app claiming
+  something untrue about a real account.
+
+Plus a warm-up at startup (`Server.Warm`), because the seconds between the
+daemon binding its port and a human opening a browser are free.
+
+Measured against the live account, end to end:
+
+| | before | after |
+|---|---|---|
+| first page load after a restart | 3.5s | **0.99ms** |
+| the first load after each TTL expiry | 3.5s | **1.2ms** |
+
+One bug in that change only a stopwatch found, worth knowing if you write
+another cache like this: the first version served stale only when no refresh
+was in flight, so the *second* request during a refresh fell through and
+waited on it — 0.97ms, then 3.29s, then 2ms. Whether to *start* a refresh
+depends on whether one is running; whether to *wait* for it does not.
+
 ## Demo data is never silent
 
 Every bot ships on `connection: demo`, so the default experience is a run

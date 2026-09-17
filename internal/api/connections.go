@@ -59,6 +59,40 @@ var connectionServices = []string{"google", "slack", "github", "stripe", "hubspo
 // at the page.
 const connectionTTL = time.Minute
 
+// readConnections asks the vault which services have a credential.
+//
+// Extracted from the handler's closure so the cache can also be warmed
+// at startup — see Server.Warm. The reads are independent GETs against
+// different paths, so there is no ordering to preserve between them,
+// only in the output, which is why results go into a pre-sized slice by
+// index rather than being appended as they finish.
+func (s *Server) readConnections() ([]connectionStatus, error) {
+	vault, err := s.OneClaw.EnsureVault("nanobots-main")
+	if err != nil {
+		return nil, err
+	}
+	out := make([]connectionStatus, len(connectionServices))
+	var wg sync.WaitGroup
+	for i, service := range connectionServices {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := s.OneClaw.GetSecret(vault.ID, vaultKeyFor[service])
+			connected := err == nil
+			if service == "linkedin" && !connected {
+				// LinkedIn may have connected without a refresh token at all
+				// (see internal/step/linkedin_live.go) — a stored access token
+				// alone still counts as connected.
+				_, err := s.OneClaw.GetSecret(vault.ID, "linkedin/access_token")
+				connected = err == nil
+			}
+			out[i] = connectionStatus{Service: service, Connected: connected}
+		}()
+	}
+	wg.Wait()
+	return out, nil
+}
+
 // handleConnectionsStatus reports which services have a credential in the
 // vault already.
 //
@@ -85,32 +119,7 @@ func (s *Server) handleConnectionsStatus(w http.ResponseWriter, r *http.Request)
 		writeJSONCached(w, r, http.StatusOK, []connectionStatus{})
 		return
 	}
-	statuses, err := s.connCache.do(connectionTTL, func() ([]connectionStatus, error) {
-		vault, err := s.OneClaw.EnsureVault("nanobots-main")
-		if err != nil {
-			return nil, err
-		}
-		out := make([]connectionStatus, len(connectionServices))
-		var wg sync.WaitGroup
-		for i, service := range connectionServices {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				_, err := s.OneClaw.GetSecret(vault.ID, vaultKeyFor[service])
-				connected := err == nil
-				if service == "linkedin" && !connected {
-					// LinkedIn may have connected without a refresh token at all
-					// (see internal/step/linkedin_live.go) — a stored access token
-					// alone still counts as connected.
-					_, err := s.OneClaw.GetSecret(vault.ID, "linkedin/access_token")
-					connected = err == nil
-				}
-				out[i] = connectionStatus{Service: service, Connected: connected}
-			}()
-		}
-		wg.Wait()
-		return out, nil
-	})
+	statuses, err := s.connCache.doStale(connectionTTL, s.readConnections)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return

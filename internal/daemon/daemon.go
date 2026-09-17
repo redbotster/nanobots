@@ -46,6 +46,12 @@ func Run(opts Options) error {
 	// no graceful-shutdown story either has one yet.
 	go sched.Run(context.Background())
 
+	// The seconds between binding the port and a human having a browser
+	// pointed at it are free, and /api/connections costs 3.5s cold — on an
+	// endpoint the landing page itself fetches. Background, best-effort,
+	// and nothing below depends on it.
+	srv.Warm()
+
 	if webui.Available() {
 		log.Printf("nanobots listening on http://%s — open that in a browser (bots: %s)", opts.Addr, opts.BotsDir)
 	} else {
