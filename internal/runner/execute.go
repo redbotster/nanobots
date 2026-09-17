@@ -461,16 +461,34 @@ func aggregateOutputs(nb *schema.Nanobot, perItem []map[string]any) map[string]a
 
 func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID string, rb *planner.ResolvedBot, at fanIndex, total int, batch step.Approver) error {
 	nb := rb.Nanobot
+	inProcess, whyContainer := runsInProcess(nb)
+
+	// One "starting" line, saying where it ran as well as which harness.
+	// "Which of my bots skipped the sandbox" is a fair question to answer
+	// from the log alone, and a second line for it would just be noise on
+	// every run.
 	if at == noFan {
-		run.Log(botID, "", "starting (%s harness)", nb.Spec.Harness.Type)
+		where := "in-process, no container"
+		if !inProcess {
+			where = "container: " + whyContainer
+		}
+		run.Log(botID, "", "starting (%s harness, %s)", nb.Spec.Harness.Type, where)
 	} else {
 		run.Log(botID, "", "item %d of %d", int(at)+1, total)
 	}
 
-	harnessType := imageFor(nb, run, botID)
-	image, user, err := EnsureHarnessImage(harnessType, o.RepoRoot)
-	if err != nil {
-		return err
+	// Only touch Docker for a bot that actually needs it. EnsureHarnessImage
+	// builds the image when it is missing, so doing this unconditionally
+	// made Docker a hard dependency of every run — including runs of bots
+	// that never open a container.
+	var image, user string
+	if !inProcess {
+		harnessType := imageFor(nb, run, botID)
+		var err error
+		image, user, err = EnsureHarnessImage(harnessType, o.RepoRoot)
+		if err != nil {
+			return err
+		}
 	}
 
 	inputs, err := o.resolveInputsAt(run, rs, botID, rb, at)
@@ -543,6 +561,22 @@ func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID str
 	defer o.Callbacks.Unregister(token)
 
 	maxRuntime := time.Duration(nb.Spec.Guardrails.MaxRuntimeSecs) * time.Second
+
+	if inProcess {
+		// Said out loud, every run. "It went faster" is not a thing a user
+		// should have to infer, and "which of my bots skipped the sandbox"
+		// is a fair question to be able to answer from the log alone.
+		if err := interpretInProcess(run, botID, nb, inputs, rs.Swarm.Spec.Vars, deps, blobs, runDir, maxRuntime); err != nil {
+			return describeTimeout(run, botID, maxRuntime, err)
+		}
+		outputs, err := collectOutputs(nb, blobs, filepath.Join(runDir, "outputs"))
+		if err != nil {
+			return fmt.Errorf("collect outputs: %w", err)
+		}
+		run.SetBotOutputs(botID, outputs)
+		run.Log(botID, "", "done")
+		return nil
+	}
 	// Exit code and stderr are both already inside RunContainer's error.
 	// Follow the bot's log while it runs, rather than replaying it after.
 	// The agent flushes a line per step; this picks them up within a poll.

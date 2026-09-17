@@ -107,7 +107,7 @@ func run() error {
 		return fmt.Errorf("create outputs dir: %w", err)
 	}
 	for name, val := range result.Outputs {
-		if err := writeOutput(outDir, blobs, name, val); err != nil {
+		if err := step.WriteOutput(outDir, blobs, name, val); err != nil {
 			return fmt.Errorf("write output %q: %w", name, err)
 		}
 	}
@@ -142,24 +142,6 @@ func buildDeps(botDir string, blobs step.BlobStore) step.Deps {
 // writeOutput writes one output port's value under outDir, per the bot
 // contract: a `file` port writes raw bytes to <port> plus a <port>.mime
 // sidecar; everything else is JSON-encoded to <port>.json.
-func writeOutput(outDir string, blobs step.BlobStore, name string, val any) error {
-	if fv, ok := val.(step.FileValue); ok {
-		data, err := blobs.Read(fv.URI)
-		if err != nil {
-			return fmt.Errorf("read blob %s: %w", fv.URI, err)
-		}
-		if err := os.WriteFile(filepath.Join(outDir, name), data, 0o644); err != nil {
-			return err
-		}
-		return os.WriteFile(filepath.Join(outDir, name+".mime"), []byte(fv.Mime), 0o644)
-	}
-	b, err := json.Marshal(val)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(outDir, name+".json"), b, 0o644)
-}
-
 // writeLog appends the run's step log as JSON lines to <run>/log.jsonl —
 // nanobotd tails this (or the equivalent stdout stream) for the WebUI's live
 // run log. Written even on failure, since a partial log is exactly what a

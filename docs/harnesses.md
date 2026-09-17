@@ -117,3 +117,47 @@ that did.
 Closing it needs a per-run Docker network with an egress proxy in front of
 it. Until then this is the honest boundary: enforced for the step that
 fetches on your behalf, not for a browser you asked to draw a page.
+
+## Running without a container
+
+Most bots do not open one. `runsInProcess` in `internal/runner` decides per
+bot, and the run log says which path each took:
+
+```
+triage    starting (llm harness, in-process, no container)
+meetings  starting (openclaw harness, container: it renders with a real headless browser)
+```
+
+**Why that is safe.** A bot's steps are not user code. They are a fixed list
+declared in its `nanobot.yaml`, executed by this repo's own interpreter, and
+every step that reaches the outside world — `service.call`, `ai.generate`,
+`web.fetch`, `memory.*`, `approve`, `notify` — already runs inside
+`nanobotd` and is reached from the container by an HTTP callback over a
+per-run token. So for those bots the container holds no credential, runs
+nothing we did not write, and isolates a process whose only privileged act
+is to phone home.
+
+**What still gets one.** Two cases, and both are the isolation argument
+actually applying:
+
+- a bot that renders with headless Chromium, which is a browser executing
+  pages nobody here wrote. Five of the catalog's thirty-nine.
+- a future `harness: agent` loop that decides its own actions at runtime.
+  The moment behaviour stops being a declared list, the sandbox matters
+  again.
+
+**One honest difference.** `docker kill` ends a hung bot outright and the
+in-process path cannot: `step.Interpret` takes no context, so a
+`max_runtime_secs` timeout stops the run *waiting* without stopping the
+work. Each blocking call carries its own deadline — the HTTP clients, the
+LLM client, the approval gate — so the ceiling is a backstop rather than the
+only bound. The same property cuts the other way and in our favour: a bot
+parked on an approval in-process holds a goroutine, not a container, and
+unanswered approvals were the largest consumer of container time on the
+machine this was built on.
+
+**Measured.** `morning-brief` went from a median of 35.3s across 14
+container runs to 21-27s, and that swarm still puts two of its four bots in
+containers, so most of what remains is model latency rather than startup.
+The headline is not the seconds: `github-digest-to-slack` was run to success
+with `docker` removed from the daemon's PATH entirely.

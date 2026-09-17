@@ -115,8 +115,17 @@ Then open <http://127.0.0.1:7474>.
 [`docs/setup.md`](docs/setup.md) covers what `init` writes and the difference between the two kinds of 1Claw key. It is optional — skip it entirely and everything still runs. No 1Claw account, no model key and no OAuth app are needed to start: every
 bot ships on `connection: demo` and answers from this repo's own example
 inbox, invoices and files, so the first run does real work against fake data
-and touches nothing of yours. Docker does need to be running — every bot
-executes in its own container today.
+and touches nothing of yours.
+
+**Docker is optional.** 34 of the 39 bots run in this process, because a
+container was not protecting anything: their steps are a declared list run
+by this repo's own interpreter, and every step that reaches the outside
+world (`service.call`, `ai.generate`, `web.fetch`, `memory.*`, `approve`)
+already runs in `nanobotd` rather than in the container. The 5 that still
+need Docker are the ones that drive a real headless browser to render a PDF
+or a chart — `meeting-prep`, `quote-builder`, `recap-emails-to-pdf`,
+`render-pdf`, `sheet-reporter` — and the run log says which path each bot
+took, every run.
 
 Once there is a tagged release, this becomes `brew install
 redbotster/tap/nanobots` or `npx nanobots`; the packaging is in
@@ -455,9 +464,9 @@ Being explicit about this matters more here than in most projects, because so mu
 
 | Real | Simulated / not yet |
 |---|---|
-| One binary serves the WebUI and the API on a single port (`make build && nanobots up`) | Published packages: the GoReleaser config and the npx shim exist and validate, but no release is tagged, so `brew install` and `npx nanobots` do not work yet |
+| One binary serves the WebUI and the API on a single port (`make build && nanobots up`), and 34 of 39 bots run without Docker | Published packages: the GoReleaser config and the npx shim exist and validate, but no release is tagged, so `brew install` and `npx nanobots` do not work yet |
 | 1Claw Human API, Shroud, vault secrets, agent memory, approval requests | 1Claw's execution-intent bindings (`internal/oneclaw.Execute`) assume a binding already exists on the agent — provisioning one from a `nanobot.yaml` service isn't wired up |
-| Docker execution: non-root, read-only fs, real container-to-container I/O wiring | Guardrails' `network_egress` allowlist is reported per bot, not enforced as an actual container network policy |
+| Docker execution for the 5 browser bots: non-root, read-only fs, real container-to-container I/O wiring | Guardrails' `network_egress` allowlist is reported per bot, not enforced as an actual container network policy |
 | The step interpreter, for every harness type, incl. `web.fetch` and PDF/PNG rendering | The *dynamic agent loop* a harness name like `openclaw` implies — every harness today runs the same fixed, pre-written `spec.steps` list, not an LLM deciding what to do (`docs/harnesses.md`) |
 | The Google OAuth client (`internal/google`) — real PKCE flow, real REST calls (Gmail, Drive, Sheets, Calendar), unit-tested against fake servers | No bot ships with a non-demo Google connection by default — every bot's Google service is `connection: demo` until a human deliberately flips it (`docs/connections.md`) |
 | The Slack/GitHub/Stripe/HubSpot clients — real REST calls, unit-tested against fake servers; `notify`'s Slack delivery is genuinely wired, not a no-op, once connected | Google Business Profile replies (`review-responder`) need a dedicated integration — out of scope for this pass, stays on `connection: demo`, called out in `docs/connections.md` |
@@ -516,7 +525,7 @@ Per the project's own working style, expensive verification is a single consolid
 go build ./... && go vet ./... && go test ./...
 ```
 
-663 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
+665 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
 - `internal/contract`'s `TestRunConformanceOnLaunchBots` — auto-discovers and conformance-tests all 39 bots under `bots/` against their own fixtures, no Docker or network.
 - `internal/planner`'s `TestPlanAllExampleSwarms` — auto-discovers and type-checks all 16 swarms under `examples/swarms/`.
 - httptest-mocked 1Claw/Google/Slack/GitHub/Stripe/HubSpot/X/LinkedIn API clients, built against each provider's real, documented endpoint shapes (verified against `@1claw/openapi-spec` and each provider's own docs, not guessed).
