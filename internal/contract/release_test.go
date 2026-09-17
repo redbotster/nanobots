@@ -2,6 +2,7 @@ package contract
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -164,4 +165,28 @@ func render(t *testing.T, text string, data map[string]any) string {
 		t.Fatalf("execute: %v", err)
 	}
 	return b.String()
+}
+
+// internal/webui/dist/.gitkeep has to stay tracked by git.
+//
+// `//go:embed all:dist` is a compile error when the pattern matches
+// nothing, so that one empty file is what makes a fresh clone build at all.
+// It is also inside a gitignored directory, which is what makes losing it
+// easy: running goreleaser locally rebuilt internal/webui/dist from
+// scratch, `git add -A` committed the deletion, and the next CI run failed
+// with `pattern all:dist: no matching files found` on a tree that compiled
+// fine on the machine it was pushed from.
+//
+// Checked through git rather than os.Stat, because the local file existing
+// is exactly what hid the problem.
+func TestTheEmbeddedUIPlaceholderIsCommitted(t *testing.T) {
+	root := repoRoot(t)
+	const path = "internal/webui/dist/.gitkeep"
+
+	cmd := exec.Command("git", "ls-files", "--error-unmatch", path)
+	cmd.Dir = root
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Errorf("%s is not tracked by git, so a fresh clone cannot compile "+
+			"internal/webui's //go:embed: %v\n%s", path, err, out)
+	}
 }

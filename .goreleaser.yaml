@@ -10,7 +10,12 @@ before:
   hooks:
     - go mod tidy
     - sh -c "cd web && npm ci --no-audit --no-fund && npm run build"
-    - sh -c "rm -rf internal/webui/dist && mkdir -p internal/webui/dist && cp -R web/dist/. internal/webui/dist/"
+    # The trailing touch matters. This hook removes internal/webui/dist,
+    # which is where the committed .gitkeep lives — the one file that makes
+    # a fresh clone compile, because //go:embed all:dist fails outright on
+    # an empty match. Running goreleaser locally once deleted it, `git add
+    # -A` committed the deletion, and CI could not build the next commit.
+    - sh -c "rm -rf internal/webui/dist && mkdir -p internal/webui/dist && cp -R web/dist/. internal/webui/dist/ && touch internal/webui/dist/.gitkeep"
 
 builds:
   - id: nanobots
