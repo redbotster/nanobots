@@ -206,9 +206,18 @@ func TestForHandlesDockerAndTheMissingModel(t *testing.T) {
 
 // A confidently wrong suggestion sends someone to reconfigure a thing that
 // was never the problem, which is worse than saying nothing.
+// Silence is the right answer for anything this table has not actually
+// seen: a confidently wrong suggestion sends someone to reconfigure a thing
+// that was never the problem.
+//
+// "model response was not valid JSON" used to be the example here, chosen
+// because nothing recognised it. It is recognised now — it turned up in the
+// real run history and earned an entry — so the example moved rather than
+// the rule being weakened. Keep this list to messages that genuinely have
+// no entry.
 func TestForOffersNothingForAFailureItDoesNotRecognise(t *testing.T) {
 	for _, raw := range []string{
-		"bot repurposer: model response was not valid JSON",
+		"bot repurposer: the flux capacitor came loose",
 		"something nobody has seen before",
 		"",
 		"   ",
@@ -216,5 +225,84 @@ func TestForOffersNothingForAFailureItDoesNotRecognise(t *testing.T) {
 		if r := For(raw); r != nil {
 			t.Errorf("For(%q) = %+v, want nil", raw, r)
 		}
+	}
+}
+
+// Measured against the real run history on the development machine: 97
+// failed runs, 26 distinct messages, and 66 of those runs carried no advice
+// at all. CLAUDE.md asks that "a failure says what to do about it", and for
+// two thirds of them it did not.
+//
+// These are the classes that accounted for it, each matched on wording the
+// server itself controls.
+func TestTheFailuresThatHadNoAdvice(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  string
+		want string
+	}{
+		{
+			// 55 of the 97. describeTimeout renames the unanswered-approval
+			// case before it reaches here, so what is left is a bot that
+			// genuinely sat there.
+			name: "a container that hit its own ceiling",
+			err:  "item 1 of 1: container exceeded 30m0s and was stopped",
+			want: "max_runtime_secs",
+		},
+		{
+			name: "a fanned snap indexing an empty list",
+			err:  `resolve inputs: input "message": notes.decisions has 0 item(s), index 0 is out of range`,
+			want: "`.*`",
+		},
+		{
+			name: "a model that answered in prose",
+			err:  `bot invoice-chaser: step "draft": model response was not valid JSON: invalid character 'I' looking for beginning of value`,
+			want: "Run it again",
+		},
+		{
+			name: "a page that answered with an error",
+			err:  `bot competitor-watch: step "fetch": web.fetch https://example.com/pricing: unexpected status 404`,
+			want: "opens in a browser",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := For(tc.err)
+			if r == nil {
+				t.Fatalf("no advice for a failure seen %s", tc.name)
+			}
+			if !strings.Contains(r.Advice, tc.want) {
+				t.Errorf("advice = %q, want it to mention %q", r.Advice, tc.want)
+			}
+		})
+	}
+}
+
+// The Docker advice said "every bot runs in a container", which stopped
+// being true when 34 of the 39 moved in-process. It was the third copy of
+// that sentence — the banner and Settings had the other two — and the one a
+// person reads on the run that actually failed.
+func TestTheDockerAdviceDoesNotClaimEveryBotNeedsIt(t *testing.T) {
+	r := For("cannot connect to the Docker daemon at unix:///var/run/docker.sock")
+	if r == nil {
+		t.Fatal("no advice for a missing Docker daemon")
+	}
+	if strings.Contains(strings.ToLower(r.Advice), "every bot") {
+		t.Errorf("advice still claims every bot needs Docker: %q", r.Advice)
+	}
+	if !strings.Contains(r.Advice, "renders a PDF or a chart") {
+		t.Errorf("advice does not say which bots actually need it: %q", r.Advice)
+	}
+}
+
+// A run someone stopped is not a failure to explain, and an approval that
+// timed out already has its own wording — neither must be swallowed by the
+// new container-timeout rule, which matches on "exceeded".
+func TestTheTimeoutAdviceDoesNotSwallowItsNeighbours(t *testing.T) {
+	if r := For("stopped from the app"); r != nil && strings.Contains(r.Advice, "max_runtime_secs") {
+		t.Error("a run the user stopped was explained as a timeout")
+	}
+	r := For(`nobody answered the approval "Send 'recap.pdf' to me@example.com?" within 30m0s`)
+	if r == nil || !strings.Contains(r.Advice, "nobody answered") {
+		t.Errorf("the unanswered-approval advice was displaced: %+v", r)
 	}
 }

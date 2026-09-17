@@ -102,9 +102,16 @@ func For(raw string) *Remedy {
 		}
 	}
 
+	// "Every bot runs in a container" was true when this was written and
+	// stopped being true when 34 of the 39 moved in-process. The same
+	// sentence was in the banner across every page and in Settings; this
+	// was the third copy, and the one a person reads on the run that
+	// actually failed.
 	if strings.Contains(m, "cannot connect to the docker daemon") || strings.Contains(m, "docker isn't") {
 		return &Remedy{
-			Advice: "Every bot runs in a container. Start Docker Desktop and run this again.",
+			Advice: "This bot renders a PDF or a chart, which needs a real browser in a container. " +
+				"Start Docker Desktop and run it again — the rest of the catalog runs without it.",
+			Docs: "docs/architecture.md",
 		}
 	}
 
@@ -175,6 +182,58 @@ func For(raw string) *Remedy {
 			Advice: "Two lists feeding one fanned-out bot came back different lengths. " +
 				"Snap both sides from a single list whose items carry everything the bot needs.",
 			Docs: "docs/fan-out.md",
+		}
+	}
+
+	// The container's own ceiling, reached for a reason other than an
+	// unanswered approval — describeTimeout renames that case before it
+	// ever gets here, so what is left is a bot that genuinely sat there.
+	//
+	// 55 of the 97 failed runs on the development machine carried this
+	// message with no advice attached, which made it the single largest
+	// unanswered failure in the history.
+	if strings.Contains(m, "exceeded") && strings.Contains(m, "was stopped") {
+		return &Remedy{
+			Advice: "The bot hit its own max_runtime_secs and was stopped. Its last log line is " +
+				"where it got to: a model call that never returned, a page that never loaded, " +
+				"or a gate nobody answered. Raise that budget in the bot's nanobot.yaml if the " +
+				"work legitimately takes longer.",
+			Docs: "docs/runs.md",
+		}
+	}
+
+	// A fanned-out snap indexing into a list that came back empty. The
+	// upstream bot succeeded and produced nothing, which is an ordinary
+	// Tuesday rather than a fault — an inbox with no urgent mail, a
+	// transcript with no decisions.
+	if strings.Contains(m, "item(s), index") {
+		return &Remedy{
+			Advice: "An upstream bot produced an empty list, and this snap asks for an item by " +
+				"position. Snap the whole list with `.*` so the bot runs once per item and not " +
+				"at all when there are none.",
+			Docs: "docs/fan-out.md",
+		}
+	}
+
+	// web.fetch reached the page and the page said no.
+	if strings.Contains(m, "web.fetch") && strings.Contains(m, "unexpected status") {
+		return &Remedy{
+			Advice: "The page answered with an error status. Check the URL in the swarm's inputs " +
+				"opens in a browser — a placeholder or a moved page fails here every run, on a " +
+				"schedule, forever.",
+			Docs: "docs/connections.md",
+		}
+	}
+
+	// The model wrote prose where the bot asked for JSON. Usually transient
+	// — the same prompt on the same model answers correctly most of the
+	// time — which is why "run it again" comes first and the prompt only
+	// comes up if it keeps happening.
+	if strings.Contains(m, "not valid json") {
+		return &Remedy{
+			Advice: "The model answered with prose where this bot asked for JSON. Run it again; " +
+				"if it keeps happening, the bot's prompt needs to insist harder on raw JSON.",
+			Docs: "docs/llm.md",
 		}
 	}
 
