@@ -10,6 +10,7 @@ import { StatusDot } from "./components/StatusDot";
 import { Switch } from "./components/Switch";
 import { PrereqBanners } from "./components/PrereqBanners";
 import { useUIMode } from "./lib/uiMode";
+import { useEntered } from "./lib/entered";
 import { useApprovalNotifications } from "./lib/useApprovalNotifications";
 import { useTheme } from "./lib/theme";
 import { useStatus } from "./lib/useStatus";
@@ -35,14 +36,14 @@ const NAV: { id: Page; label: string; icon: string }[] = [
 ];
 
 export default function App() {
-  const [loggedIn, setLoggedIn] = useState(false);
-  if (!loggedIn) {
-    return <LandingPage onLogin={() => setLoggedIn(true)} />;
+  const [entered, setEntered] = useEntered();
+  if (!entered) {
+    return <LandingPage onEnter={() => setEntered(true)} />;
   }
-  return <Dashboard onLogout={() => setLoggedIn(false)} />;
+  return <Dashboard onLeave={() => setEntered(false)} />;
 }
 
-function Dashboard({ onLogout }: { onLogout: () => void }) {
+function Dashboard({ onLeave }: { onLeave: () => void }) {
   const [page, setPage] = useState<Page>("swarm");
   const [uiMode, setUiMode] = useUIMode();
   const { status, unreachable: apiUnreachable } = useStatus();
@@ -76,7 +77,7 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     <div className="grid h-screen min-w-0 grid-rows-[56px_1fr] pb-16 sm:pb-0 sm:grid-cols-[200px_1fr]">
       <header className="col-span-full flex min-w-0 items-center gap-3 border-b border-edge bg-void/80 px-4 backdrop-blur sm:gap-5 sm:px-5">
         <button
-          onClick={onLogout}
+          onClick={onLeave}
           className="flex items-center gap-2.5 font-display text-lg font-bold tracking-[0.14em] text-ink"
           title="Back to landing page"
         >

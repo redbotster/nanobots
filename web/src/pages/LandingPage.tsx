@@ -5,13 +5,17 @@ const NAV_LINKS = [
   { label: "Docs", href: "https://github.com/redbotster/nanobots/tree/main/docs" },
 ];
 
-// TODO(nanobots#auth): "Login" just opens the local dashboard — this build
-// has no session/identity system of its own, only the 1Claw Human API key
-// nanobotd reads at startup (see docs/oneclaw-bridge.md). Once Nanobots is
-// ever hosted for more than one person, this is where "Sign in with 1Claw"
-// (OAuth + PKCE, blueprint §3.2) replaces this button's behavior — the UI
-// shape stays the same.
-export function LandingPage({ onLogin }: { onLogin: () => void }) {
+// The button used to say "Login". There is no login: this build has no
+// session or identity system of its own, only the 1Claw key nanobotd reads
+// at startup (docs/oneclaw-bridge.md), so clicking it asked for nothing,
+// protected nothing, and had to be clicked again on every reload. A browser
+// pass of the first run tripped over it as a wall before the product.
+//
+// TODO(nanobots#auth): once Nanobots is ever hosted for more than one
+// person, this is where "Sign in with 1Claw" (OAuth + PKCE, blueprint §3.2)
+// goes — and then the label can honestly say Login again. The UI shape
+// stays the same. lib/entered.ts remembers the choice meanwhile.
+export function LandingPage({ onEnter }: { onEnter: () => void }) {
   return (
     <div className="flex h-screen flex-col overflow-auto">
       <header className="flex items-center gap-6 border-b border-edge px-6 py-4 sm:px-10">
@@ -26,8 +30,8 @@ export function LandingPage({ onLogin }: { onLogin: () => void }) {
             </a>
           ))}
         </nav>
-        <Button variant="ghost" onClick={onLogin}>
-          Login
+        <Button variant="ghost" onClick={onEnter}>
+          Open the app
         </Button>
       </header>
 
@@ -43,8 +47,8 @@ export function LandingPage({ onLogin }: { onLogin: () => void }) {
           every approval, every guardrail lives in 1Claw — nanobots never sees a token, and nothing
           leaves your inbox without you saying so.
         </p>
-        <Button variant="primary" onClick={onLogin} className="mt-8 px-6 py-2.5 text-sm">
-          Login
+        <Button variant="primary" onClick={onEnter} className="mt-8 px-6 py-2.5 text-sm">
+          Open the app
         </Button>
 
         <div className="mt-12 w-full max-w-xl rounded-lg border border-edge-strong bg-panel p-4 text-left shadow-glow-sm">

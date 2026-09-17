@@ -75,10 +75,11 @@ across separate containers followed by a real publish. Both finished
 Unit tests pass on things that are visibly broken. A browser pass has caught
 what green tests did not: a nested `<button>`, a token masked in one place
 and printed in another, a panel squeezed into a header's flex slot, the bot
-palette silently unable to scroll past its first screenful, and a
-pre-existing `email-drive-file` timeout bug whose `max_runtime_secs: 60`
-guardrail was too short for its own approval gate to ever be answered in
-time.
+palette silently unable to scroll past its first screenful, a "Login" button
+in front of the whole product that was not a login and protected nothing,
+and a pre-existing `email-drive-file` timeout bug whose
+`max_runtime_secs: 60` guardrail was too short for its own approval gate to
+ever be answered in time.
 
 The shape of the pass, driven ad hoc against a real `nanobotd` plus
 `vite dev`:
