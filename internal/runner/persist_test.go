@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -333,5 +334,97 @@ func TestHistoryKeepsWhatMakesAStatusMeanSomething(t *testing.T) {
 	}
 	if !byName["get-paid"].WasDeclinedByUser() {
 		t.Error("a declined approval came back looking like a fault rather than a decision")
+	}
+}
+
+// The last unbounded store under ~/.nanobots.
+//
+// History is capped and work directories were bounded once the 266 of them
+// were noticed, but every PDF, chart and downloaded attachment a run ever
+// produced stayed on disk for good — reachable from nothing the moment its
+// run aged out of the 200 kept.
+//
+// The delete is the dangerous half, so the cases that matter are the ones
+// where it must NOT happen: a file a kept run still shows as a download, a
+// file only a captured fixture refers to, and anything in the store that is
+// not shaped like a digest at all.
+func TestPruneBlobsKeepsWhatAKeptRunStillPointsAt(t *testing.T) {
+	dir := t.TempDir()
+	sha := filepath.Join(dir, "sha256")
+	if err := os.MkdirAll(sha, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const (
+		used       = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+		captured   = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+		forgotten  = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+		notADigest = "README"
+	)
+	for _, name := range []string{used, captured, forgotten, notADigest} {
+		if err := os.WriteFile(filepath.Join(sha, name), []byte("some bytes"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	keep := map[string]bool{used: true, captured: true}
+	removed, freed, err := PruneBlobs(dir, keep)
+	if err != nil {
+		t.Fatalf("PruneBlobs: %v", err)
+	}
+	if removed != 1 {
+		t.Errorf("removed %d, want only the unreferenced one", removed)
+	}
+	if freed == 0 {
+		t.Error("freed 0 bytes after deleting a file")
+	}
+
+	exists := func(n string) bool { _, err := os.Stat(filepath.Join(sha, n)); return err == nil }
+	if !exists(used) {
+		t.Error("deleted a file a kept run still shows as a download")
+	}
+	if !exists(captured) {
+		t.Error("deleted a file a kept run's captured fixtures refer to")
+	}
+	if exists(forgotten) {
+		t.Error("kept a file no run refers to")
+	}
+	if !exists(notADigest) {
+		t.Error("deleted something that is not a blob at all")
+	}
+}
+
+// A machine that has never produced a file has no blob directory, and that
+// is the normal first start rather than a fault.
+func TestPruneBlobsOnAFreshMachine(t *testing.T) {
+	removed, freed, err := PruneBlobs(filepath.Join(t.TempDir(), "never-created"), nil)
+	if err != nil || removed != 0 || freed != 0 {
+		t.Errorf("PruneBlobs on a fresh machine = %d, %d, %v", removed, freed, err)
+	}
+}
+
+// What counts as "still referred to" has to cover both places a digest can
+// survive in history: a run's outputs, and the fixtures it captured.
+func TestBlobRefsFindsEveryPlaceADigestSurvives(t *testing.T) {
+	r := NewRun("probe")
+	r.SetBotOutputs("renderer", map[string]any{
+		"pdf":  map[string]any{"uri": "nbf://sha256/" + strings.Repeat("a", 64), "mime": "application/pdf"},
+		"note": "not a blob",
+		"many": []any{map[string]any{"uri": "nbf://sha256/" + strings.Repeat("b", 64)}},
+	})
+	r.SetCaptured("filer", map[string]any{
+		"gdrive.files.download": map[string]any{"uri": "nbf://sha256/" + strings.Repeat("c", 64)},
+	})
+
+	got := map[string]bool{}
+	for _, d := range BlobRefs(r) {
+		got[d] = true
+	}
+	for _, want := range []string{strings.Repeat("a", 64), strings.Repeat("b", 64), strings.Repeat("c", 64)} {
+		if !got[want] {
+			t.Errorf("missed the digest %s… — pruning would delete a file still in use", want[:8])
+		}
+	}
+	if len(got) != 3 {
+		t.Errorf("found %d digests, want 3: %v", len(got), got)
 	}
 }

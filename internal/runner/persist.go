@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -283,4 +284,109 @@ func PruneWorkDirs(workDir string, keep map[string]bool) (removed int, err error
 		return removed, fmt.Errorf("%d run workspace(s) could not be removed", failed)
 	}
 	return removed, nil
+}
+
+// BlobRefs collects every nbf:// digest a run still points at, so pruning
+// the blob store can tell a file something still refers to from one nothing
+// does.
+//
+// Outputs and captured fixtures both, because both survive in history and
+// both render in the UI: a run detail page shows a file output as a
+// download, and "turn this run into test data" replays what each bot
+// produced. A digest reachable from either is a digest still in use.
+func BlobRefs(r *Run) []string {
+	var out []string
+	walk := func(v any) {}
+	walk = func(v any) {
+		switch t := v.(type) {
+		case string:
+			if strings.HasPrefix(t, blobURIPrefix) {
+				out = append(out, strings.TrimPrefix(t, blobURIPrefix))
+			}
+		case map[string]any:
+			for _, x := range t {
+				walk(x)
+			}
+		case []any:
+			for _, x := range t {
+				walk(x)
+			}
+		}
+	}
+	for _, ports := range r.AllOutputs() {
+		walk(map[string]any(ports))
+	}
+	for _, steps := range r.Captured() {
+		walk(map[string]any(steps))
+	}
+	return out
+}
+
+const blobURIPrefix = "nbf://sha256/"
+
+// PruneBlobs deletes stored file contents that no run in history refers to.
+//
+// The last unbounded store in ~/.nanobots. History is capped, and work
+// directories were bounded once the 266 of them were noticed — but every
+// PDF, chart and downloaded attachment a run ever produced stayed on disk
+// for good, reachable from nothing once its run aged out of the 200 kept.
+//
+// Same retention rule as PruneWorkDirs, for the same reason: a run you can
+// still open keeps the file it produced, and a run that has aged out loses
+// it at the same moment. One rule in this package, not two that can
+// disagree about what "old" means.
+//
+// Blobs are content-addressed, so two runs that produced identical bytes
+// share one file — which is exactly why this counts references across every
+// kept run before deleting anything, rather than walking runs one at a
+// time. Called at startup, where nothing is mid-run.
+func PruneBlobs(blobDir string, keep map[string]bool) (removed int, freed int64, err error) {
+	dir := filepath.Join(blobDir, "sha256")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, 0, nil // nothing has produced a file yet
+		}
+		return 0, 0, err
+	}
+	var failed int
+	for _, e := range entries {
+		if e.IsDir() || keep[e.Name()] {
+			continue
+		}
+		// Only things shaped like a digest. The same instinct as
+		// PruneWorkDirs' uuid.Parse: os.Remove against a name that came off
+		// a disk listing deserves a check that it is really one of ours.
+		if !isSHA256Hex(e.Name()) {
+			continue
+		}
+		info, statErr := e.Info()
+		path := filepath.Join(dir, e.Name())
+		if rerr := os.Remove(path); rerr != nil {
+			failed++
+			continue
+		}
+		removed++
+		if statErr == nil {
+			freed += info.Size()
+		}
+	}
+	if failed > 0 {
+		return removed, freed, fmt.Errorf("%d blob(s) could not be removed", failed)
+	}
+	return removed, freed, nil
+}
+
+// isSHA256Hex is the same shape check internal/step enforces on every
+// nbf:// reference before it reads one.
+func isSHA256Hex(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }

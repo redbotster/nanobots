@@ -70,3 +70,31 @@ belongs in `snapshot`, and the test above is where to add it. The precedent
 was already in the file — `Captured` and `DemoServices` each carry a comment
 saying exactly why they are persisted — it just was not followed for the
 next three.
+
+## Three stores, one retention rule
+
+Everything under `~/.nanobots` that grows with runs is now bounded by the
+same fact: the 200 runs history keeps.
+
+| store | holds | pruned |
+|---|---|---|
+| `history/` | the runs themselves | on load, to `MaxPersistedRuns` |
+| `runs/` | per-run container workspaces | at startup, against the runs history kept |
+| `blobs/` | the file contents runs produced | at startup, against the digests those runs still point at |
+
+The blob store was the last unbounded one. Every PDF, chart and downloaded
+attachment a run ever produced stayed on disk for good — reachable from
+nothing the moment its run aged out. Measured on the machine this was found
+on: 109 files and 2.9MB, which is small, and grows for as long as the
+machine runs sixteen scheduled swarms.
+
+Keyed by digest rather than by run id, because blobs are content-addressed:
+two runs that produced identical bytes share one file, so references are
+counted across every kept run before anything is deleted. Both a run's
+outputs and its captured fixtures count as a reference — a run detail page
+shows a file output as a download, and "turn this run into test data"
+replays what each bot produced.
+
+One rule rather than three that can disagree about what "old" means: a run
+you can still open keeps its workspace and its files, and a run that has
+aged out loses both at the same moment.

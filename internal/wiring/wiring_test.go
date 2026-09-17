@@ -144,3 +144,56 @@ func TestResolvePathsCreatesTheWorkDirUnderHome(t *testing.T) {
 		}
 	}
 }
+
+// The same question as the work directories, one store over: what is kept.
+//
+// Blobs are the file contents a run produced — a PDF, a chart, a downloaded
+// attachment — and they were the last unbounded thing under ~/.nanobots.
+// Pruning them is a delete loop, so what matters is that the keep set comes
+// from the runs the app still lists. Empty means deleting the download link
+// of every run in the UI, at startup, while reporting how many megabytes it
+// freed.
+func TestBuildRunStoreKeepsBlobsAKeptRunStillShows(t *testing.T) {
+	base := t.TempDir()
+	paths := Paths{
+		HistoryDir: filepath.Join(base, "history"),
+		RunWorkDir: filepath.Join(base, "runs"),
+		BlobDir:    filepath.Join(base, "blobs"),
+	}
+	if err := os.MkdirAll(filepath.Join(paths.BlobDir, "sha256"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(paths.HistoryDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	used := strings.Repeat("a", 64)
+	orphan := strings.Repeat("b", 64)
+	for _, d := range []string{used, orphan} {
+		if err := os.WriteFile(filepath.Join(paths.BlobDir, "sha256", d), []byte("bytes"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// One run still in history, whose output points at `used`.
+	snapshot := `{"id":"11111111-1111-4111-8111-111111111111","swarm_name":"probe",` +
+		`"status":"succeeded","started_at":"2026-09-17T10:00:00Z",` +
+		`"outputs":{"renderer":{"pdf":{"uri":"nbf://sha256/` + used + `","mime":"application/pdf"}}}}`
+	if err := os.WriteFile(filepath.Join(paths.HistoryDir, "11111111-1111-4111-8111-111111111111.json"),
+		[]byte(snapshot), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	BuildRunStore(paths, nil)
+
+	exists := func(d string) bool {
+		_, err := os.Stat(filepath.Join(paths.BlobDir, "sha256", d))
+		return err == nil
+	}
+	if !exists(used) {
+		t.Error("startup deleted the file a run in history still shows as a download")
+	}
+	if exists(orphan) {
+		t.Error("a file no run refers to survived")
+	}
+}

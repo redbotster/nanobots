@@ -209,6 +209,26 @@ func BuildRunStore(paths Paths, logf Logf) *runner.RunStore {
 			logf("cleaned %d run workspace(s) older than the kept history", removed)
 		}
 	}
+
+	// The same for the file contents those runs produced — the last
+	// unbounded store under ~/.nanobots. Keyed by digest rather than by run
+	// id, because blobs are content-addressed and two runs that produced
+	// identical bytes share one file.
+	digests := map[string]bool{}
+	for _, r := range store.List() {
+		for _, d := range runner.BlobRefs(r) {
+			digests[d] = true
+		}
+	}
+	blobsRemoved, freed, berr := runner.PruneBlobs(paths.BlobDir, digests)
+	if logf != nil {
+		if berr != nil {
+			logf("cleaning unreferenced files in %s: %v", paths.BlobDir, berr)
+		}
+		if blobsRemoved > 0 {
+			logf("cleaned %d file(s) no kept run refers to (%.1f MB)", blobsRemoved, float64(freed)/(1<<20))
+		}
+	}
 	return store
 }
 
