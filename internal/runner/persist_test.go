@@ -275,3 +275,63 @@ func TestPruneWorkDirsIsFineWithNoDirectoryAtAll(t *testing.T) {
 		t.Errorf("removed = %d", removed)
 	}
 }
+
+// A run is written to history the moment it finishes and read back from
+// there forever after, so anything the snapshot drops is a fact the app has
+// for one process lifetime and then loses.
+//
+// Found by measuring rather than by reading: the scheduler's 08:15 and
+// 09:15 meeting-to-action runs had "nothing to do" in their logs and an
+// empty nothing_to_do field, because the daemon had restarted between the
+// run and the look. The Runs page was back to calling them "succeeded" —
+// which is the whole thing that field was added to prevent.
+//
+// StoppedByUser is the older and worse one: a run you ended yourself reads
+// as a plain red "failed", the first example in CLAUDE.md's list of honesty
+// bugs, arriving again through the back door.
+func TestHistoryKeepsWhatMakesAStatusMeanSomething(t *testing.T) {
+	dir := t.TempDir()
+
+	quiet := NewRun("meeting-to-action")
+	quiet.TriggeredBy = "schedule"
+	quiet.SetNothingToDo("no new file in this folder since the last run")
+	quiet.SetStatus(StatusSucceeded)
+
+	stopped := NewRun("morning-brief")
+	stopped.Stop()
+	stopped.SetError(ErrStopped)
+	stopped.SetStatus(StatusFailed)
+
+	declined := NewRun("get-paid")
+	declined.DeclinedByUser = true
+	declined.SetError(errTest(`step "gate": not approved (decided_by=cli)`))
+	declined.SetStatus(StatusFailed)
+
+	for _, r := range []*Run{quiet, stopped, declined} {
+		if err := writeSnapshot(dir, r); err != nil {
+			t.Fatalf("writeSnapshot: %v", err)
+		}
+	}
+
+	restored, err := loadSnapshots(dir)
+	if err != nil {
+		t.Fatalf("loadSnapshots: %v", err)
+	}
+	byName := map[string]*Run{}
+	for _, r := range restored {
+		byName[r.SwarmName] = r
+	}
+	if len(byName) != 3 {
+		t.Fatalf("restored %d runs, want 3", len(byName))
+	}
+
+	if got := byName["meeting-to-action"].GetNothingToDo(); got != "no new file in this folder since the last run" {
+		t.Errorf("a quiet watch run came back as an ordinary success (nothing_to_do = %q)", got)
+	}
+	if !byName["morning-brief"].WasStoppedByUser() {
+		t.Error("a run the user stopped came back looking like one that broke")
+	}
+	if !byName["get-paid"].WasDeclinedByUser() {
+		t.Error("a declined approval came back looking like a fault rather than a decision")
+	}
+}

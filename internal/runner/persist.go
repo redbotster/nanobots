@@ -41,46 +41,70 @@ type snapshot struct {
 	Captured map[string]map[string]any `json:"captured,omitempty"`
 	// DemoServices are "<bot>.<service>" pairs served from fixtures, kept
 	// so a run in history still says its results were invented.
-	DemoServices []string                  `json:"demo_services,omitempty"`
-	Log          []LogEntry                `json:"log"`
-	Outputs      map[string]map[string]any `json:"outputs"`
+	DemoServices []string `json:"demo_services,omitempty"`
+	// The three facts that make a terminal status mean something, and that
+	// this snapshot used to drop on the floor.
+	//
+	// A run is written here the moment it finishes and read back from here
+	// forever after, so anything missing is a fact the app has for one
+	// process lifetime and then loses. Each of these turns into a lie when
+	// it goes:
+	//
+	//	StoppedByUser  a run you ended yourself reads as a plain red
+	//	               "failed" — the first example in CLAUDE.md's list of
+	//	               honesty bugs, arriving again through the back door.
+	//	NothingToDo    a watch that correctly found nothing reads as
+	//	               another "succeeded", which is the entire thing the
+	//	               field was added to prevent.
+	//	DeclinedByUser a declined approval stops looking like a decision.
+	StoppedByUser  bool                      `json:"stopped_by_user,omitempty"`
+	DeclinedByUser bool                      `json:"declined_by_user,omitempty"`
+	NothingToDo    string                    `json:"nothing_to_do,omitempty"`
+	Log            []LogEntry                `json:"log"`
+	Outputs        map[string]map[string]any `json:"outputs"`
 }
 
 func snapshotOf(r *Run) snapshot {
 	return snapshot{
-		ID:           r.ID,
-		SwarmName:    r.SwarmName,
-		SwarmPath:    r.SwarmPath,
-		Status:       r.GetStatus(),
-		StartedAt:    r.StartedAt,
-		FinishedAt:   r.GetFinishedAt(),
-		Error:        r.GetError(),
-		Tolerated:    r.GetTolerated(),
-		Captured:     cappedCaptures(r.Captured()),
-		DemoServices: r.DemoServices(),
-		TriggeredBy:  r.TriggeredBy,
-		Log:          r.LogEntries(),
-		Outputs:      r.AllOutputs(),
+		ID:             r.ID,
+		SwarmName:      r.SwarmName,
+		SwarmPath:      r.SwarmPath,
+		Status:         r.GetStatus(),
+		StartedAt:      r.StartedAt,
+		FinishedAt:     r.GetFinishedAt(),
+		Error:          r.GetError(),
+		Tolerated:      r.GetTolerated(),
+		Captured:       cappedCaptures(r.Captured()),
+		DemoServices:   r.DemoServices(),
+		TriggeredBy:    r.TriggeredBy,
+		StoppedByUser:  r.WasStoppedByUser(),
+		DeclinedByUser: r.WasDeclinedByUser(),
+		NothingToDo:    r.GetNothingToDo(),
+		Log:            r.LogEntries(),
+		Outputs:        r.AllOutputs(),
 	}
 }
 
 func (s snapshot) toRun() *Run {
 	r := &Run{
-		ID:           s.ID,
-		SwarmName:    s.SwarmName,
-		SwarmPath:    s.SwarmPath,
-		Status:       s.Status,
-		StartedAt:    s.StartedAt,
-		FinishedAt:   s.FinishedAt,
-		Error:        s.Error,
-		Tolerated:    s.Tolerated,
-		captured:     s.Captured,
-		demoServices: demoSet(s.DemoServices),
-		TriggeredBy:  s.TriggeredBy,
-		log:          s.Log,
-		outputs:      s.Outputs,
-		approvals:    map[string]*PendingApproval{},
-		subscribers:  map[chan LogEntry]bool{},
+		ID:             s.ID,
+		SwarmName:      s.SwarmName,
+		SwarmPath:      s.SwarmPath,
+		Status:         s.Status,
+		StartedAt:      s.StartedAt,
+		FinishedAt:     s.FinishedAt,
+		Error:          s.Error,
+		Tolerated:      s.Tolerated,
+		captured:       s.Captured,
+		demoServices:   demoSet(s.DemoServices),
+		TriggeredBy:    s.TriggeredBy,
+		StoppedByUser:  s.StoppedByUser,
+		DeclinedByUser: s.DeclinedByUser,
+		NothingToDo:    s.NothingToDo,
+		log:            s.Log,
+		outputs:        s.Outputs,
+		approvals:      map[string]*PendingApproval{},
+		subscribers:    map[chan LogEntry]bool{},
 	}
 	if r.outputs == nil {
 		r.outputs = map[string]map[string]any{}

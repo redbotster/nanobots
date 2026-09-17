@@ -46,3 +46,27 @@ curl -s localhost:7474/api/runs | jq -r '.[] | "\(.swarm_name) \(.status) \(.err
 ```
 
 The Runs page shows the same list, with the failure reason inline and a **Run it again** button on any finished run (that's what `swarm_path` is for).
+
+## What a snapshot has to carry
+
+A run is written here the moment it finishes and read back from here
+forever after, so anything the snapshot leaves out is a fact the app has for
+one process lifetime and then loses. Three were being left out, and each
+turned into a lie on the way back:
+
+| dropped | what the Runs page then said |
+|---|---|
+| `stopped_by_user` | a run you ended yourself came back a plain red **failed** |
+| `nothing_to_do` | a watch that correctly found nothing came back another **succeeded** |
+| `declined_by_user` | a declined approval stopped looking like a decision |
+
+Found by measuring, not by reading: two scheduled `meeting-to-action` runs
+had "nothing to do" in their logs and an empty field, because the daemon had
+restarted in between. `TestHistoryKeepsWhatMakesAStatusMeanSomething` now
+round-trips all three.
+
+The rule this leaves behind: a field that changes how a finished run reads
+belongs in `snapshot`, and the test above is where to add it. The precedent
+was already in the file — `Captured` and `DemoServices` each carry a comment
+saying exactly why they are persisted — it just was not followed for the
+next three.
