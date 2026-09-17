@@ -40,6 +40,24 @@ cache tag, and both were measured in a browser rather than guessed:
 | `assets/index-*.css` | 34.3KB | **7.0KB** |
 | a cold load | 387.7KB | **117.8KB** |
 
+Then the bundle itself, which was the other half. Radix was 39% of the
+build's source bytes — more than React — and almost all of it arrived
+through pages nobody had navigated to: the tooltip on a port badge pulls in
+the whole of floating-ui, the YAML drawer's dialog pulls in
+`react-remove-scroll` and a dismissable layer. Both live only in
+`SwarmView`, which was the one page imported eagerly while its two siblings
+were already lazy. Splitting it and the four secondary nav pages takes the
+main chunk from 352.4KB to 195.7KB, and a cold load to **71.1KB**:
+
+| | before | after |
+|---|---|---|
+| main chunk | 352.4KB | **195.7KB** (63.2KB over the wire) |
+| a cold load | 387.7KB | **71.1KB** |
+
+Each page's chunk is 1.5–6.6KB over the wire and arrives in 1–4ms off the
+same machine, which is why `<LazyFallback>` is a line of text rather than a
+spinner.
+
 That is more than twice every API saving in this repo put together, and it
 was paid on every load: an `embed.FS` file has a zero modtime, so net/http
 emitted no `Last-Modified` and no `ETag`, and there was nothing for the

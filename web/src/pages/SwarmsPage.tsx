@@ -3,9 +3,9 @@ import { ImportSwarm, ImportSwarmButton } from "../components/ImportSwarm";
 import { api } from "../lib/api";
 import { listSwarmsCached } from "../lib/swarmsCache";
 import { GettingStarted } from "../components/GettingStarted";
+import { LazyFallback } from "../components/LazyFallback";
 import type { StatusResponse, ComposeGap, SaveSwarmRequest, SwarmSummary } from "../lib/types";
 import type { UIMode } from "../lib/uiMode";
-import { SwarmView } from "./SwarmView";
 import { Button } from "../components/Button";
 import { StatusDot } from "../components/StatusDot";
 import { relativeTime, untilTime } from "../lib/relativeTime";
@@ -15,16 +15,17 @@ import { swarmMatches } from "../lib/swarmFilter";
 // opting into a foundry job after a composer gap — and the builder drags in
 // the whole canvas/palette/inspector tree. Loading them lazily keeps them
 // out of the bundle everyone downloads to look at a list of swarms.
+// SwarmView is lazy for the same reason, and it is the one that costs the
+// most: it is the only page using the YAML drawer's dialog and the port
+// badge's tooltip, and those two drag all of floating-ui and
+// react-remove-scroll behind them. It was eager while its two siblings
+// here were not, so looking at a list of swarms downloaded the whole of
+// Radix to render a page nobody had opened.
+const SwarmView = lazy(() => import("./SwarmView").then((m) => ({ default: m.SwarmView })));
 const BuilderPage = lazy(() => import("./BuilderPage").then((m) => ({ default: m.BuilderPage })));
 const FoundryJobPage = lazy(() =>
   import("./FoundryJobPage").then((m) => ({ default: m.FoundryJobPage })),
 );
-
-/** Deliberately quiet: these chunks load from the same local machine in a
- * few milliseconds, so a spinner would flash more than it informs. */
-function LazyFallback() {
-  return <div className="p-6 text-sm text-muted/60">Loading…</div>;
-}
 
 /** What this swarm's most recent run is doing, in words that are true while
  * it is doing it.
@@ -422,11 +423,13 @@ export function SwarmsPage({
 
   if (mode.kind === "view") {
     return (
-      <SwarmView
-        swarm={mode.swarm}
-        onBack={() => setMode({ kind: "list" })}
-        onEdit={() => setMode({ kind: "build", swarm: mode.swarm })}
-      />
+      <Suspense fallback={<LazyFallback />}>
+        <SwarmView
+          swarm={mode.swarm}
+          onBack={() => setMode({ kind: "list" })}
+          onEdit={() => setMode({ kind: "build", swarm: mode.swarm })}
+        />
+      </Suspense>
     );
   }
 

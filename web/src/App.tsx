@@ -1,11 +1,28 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { listBotsCached } from "./lib/botsCache";
 import { listSwarmsCached } from "./lib/swarmsCache";
+import { LazyFallback } from "./components/LazyFallback";
 import { SwarmsPage } from "./pages/SwarmsPage";
-import { BotLibrary } from "./pages/BotLibrary";
-import { RunsPage } from "./pages/RunsPage";
-import { SettingsPage } from "./pages/SettingsPage";
-import { TeamPage } from "./pages/TeamPage";
+
+// Everything except the swarm list, which is where the app opens.
+//
+// Radix is 39% of the bundle's source bytes, more than React itself, and
+// almost all of it arrives through pages nobody has navigated to yet: the
+// tooltip on a port badge pulls in all of floating-ui, the YAML drawer's
+// dialog pulls in react-remove-scroll and a dismissable layer. Loading a
+// list of swarms paid for every one of them.
+//
+// These chunks come off the same local machine in a few milliseconds, which
+// is why <LazyFallback> is deliberately quiet rather than a spinner.
+const BotLibrary = lazy(() =>
+  import("./pages/BotLibrary").then((m) => ({ default: m.BotLibrary })),
+);
+const RunsPage = lazy(() => import("./pages/RunsPage").then((m) => ({ default: m.RunsPage })));
+const SettingsPage = lazy(() =>
+  import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage })),
+);
+const TeamPage = lazy(() => import("./pages/TeamPage").then((m) => ({ default: m.TeamPage })));
+
 import { LandingPage } from "./pages/LandingPage";
 import { StatusDot } from "./components/StatusDot";
 import { Switch } from "./components/Switch";
@@ -220,10 +237,12 @@ function Dashboard({ onLeave }: { onLeave: () => void }) {
               onOpenSettings={() => setPage("settings")}
             />
           )}
-          {page === "bots" && <BotLibrary />}
-          {page === "team" && <TeamPage />}
-          {page === "runs" && <RunsPage onOpenSettings={() => setPage("settings")} />}
-          {page === "settings" && <SettingsPage status={status} />}
+          <Suspense fallback={<LazyFallback />}>
+            {page === "bots" && <BotLibrary />}
+            {page === "team" && <TeamPage />}
+            {page === "runs" && <RunsPage onOpenSettings={() => setPage("settings")} />}
+            {page === "settings" && <SettingsPage status={status} />}
+          </Suspense>
         </div>
       </main>
 
