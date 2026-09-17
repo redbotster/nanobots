@@ -194,3 +194,34 @@ every save from it omits the field; if absent meant "manual", opening a
 scheduled swarm and pressing Save changes would quietly unschedule it. That
 is the same class of loss `swarmmerge.go` exists to prevent, and it now has
 a test of its own.
+
+## Why the scheduler is local, and stays local
+
+1Claw has Automations — `POST /v1/automations`, with `trigger_type: cron`, a
+timezone, and a workflow of typed steps. The obvious plan was to move the
+catalog's twelve cron triggers onto them, so a schedule fires whether or not
+your laptop is awake. Three things measured against the live API say the
+local scheduler stays the default instead.
+
+**An Automation cannot reach your machine.** Its only way back into nanobots
+is the `http` step, and `GET /v1/automations/step-types` describes that step
+as SSRF-validated. 1Claw's cloud calling `http://127.0.0.1:7474` is exactly
+what SSRF validation exists to refuse. An Automation can only drive a
+nanobots that is publicly reachable — a Cloud Runtime you deployed
+(`docs/hosting.md`), not a laptop.
+
+**Seven of the sixteen catalog swarms pause for a human.** The same endpoint
+says `http` is *"Bounded by the 300s whole-run timeout rather than a
+per-step one."* Five minutes is not how long it takes someone to answer an
+approval; the local gate's own budget is thirty.
+
+**`http` is `agent_allowed: false`.** An Automation that calls back into
+nanobots has to be created with a human credential, so the composer cannot
+propose one and have it work.
+
+What that leaves is real but narrow: for a hosted deployment, running swarms
+that never wait on a person, an Automation is a better cron than a machine
+that has to stay on. That is opt-in, it is not built yet, and the honest
+prerequisite is an image you have pushed
+(`docs/1claw-feature-requests.md` #11) — so it waits on that rather than
+shipping a command whose first step is missing.
