@@ -315,6 +315,18 @@ func (c *Client) rawRequest(method, path string, in any) (status int, body []byt
 
 // do performs an authenticated JSON request, treating any 2xx as success.
 // out may be nil for responses the caller doesn't need.
+// PostJSON is do() for callers outside this package — the CLI's deploy
+// command needs to POST a shape that has no typed wrapper here yet, and a
+// one-off client would not share this one's token handling.
+func (c *Client) PostJSON(path string, in, out any) error {
+	return c.do("POST", path, in, out)
+}
+
+// GetJSON is PostJSON's read-only twin.
+func (c *Client) GetJSON(path string, out any) error {
+	return c.do("GET", path, nil, out)
+}
+
 func (c *Client) do(method, path string, in, out any) error {
 	status, raw, err := c.rawRequest(method, path, in)
 	if err != nil {

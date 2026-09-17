@@ -167,3 +167,25 @@ unreachable to us.
 
 **What we do instead.** Persist the approval id in run history at creation
 time, and poll by id. Loses only the runs whose history was already lost.
+
+---
+
+## 11. A runtime template that runs a plain binary, and a way to get files into a runtime
+
+**What we need.** Two things for `nanobots deploy 1claw`:
+
+- A `nanobots` runtime template, or any template that runs a static binary.
+  `GET /v1/runtimes/templates` returns nine and they are all language
+  runtimes (python, node) or agent frameworks (hermes, openclaw,
+  openclaude, opencode, claude-code, codex, amp). None runs a Go program,
+  so a deploy needs the user to build and push their own image first.
+- A file-transfer API for a runtime, so a swarm written locally can be
+  pushed to a hosted one. There is `POST /v1/runtimes/{id}/shell/session`,
+  but driving a shell to move files is not an interface to build on.
+
+**What it blocks.** The hosted path being one command. Today
+`nanobots deploy 1claw` requires `--image` and cannot carry the user's own
+swarms; both are reported by the command rather than discovered later.
+
+**What we do instead.** Ship the `Dockerfile` and tell people to push it.
+`docs/hosting.md` says exactly what does and does not travel.

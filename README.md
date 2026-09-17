@@ -6,7 +6,7 @@
 
 Nanobots is a local-first system for composing single-job AI/deterministic containers ("nanobots") into typed, DAG-shaped workflows ("nanoswarms"), with secrets, OAuth, LLM routing, and guardrails delegated to [1Claw](https://docs.1claw.co).
 
-The full product spec lives in [`context/NANOBOTS-BLUEPRINT.md`](context/NANOBOTS-BLUEPRINT.md) and [`context/NANOBOTS-CATALOG.md`](context/NANOBOTS-CATALOG.md). Treat those as the source of truth for the YAML schemas and the launch catalog; this README covers what's actually built, and is kept in sync with it — if something here contradicts the code, the code wins. `docs/` has one page per concept — contract, connections, harnesses, approvals, the 1Claw bridge, Browser Bridge, the foundry, the scheduler, run history, fan-out, memory, models, parallelism, error policy, supervisors, fixtures, connectors, sharing, webhooks, setup — each ending in how to run it for real. [`docs/1claw-feature-requests.md`](docs/1claw-feature-requests.md) is the other direction: what nanobots needs from 1Claw that does not exist yet, what each gap blocks, and the workaround shipped meanwhile.
+The full product spec lives in [`context/NANOBOTS-BLUEPRINT.md`](context/NANOBOTS-BLUEPRINT.md) and [`context/NANOBOTS-CATALOG.md`](context/NANOBOTS-CATALOG.md). Treat those as the source of truth for the YAML schemas and the launch catalog; this README covers what's actually built, and is kept in sync with it — if something here contradicts the code, the code wins. `docs/` has one page per concept — contract, connections, harnesses, approvals, the 1Claw bridge, Browser Bridge, the foundry, the scheduler, run history, fan-out, memory, models, parallelism, error policy, supervisors, fixtures, connectors, sharing, webhooks, setup, hosting — each ending in how to run it for real. [`docs/1claw-feature-requests.md`](docs/1claw-feature-requests.md) is the other direction: what nanobots needs from 1Claw that does not exist yet, what each gap blocks, and the workaround shipped meanwhile.
 
 ## Why nanobots, not one big agent
 
@@ -464,7 +464,7 @@ Being explicit about this matters more here than in most projects, because so mu
 
 | Real | Simulated / not yet |
 |---|---|
-| One binary serves the WebUI and the API on a single port (`make build && nanobots up`), and 34 of 39 bots run without Docker | Published packages: the GoReleaser config and the npx shim exist and validate, but no release is tagged, so `brew install` and `npx nanobots` do not work yet |
+| One binary serves the WebUI and the API on a single port (`make build && nanobots up`), and 34 of 39 bots run without Docker. A 23MB distroless container image builds from `Dockerfile` | Published packages: the GoReleaser config and the npx shim exist and validate, but no release is tagged, so `brew install` and `npx nanobots` do not work yet. `nanobots deploy 1claw` needs an image you have pushed yourself — there is no 1Claw runtime template that runs a Go binary, and no file-transfer API to carry your own swarms to a hosted one ([`docs/hosting.md`](docs/hosting.md)) |
 | 1Claw Human API, Shroud, vault secrets, agent memory, approval requests | 1Claw's execution-intent bindings (`internal/oneclaw.Execute`) assume a binding already exists on the agent — provisioning one from a `nanobot.yaml` service isn't wired up |
 | Docker execution for the 5 browser bots: non-root, read-only fs, real container-to-container I/O wiring | Guardrails' `network_egress` allowlist is reported per bot, not enforced as an actual container network policy |
 | The step interpreter, for every harness type, incl. `web.fetch` and PDF/PNG rendering | The *dynamic agent loop* a harness name like `openclaw` implies — every harness today runs the same fixed, pre-written `spec.steps` list, not an LLM deciding what to do (`docs/harnesses.md`) |
@@ -525,7 +525,7 @@ Per the project's own working style, expensive verification is a single consolid
 go build ./... && go vet ./... && go test ./...
 ```
 
-665 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
+669 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
 - `internal/contract`'s `TestRunConformanceOnLaunchBots` — auto-discovers and conformance-tests all 39 bots under `bots/` against their own fixtures, no Docker or network.
 - `internal/planner`'s `TestPlanAllExampleSwarms` — auto-discovers and type-checks all 16 swarms under `examples/swarms/`.
 - httptest-mocked 1Claw/Google/Slack/GitHub/Stripe/HubSpot/X/LinkedIn API clients, built against each provider's real, documented endpoint shapes (verified against `@1claw/openapi-spec` and each provider's own docs, not guessed).

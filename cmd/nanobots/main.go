@@ -67,6 +67,8 @@ func main() {
 		err = runRun(args)
 	case "init":
 		err = runInit(args)
+	case "deploy":
+		err = runDeploy(args)
 	case "connect":
 		err = runConnect(args)
 	case "service":
@@ -146,6 +148,7 @@ commands:
   up [--addr host:port]                   start nanobotd (REST+SSE API) in the foreground
   run -f <swarm.yaml> [--bots <dir>]      run a swarm to completion, printing its log; prompts on approvals
   init [--env <file>] [--no-browser]      first-run setup: 1Claw (or not), a model (or not), no text editor
+  deploy 1claw [--image <ref>]            run nanobots on a 1Claw Cloud Runtime, reachable at {slug}.run.1claw.co
   connect google                          link a real Gmail/Drive/Sheets account (one-time OAuth in your browser)
   service install|status|uninstall        keep nanobotd running across reboots, so cron triggers actually fire
   connectors list|register|install|status one place to register an OAuth app and wire it to a bot
