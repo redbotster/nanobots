@@ -159,7 +159,11 @@ func runRun(args []string) error {
 			// was a real data race the race detector never saw because no
 			// test drives this loop.
 			if status := run.GetStatus(); status == runner.StatusSucceeded || status == runner.StatusFailed {
-				fmt.Printf("\nrun %s: %s\n", run.ID, status)
+				// Outcome, not status: a run you stopped and a run whose
+				// approval you declined both end `failed`, and printing
+				// that word about your own deliberate answer is the same
+				// honesty bug the WebUI fixed for stopped runs a while ago.
+				fmt.Printf("\nrun %s: %s\n", run.ID, run.Outcome())
 				// A run that finished with a hole in it must not print as
 				// an unqualified success — the whole point of continuing
 				// past a failure is that someone still finds out.

@@ -114,3 +114,59 @@ describe("a run that found nothing to do", () => {
     expect(screen.getByText("succeeded")).toBeTruthy();
   });
 });
+
+// Declining an approval is answering the question, not breaking anything.
+//
+// `declined_by_user` was set on the Run, persisted to history and already
+// honoured by the scheduler's circuit breaker — it just never reached the
+// wire, so this page rendered a run you said "no" to exactly like one that
+// crashed: red dot, red error line, and counted in Failed. The first
+// example in CLAUDE.md's list of honesty bugs, arriving through the one
+// door that was left open.
+describe("a run you declined", () => {
+  const declined = run({
+    id: "d1",
+    swarm_name: "lead-to-meeting",
+    declined_by_user: true,
+    error: 'bot email-send-approved: step "gate": not approved (decided_by=you)',
+  });
+
+  it("does not say failed, and is not in the Failed count", () => {
+    withRuns([
+      declined,
+      run({ id: "f1", swarm_name: "morning-brief", error: "docker is not running" }),
+    ]);
+    render(<RunsPage />);
+
+    expect(screen.getByText("declined")).toBeTruthy();
+    // One real failure beside it, so a count of 1 proves the declined run
+    // was excluded rather than that nothing was counted.
+    expect(screen.getByText("Failed").parentElement?.textContent).toContain("1");
+  });
+
+  it("is not listed under the Failed filter", () => {
+    withRuns([
+      declined,
+      run({ id: "f1", swarm_name: "morning-brief", error: "docker is not running" }),
+    ]);
+    render(<RunsPage />);
+
+    fireEvent.click(screen.getByText("Failed"));
+    expect(screen.queryByText("lead-to-meeting")).toBeNull();
+    expect(screen.getByText("morning-brief")).toBeTruthy();
+  });
+
+  // Hiding it entirely — what a stopped run does — would be worse here: a
+  // schedule that keeps asking the same thing is worth seeing, and the
+  // error is what names the step.
+  it("still says which gate, just not in red", () => {
+    withRuns([declined]);
+    const { container } = render(<RunsPage />);
+
+    const line = [...container.querySelectorAll("div")].find((d) =>
+      d.textContent?.includes("not approved"),
+    );
+    expect(line).toBeTruthy();
+    expect(line!.className).not.toContain("text-danger");
+  });
+});

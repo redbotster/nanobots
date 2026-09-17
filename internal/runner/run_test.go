@@ -175,3 +175,54 @@ func waitFor(t *testing.T, cond func() bool) {
 	}
 	t.Fatal("condition never became true")
 }
+
+// Three runs end `failed` and only one of them is a fault. The word a person
+// reads has to tell them apart, and it used to be the raw status everywhere
+// except the WebUI's run list.
+func TestOutcomeNamesWhatActuallyHappened(t *testing.T) {
+	for name, tc := range map[string]struct {
+		build func(*Run)
+		want  string
+	}{
+		"a run that broke": {
+			build: func(r *Run) { r.SetStatus(StatusFailed) },
+			want:  "failed",
+		},
+		"a run someone stopped": {
+			build: func(r *Run) { r.StoppedByUser = true; r.SetStatus(StatusFailed) },
+			want:  "stopped",
+		},
+		"a run someone declined": {
+			build: func(r *Run) { r.DeclinedByUser = true; r.SetStatus(StatusFailed) },
+			want:  "declined",
+		},
+		"a watch that found nothing": {
+			build: func(r *Run) { r.NothingToDo = "no new file"; r.SetStatus(StatusSucceeded) },
+			want:  "nothing to do",
+		},
+		"an ordinary success": {
+			build: func(r *Run) { r.SetStatus(StatusSucceeded) },
+			want:  "succeeded",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := NewRun("probe")
+			tc.build(r)
+			if got := r.Outcome(); got != tc.want {
+				t.Errorf("Outcome() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// Stopping a run while an approval is open sets both. Stopped wins: ending
+// the run is the act that decided it, and the approval never got answered.
+func TestAStoppedRunReadsAsStoppedEvenIfSomethingWasDeclined(t *testing.T) {
+	r := NewRun("probe")
+	r.StoppedByUser = true
+	r.DeclinedByUser = true
+	r.SetStatus(StatusFailed)
+	if got := r.Outcome(); got != "stopped" {
+		t.Errorf("Outcome() = %q, want stopped", got)
+	}
+}

@@ -48,6 +48,37 @@ reported alongside it, and everything that reads a run uses it:
   by hand are not a swarm that is broken, and pausing its schedule over them
   would be the app misreading a deliberate act
 
+## A run you declined is not a run that failed
+
+Declining an approval ends the run `failed`, because the run did not
+finish. But you answered the question — that is the bot doing exactly what
+it was built to do, and it is the first example in CLAUDE.md's list of
+honesty bugs wearing a different hat.
+
+`declined_by_user` was already set on the run, already persisted to
+history, and already honoured by the scheduler's circuit breaker (three
+"no"s from a person do not pause a schedule). It was never put on the
+wire. So on the Runs page two rows read `failed` in red under
+`not approved (decided_by=cli)`, the Failed tab counted them, and the run
+page showed a red banner headed **Why it failed** whose body said *"This
+wasn't a fault: the approval was declined."*
+
+Everything that reads a run now uses it, the same list the stopped-run fix
+went through:
+
+- the run says **declined** with a muted dot, not **failed** in red
+- the per-bot log line reads `declined: …`, not `FAILED: …`
+- the run page's banner is neutral and headed **Why it stopped**
+- the **Failed** filter and its count skip it — 94 became 92 on this machine
+- `nanobots run` prints `run <id>: declined`
+
+That last one was a drift rather than an omission: the WebUI had made this
+distinction for stopped runs for a while and the CLI printed the raw status
+for all of them. `Run.Outcome()` is where the word comes from now. The
+WebUI still renders these from the booleans, because it also picks a dot
+tone and a layout per case — the booleans are the one fact, the word is a
+presentation choice each surface makes.
+
 ## A run that found nothing to do says so
 
 A watch bot on a schedule produces a run every time it fires, and most of

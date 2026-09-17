@@ -443,6 +443,36 @@ func (r *Run) GetNothingToDo() string {
 	return r.NothingToDo
 }
 
+// Outcome is the word for what happened, rather than the status.
+//
+// Three runs end `failed` and only one of them is a fault: a run someone
+// stopped, a run whose approval someone declined, and a run that actually
+// broke. A fourth ends `succeeded` having deliberately done nothing. The
+// status stays as it is — inventing more of them would mean auditing every
+// switch and terminal check in the repo for a distinction the booleans
+// already carry — but nothing user-facing should print the status raw.
+//
+// `nanobots run` printed `run <id>: failed` for all three, so declining
+// your own approval in the terminal ended with the word "failed" and no
+// hint that you had caused it on purpose. The WebUI had made this
+// distinction for stopped runs for a while, which is what made the CLI's
+// silence on it a drift rather than an omission.
+//
+// The WebUI still renders these from the booleans rather than calling this,
+// because it also picks a dot tone and a layout per case. The booleans are
+// the one fact; the word is a presentation choice each surface makes.
+func (r *Run) Outcome() string {
+	switch {
+	case r.WasStoppedByUser():
+		return "stopped"
+	case r.WasDeclinedByUser():
+		return "declined"
+	case r.GetNothingToDo() != "":
+		return "nothing to do"
+	}
+	return string(r.GetStatus())
+}
+
 // GetTolerated returns the failures this run continued past.
 func (r *Run) GetTolerated() []ToleratedFailure {
 	r.mu.Lock()

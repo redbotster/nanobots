@@ -30,23 +30,48 @@ function FailureBanner({
   // locked vault or a missing model and left you to work it out.
   remedy,
   onOpenSettings,
+  // A run that ended because you answered "no" gets the same banner in a
+  // neutral tone. The content is right either way — remedy.go's advice for
+  // this case is literally "This wasn't a fault: the approval was
+  // declined" — and putting that sentence in a red box headed "Why it
+  // failed" contradicts itself on screen.
+  decision = false,
 }: {
   error: string;
   remedy?: RunRemedy | null;
   onOpenSettings?: () => void;
+  decision?: boolean;
 }) {
   const [showRaw, setShowRaw] = useState(false);
   const parts = parseRunError(error);
   if (!parts) return null;
   const hasMore = parts.message.trim() !== error.trim();
   return (
-    <div className="mt-3 rounded-lg border border-danger/40 bg-danger/[0.06] px-3.5 py-2.5">
+    <div
+      className={
+        decision
+          ? "mt-3 rounded-lg border border-edge-strong bg-panel px-3.5 py-2.5"
+          : "mt-3 rounded-lg border border-danger/40 bg-danger/[0.06] px-3.5 py-2.5"
+      }
+    >
       <div className="flex items-center gap-2">
-        <span className="font-display text-[11px] uppercase tracking-wider text-danger">
-          Why it failed
+        <span
+          className={
+            decision
+              ? "font-display text-[11px] uppercase tracking-wider text-muted"
+              : "font-display text-[11px] uppercase tracking-wider text-danger"
+          }
+        >
+          {decision ? "Why it stopped" : "Why it failed"}
         </span>
         {parts.origin && (
-          <span className="rounded border border-danger/30 px-1.5 py-0.5 text-[10px] text-danger/80">
+          <span
+            className={
+              decision
+                ? "rounded border border-edge px-1.5 py-0.5 text-[10px] text-muted"
+                : "rounded border border-danger/30 px-1.5 py-0.5 text-[10px] text-danger/80"
+            }
+          >
             {parts.origin}
           </span>
         )}
@@ -259,8 +284,18 @@ export function RunDetail({
           <h1 className="font-display text-xl font-medium text-ink">{run?.swarm_name ?? "run"}</h1>
           {run && (
             <span className="flex items-center gap-1.5 text-xs text-muted">
-              <StatusDot tone={run.stopped_by_user ? "muted" : (tone[run.status] ?? "muted")} />
-              {run.stopped_by_user ? "stopped" : run.status.replace("_", " ")}
+              <StatusDot
+                tone={
+                  run.stopped_by_user || run.declined_by_user
+                    ? "muted"
+                    : (tone[run.status] ?? "muted")
+                }
+              />
+              {run.stopped_by_user
+                ? "stopped"
+                : run.declined_by_user
+                  ? "declined"
+                  : run.status.replace("_", " ")}
             </span>
           )}
           {run?.triggered_by === "schedule" && (
@@ -309,7 +344,12 @@ export function RunDetail({
         {/* The backend has always sent this; nothing rendered it, so a failed
             run said "failed" and made you read the whole log to find out why. */}
         {run?.status === "failed" && run.error && !run.stopped_by_user && (
-          <FailureBanner error={run.error} remedy={run.remedy} onOpenSettings={onOpenSettings} />
+          <FailureBanner
+            error={run.error}
+            remedy={run.remedy}
+            onOpenSettings={onOpenSettings}
+            decision={run.declined_by_user}
+          />
         )}
         {/* A run that finished with a hole in it. Rendered as a warning
             rather than left to the log, because the point of continuing

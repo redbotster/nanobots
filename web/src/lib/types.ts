@@ -122,6 +122,13 @@ export interface RunCore {
    * "failed" — it did not finish — but a run you ended yourself should not
    * look like one that broke. */
   stopped_by_user?: boolean;
+  /** Set when this run ended because a human answered "no" to an approval.
+   * Distinct from `stopped_by_user`: that is ending a run, this is
+   * answering it. The status is still "failed" — the run did not finish —
+   * but declining is a decision, and rendering it in red under
+   * `not approved (decided_by=you)` tells someone their own "no" was a
+   * fault. */
+  declined_by_user?: boolean;
   /** Why this run did no work: a watch looked and found nothing new, so
    * every bot either stopped or was skipped behind one. The status is
    * still "succeeded", because that is what happened — but an hourly watch

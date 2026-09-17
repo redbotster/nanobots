@@ -54,6 +54,17 @@ function groupRuns(sorted: RunSummary[]): Group[] {
   return out;
 }
 
+/** A run that went wrong, as opposed to one that did what you told it.
+ *
+ * Both of these end `failed`, because the run did not finish — but neither
+ * is something to go debugging. Stopping a run is ending it; declining an
+ * approval is answering it. The Failed count and the Failed filter share
+ * this one predicate so the tab cannot say 94 and then list 92.
+ */
+function reallyFailed(r: RunSummary): boolean {
+  return r.status === "failed" && !r.stopped_by_user && !r.declined_by_user;
+}
+
 export function RunsPage({ onOpenSettings }: { onOpenSettings?: () => void }) {
   // null (not []) until the first fetch lands, so the empty state doesn't
   // flash "nothing has run yet" at someone who does in fact have runs.
@@ -71,7 +82,7 @@ export function RunsPage({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const counts = {
     all: sorted.length,
     "needs-you": needsApproval.length,
-    failed: sorted.filter((r) => r.status === "failed" && !r.stopped_by_user).length,
+    failed: sorted.filter(reallyFailed).length,
     succeeded: sorted.filter((r) => r.status === "succeeded").length,
   };
 
@@ -80,8 +91,7 @@ export function RunsPage({ onOpenSettings }: { onOpenSettings?: () => void }) {
       case "needs-you":
         return r.status === "awaiting_approval";
       case "failed":
-        // A run you stopped is not a failure to go looking through.
-        return r.status === "failed" && !r.stopped_by_user;
+        return reallyFailed(r);
       case "succeeded":
         return r.status === "succeeded";
       default:
@@ -207,8 +217,15 @@ function RunRow({ run, onOpen }: { run: RunSummary; onOpen: () => void }) {
     >
       {/* Muted for a run that did nothing: it succeeded, and a green dot
           claiming work happened is the same small lie as calling a stopped
-          run failed. */}
-      <StatusDot tone={run.stopped_by_user || run.nothing_to_do ? "muted" : tone[run.status]} />
+          run failed. Declining is the third of these — you answered the
+          question, and a red dot says you broke something. */}
+      <StatusDot
+        tone={
+          run.stopped_by_user || run.declined_by_user || run.nothing_to_do
+            ? "muted"
+            : tone[run.status]
+        }
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="font-display text-sm text-ink">{run.swarm_name}</span>
@@ -230,8 +247,16 @@ function RunRow({ run, onOpen }: { run: RunSummary; onOpen: () => void }) {
         {/* One line of the failure right here — enough to tell "Docker
             isn't running" from "the bot crashed" without opening it.
             Only failed rows pay the extra line. */}
-        {run.status === "failed" && run.error && !run.stopped_by_user && (
+        {run.status === "failed" && run.error && !run.stopped_by_user && !run.declined_by_user && (
           <div className="truncate text-[11px] text-danger" title={run.error}>
+            {shortRunError(run.error)}
+          </div>
+        )}
+        {/* Which gate, in muted text rather than red. Hiding it entirely
+            (what a stopped run does) would be worse here: a schedule that
+            keeps asking is worth seeing, and the error names the step. */}
+        {run.declined_by_user && run.error && (
+          <div className="truncate text-[11px] text-muted" title={run.error}>
             {shortRunError(run.error)}
           </div>
         )}
@@ -244,9 +269,11 @@ function RunRow({ run, onOpen }: { run: RunSummary; onOpen: () => void }) {
       <div className="shrink-0 text-xs text-muted">
         {run.stopped_by_user
           ? "stopped"
-          : run.nothing_to_do
-            ? "nothing to do"
-            : run.status.replace("_", " ")}
+          : run.declined_by_user
+            ? "declined"
+            : run.nothing_to_do
+              ? "nothing to do"
+              : run.status.replace("_", " ")}
       </div>
     </button>
   );

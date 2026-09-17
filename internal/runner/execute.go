@@ -268,11 +268,19 @@ func (o *Orchestrator) runLevels(run *Run, rs *planner.ResolvedSwarm, levels [][
 				gone[botID] = fmt.Sprintf("%s failed, and this swarm was told to continue without it", botID)
 				continue
 			}
-			if errors.Is(err, ErrStopped) {
+			switch {
+			case errors.Is(err, ErrStopped):
 				// "FAILED: stopped from the app" contradicts itself. This
 				// bot did not fail; it was cut short on purpose.
 				run.Log(botID, "", "stopped")
-			} else {
+			case run.WasDeclinedByUser():
+				// The same sentence one door along. The run page above this
+				// log now says "declined" with a muted dot and explains
+				// that it wasn't a fault — and the last line of the log
+				// underneath still read `FAILED: ... not approved
+				// (decided_by=you)`, in red, about the person's own answer.
+				run.Log(botID, "", "declined: %v", err)
+			default:
 				run.Log(botID, "", "FAILED: %v", err)
 			}
 			fatal[botID] = err

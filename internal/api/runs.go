@@ -86,6 +86,17 @@ func runSummaryToJSON(run *runner.Run) map[string]any {
 	if run.WasStoppedByUser() {
 		out["stopped_by_user"] = true
 	}
+	// A run that ended because a human answered "no" is a decision, not a
+	// fault. The field was set on the Run, persisted in the snapshot and
+	// honoured by the scheduler's circuit breaker — and never put on the
+	// wire, so the one place a person actually reads it never knew. Two
+	// rows on the Runs page said `failed` in red under
+	// `not approved (decided_by=cli)`, which is the first example in
+	// CLAUDE.md's list of honesty bugs arriving through the one door that
+	// was left open.
+	if run.WasDeclinedByUser() {
+		out["declined_by_user"] = true
+	}
 	// Same reasoning: only when there is something to say. A quiet watch
 	// run is the only kind that carries this.
 	if why := run.GetNothingToDo(); why != "" {
@@ -146,6 +157,9 @@ func runToJSON(run *runner.Run) map[string]any {
 		// ended yourself is indistinguishable from one that broke — same
 		// red dot, same "failed".
 		"stopped_by_user": run.WasStoppedByUser(),
+		// Whether it stopped because someone said no. Distinct from
+		// stopped_by_user: that is ending a run, this is answering it.
+		"declined_by_user": run.WasDeclinedByUser(),
 		// Why this run did no work, when a watch found nothing new. A run
 		// where every bot was skipped is a success, and saying only
 		// "succeeded" about it hides the one run in a day that acted.
