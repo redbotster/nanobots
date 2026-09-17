@@ -266,11 +266,17 @@ func runConform(args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: nanobots conform <bot-dir>|<dir-of-bots> [--fixtures <dir>]")
 	}
+	if err := rejectUnknown("conform", args, "--fixtures"); err != nil {
+		return err
+	}
 	botDir := args[0]
 	fixturesDir := ""
 	for i := 1; i < len(args); i++ {
-		if args[i] == "--fixtures" && i+1 < len(args) {
+		if args[i] == "--fixtures" {
 			i++
+			if i >= len(args) {
+				return fmt.Errorf("--fixtures requires a directory")
+			}
 			fixturesDir = args[i]
 		}
 	}
@@ -687,6 +693,9 @@ func decideApproval(run *runner.Run, pa *runner.PendingApproval, stdin *bufio.Re
 // file into someone's LaunchAgents, and the least it can do is say exactly
 // what it wrote, how to load it, and how to undo it.
 func runService(args []string) error {
+	if err := rejectUnknown("service", args); err != nil {
+		return err
+	}
 	action := "status"
 	if len(args) > 0 {
 		action = args[0]
@@ -798,6 +807,9 @@ func oneClawClient() (*oneclaw.Client, error) {
 // Calendar, Sheets, Slack, GitHub and X. One install, one browser round
 // trip, done.
 func runConnectors(args []string) error {
+	if err := rejectUnknown("connectors", args); err != nil {
+		return err
+	}
 	oc, err := oneClawClient()
 	if err != nil {
 		return err
@@ -915,6 +927,9 @@ func runConnectors(args []string) error {
 // runSpend answers the question a scheduled product has to be able to
 // answer: what did last night cost.
 func runSpend(args []string) error {
+	if err := rejectUnknown("spend", args); err != nil {
+		return err
+	}
 	oc, err := oneClawClient()
 	if err != nil {
 		return err
@@ -995,15 +1010,19 @@ func catalogLookup(botsDir string) func(string) (*schema.Nanobot, error) {
 // something discovered — this cannot know what host a form service will
 // reach you on.
 func runWebhook(args []string) error {
+	if err := rejectUnknown("webhook", args, "--addr"); err != nil {
+		return err
+	}
 	addr := "127.0.0.1:7474"
 	var name string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--addr":
 			i++
-			if i < len(args) {
-				addr = args[i]
+			if i >= len(args) {
+				return fmt.Errorf("--addr requires a host:port")
 			}
+			addr = args[i]
 		default:
 			if !strings.HasPrefix(args[i], "-") && name == "" {
 				name = args[i]
