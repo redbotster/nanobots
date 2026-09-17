@@ -32,7 +32,7 @@ NANOBOTS_LIVE_TEST=1 go test ./internal/oneclaw/... -run TestLiveReadOnlySmoke -
 nanobots run -f examples/swarms/daily-email-recap.yaml
 ```
 
-The first is a read-only smoke test against your real account (lists vaults/agents, changes nothing). The second is the real thing: both bots run as real 1Claw agents and `ai.generate` goes through real Shroud. `approve` opens a run-level approval in **this app**, not in 1Claw — see below.
+The first is a read-only smoke test against your real account (lists vaults/agents, changes nothing). The second is the real thing: both bots run as real 1Claw agents and `ai.generate` goes through real Shroud. `approve` opens a run-level approval in this app **and** in your 1Claw queue — see below.
 
 
 ## Which bots get a 1Claw agent
@@ -43,29 +43,26 @@ Not all of them. A bot gets its own agent only when it actually needs one:
 - it has a `memory.*` step (memory is namespaced per agent), or
 - it has a **live** (non-demo) service whose provider has no native client in this build, so the call goes through 1Claw's generic binding — which is addressed by agent id.
 
-Approvals are not on that list, though not for the reason this page used to
-give. It said the local `RunQueueApprover` means an `approve` step "never
-touches 1Claw's own queue", which is not what the code does:
-`RunQueueApprover.mirror` tries to open the same approval in 1Claw so an
-overnight swarm can be answered from a phone. It has never once succeeded.
+Approvals are not on that list either, but they do reach 1Claw — through one
+shared agent rather than one per bot. See [approvals.md](approvals.md) for
+the exchange; the short version is that `POST /v1/approvals/request` is
+agent-only, so the mirror authenticates as the `nanobots` agent, created on
+the first gate that opens.
 
-Two independent reasons, both verified rather than assumed:
+This page said the opposite for a long time, and the wrong version is worth
+keeping visible because of how it happened. It reported two refusals as
+proof the door was shut:
 
-- `mirror` needs an agent id, and no approving bot (`approve`,
-  `email-drive-file`, `email-send-approved`, `post-publisher`) qualifies for
-  one under the rules above. Across 108 runs on the development machine that
-  opened an approval, not one logged either of `mirror`'s two outcomes.
-- Granting them an agent does not help. `POST /v1/approvals/request` refuses
-  the Human API key with `403 "Only agents can request approvals."`, and
-  refuses an agent's own `ocv_` key with `401 "Invalid or expired token"` —
-  that key authenticates on `shroud.1claw.co` and nowhere else, and it cannot
-  be exchanged at `/v1/auth/api-key-token` either.
+- the Human API key, refused `403 "Only agents can request approvals."` —
+  true, and still true;
+- an agent's `ocv_` key sent as a bearer token, refused `401 "Invalid or
+  expired token"` — also true, and not the conclusion it looked like.
 
-So **approvals are answerable in this app only**. Nothing in the UI or the
-CLI should suggest otherwise; the "nobody answered" remedy in
-`internal/remedy` used to, and no longer does. If 1Claw gains an
-agent-authenticated approval request, the change here is one line in
-`needsOneClawAgent`.
+The missing step was that an agent key has its own exchange,
+`POST /v1/auth/agent-token`, distinct from the human
+`/v1/auth/api-key-token`. Two refusals were read as "impossible" when they
+meant "not like that". Verified end to end before this was written: exchange,
+request, and poll all succeed as the agent.
 
 This used to be "every bot, always", and it was a real problem rather than just waste. Ten of the thirty catalog bots — `approve`, `drive-save`, `drive-watch`, `email-drive-file`, `email-send-approved`, `form-to-sheet`, `lead-router`, `notify`, `post-publisher`, `render-pdf` — are purely deterministic and never call an LLM, yet each burned one of the account's agent slots to never use it. On a pro tier that cap is 10, so a workspace with a handful of personal agents couldn't run a five-bot swarm. It also cost every one of those bots an agent-creation round-trip on its first run.
 

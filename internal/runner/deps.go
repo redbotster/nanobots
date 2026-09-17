@@ -21,10 +21,10 @@ import (
 // the log saying the key was being ignored. An LLM is now enough on its
 // own; 1Claw is still what adds real service calls, vault credentials and
 // Shroud's budget and redaction guardrails on top.
-func BuildDeps(run *Run, botID string, nb *schema.Nanobot, oc *oneclaw.Client, agentID, agentAPIKey string, blobs step.BlobStore, services step.ServiceConfigs, override step.Approver, mem memory.Store, gen llm.Generator) step.Deps {
+func BuildDeps(run *Run, botID string, nb *schema.Nanobot, oc *oneclaw.Client, agentID, agentAPIKey string, blobs step.BlobStore, services step.ServiceConfigs, override step.Approver, mem memory.Store, gen llm.Generator, mirror ApprovalMirror) step.Deps {
 	fixturesDir := nb.SourcePath + "/fixtures"
 	var approver step.Approver = &RunQueueApprover{
-		Run: run, Bot: botID, Step: "approve", OneClaw: oc, AgentID: agentID,
+		Run: run, Bot: botID, Step: "approve", Mirror: mirror,
 		Writes: nb.Spec.Guardrails.WritesAllowed,
 	}
 	if override != nil {

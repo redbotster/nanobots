@@ -430,22 +430,38 @@ func TestARunRecordsWhichServicesWereDemoData(t *testing.T) {
 }
 
 // fakeApprovalAPI stands in for 1Claw's approval endpoints, so the race
-// between the local queue and the mobile one can be tested without a
-// network.
+// between the local queue and the phone can be tested without a network.
+//
+// It enforces the rule the real API enforces: /v1/approvals/request is
+// agent-only, and a bearer minted from the *human* exchange gets 403 "Only
+// agents can request approvals." The previous version of this fake accepted
+// any token, which is how a mirror that could never have worked against the
+// real 1Claw kept a green test for the life of the repo.
 func fakeApprovalAPI(t *testing.T, statusAfter func(polls int) string) *oneclaw.Client {
 	t.Helper()
 	polls := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case strings.HasSuffix(r.URL.Path, "/auth/api-key-token"):
-			// The client exchanges its API key for a bearer token on first
-			// use; a fake that skips this makes every call fail, which is
-			// how the first version of this test "passed" the outage case
-			// and failed the one that mattered.
+		case strings.HasSuffix(r.URL.Path, "/auth/agent-token"):
+			// What an ocv_ key exchanges at. The token says which door it
+			// came through, so the handler below can tell them apart.
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"access_token": "tok", "token_type": "Bearer", "expires_in": 86400,
+				"access_token": "agent-tok", "token_type": "Bearer", "expires_in": 86400,
+			})
+		case strings.HasSuffix(r.URL.Path, "/auth/api-key-token"):
+			// The human exchange. Succeeds — it is the approvals endpoint
+			// that refuses this credential, not the exchange.
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "human-tok", "token_type": "Bearer", "expires_in": 86400,
 			})
 		case strings.HasSuffix(r.URL.Path, "/approvals/request"):
+			if r.Header.Get("Authorization") != "Bearer agent-tok" {
+				w.WriteHeader(http.StatusForbidden)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"detail": "Only agents can request approvals.",
+				})
+				return
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": "remote-1", "status": "pending"})
 		case strings.Contains(r.URL.Path, "/approvals/") && strings.HasSuffix(r.URL.Path, "/status"):
 			polls++
@@ -458,7 +474,13 @@ func fakeApprovalAPI(t *testing.T, statusAfter func(polls int) string) *oneclaw.
 	orig := oneclaw.DefaultBaseURL
 	oneclaw.DefaultBaseURL = srv.URL
 	t.Cleanup(func() { oneclaw.DefaultBaseURL = orig })
-	return oneclaw.NewClient("test-key")
+	return oneclaw.NewAgentClient("ocv_test-key")
+}
+
+// mirrorTo is what Orchestrator.approvalAgent gives a real approver: an
+// agent-authenticated client and the agent's id.
+func mirrorTo(client *oneclaw.Client) ApprovalMirror {
+	return func() (*oneclaw.Client, string, error) { return client, "agent-1", nil }
 }
 
 // An overnight swarm should be answerable from a phone, not only from a
@@ -474,8 +496,7 @@ func TestAnApprovalAnsweredOnAPhoneDecidesTheRun(t *testing.T) {
 	run := NewRun("probe")
 	a := &RunQueueApprover{
 		Run: run, Bot: "sender", Step: "approve",
-		OneClaw: fakeApprovalAPI(t, func(int) string { return "approved" }),
-		AgentID: "agent-1",
+		Mirror: mirrorTo(fakeApprovalAPI(t, func(int) string { return "approved" })),
 	}
 
 	type result struct {
@@ -517,7 +538,7 @@ func TestAFailingMirrorDoesNotBlockLocalApproval(t *testing.T) {
 	run := NewRun("probe")
 	a := &RunQueueApprover{
 		Run: run, Bot: "sender", Step: "approve",
-		OneClaw: oneclaw.NewClient("k"), AgentID: "agent-1",
+		Mirror: mirrorTo(oneclaw.NewAgentClient("ocv_k")),
 	}
 
 	done := make(chan bool, 1)

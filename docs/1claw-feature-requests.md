@@ -69,9 +69,16 @@ so in the log. Documented in `internal/runner/approver.go`.
 **What we need.** Agents that do not each consume a plan-capped slot, or a
 documented child-agent concept under one parent.
 
-**What it blocks.** Per-bot isolation. This account sits at 25 of 50 agents,
-24 of them created by nanobots, one per bot name. Any design that wants an
-agent per bot — and the approval mirror wants exactly that — runs out.
+**What it blocks.** Per-bot isolation. This account sits at 27 of 50 agents,
+26 of them created by nanobots, one per bot name. Any design that wants an
+agent per bot runs out.
+
+The approval mirror is what this looked like in practice. Opening a 1Claw
+approval requires an agent, and the obvious shape — the asking bot's own —
+would have meant four more agents for `approve`, `email-drive-file`,
+`email-send-approved` and `post-publisher`. It uses one shared `nanobots`
+agent instead, which is cheaper and loses nothing: the question is addressed
+to you either way.
 
 **What we do instead.** Phase 2 item 15: one agent per user, with memory
 namespaces and bindings scoped per bot. Cheaper and sufficient; genuine

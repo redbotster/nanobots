@@ -56,6 +56,9 @@ type Orchestrator struct {
 	// and failure aggregation can be tested without Docker. nil means the
 	// real thing; only tests set it.
 	runBotFn func(*Run, *planner.ResolvedSwarm, string, *planner.ResolvedBot) error
+
+	// The one agent every approval is opened by. See approvalagent.go.
+	approvalAgentState
 }
 
 // ExecuteSwarm plans swarmPath, then runs it in the background, returning
@@ -390,12 +393,12 @@ func (o *Orchestrator) runBot(run *Run, rs *planner.ResolvedSwarm, botID string,
 	// for the rest.
 	batch := &BatchApprover{
 		Inner: &RunQueueApprover{
-			Run: run, Bot: botID, Step: "approve", OneClaw: o.OneClaw,
+			Run: run, Bot: botID, Step: "approve",
 			Writes: rb.Nanobot.Spec.Guardrails.WritesAllowed,
-			// Resolved when the gate actually opens rather than now: the
-			// agent is per bot and this runs before the first item. Cheap
-			// to call — EnsureAgent caches its existence check.
-			AgentIDFn: func() string { id, _, _ := o.agentFor(rb.Nanobot); return id },
+			// Resolved when the gate actually opens rather than now: this
+			// runs before the first fanned-out item, and a batch that is
+			// never approved should not have created an agent.
+			Mirror: o.approvalAgent,
 		},
 		Total: n,
 	}
@@ -536,7 +539,7 @@ func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID str
 	if err != nil {
 		return err
 	}
-	deps := BuildDeps(run, botID, nb, o.OneClaw, agentID, agentAPIKey, blobs, o.Services, batch, o.memoryFor(agentID), o.LLM)
+	deps := BuildDeps(run, botID, nb, o.OneClaw, agentID, agentAPIKey, blobs, o.Services, batch, o.memoryFor(agentID), o.LLM, o.approvalAgent)
 
 	// Watch what this bot actually gets back, so a real run can be turned
 	// into the bot's test data afterwards. Wrapping cannot change what the

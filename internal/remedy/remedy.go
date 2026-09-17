@@ -132,19 +132,24 @@ func For(raw string) *Remedy {
 	// time. "Run it again" is deliberately not the advice: the next
 	// scheduled run at 7am goes unanswered exactly the same way.
 	if strings.Contains(m, "nobody answered") {
-		// This used to say "connect 1Claw so the question reaches your
-		// phone". It does not. RunQueueApprover tries to mirror the
-		// approval into 1Claw's queue and cannot: the human key is refused
-		// with "Only agents can request approvals" and an agent key is not
-		// valid on that host at all (the evidence is in that function). The
-		// account this was written against already had 1Claw connected, so
-		// the advice was both wrong and unactionable — the worst kind, since
-		// it sends someone to check a setting that was never the problem.
+		// The advice here has been wrong in both directions. It first said
+		// "connect 1Claw so the question reaches your phone", to an account
+		// that already had 1Claw connected and a mirror that could not work
+		// — unactionable, and it sent someone to check a setting that was
+		// never the problem. It was then corrected to say the window is the
+		// only lever, which became untrue the moment the mirror started
+		// working (see internal/runner/approver.go).
+		//
+		// So it says both, in the order that helps: the run is still over,
+		// and the reason the next one does not have to be depends on whether
+		// 1Claw is set up. The caller knows which; this does not, which is
+		// why the second sentence is conditional rather than a promise.
 		return &Remedy{
 			Advice: "The bot asked for approval and nobody answered in time, so it was " +
-				"stopped. An approval can only be answered while the run is waiting, so a " +
-				"scheduled run needs someone around when it fires: move it to a time you " +
-				"are, or take the approval off this step if it doesn't need one.",
+				"stopped. An approval can only be answered while the run is waiting. With " +
+				"1Claw connected the same question also goes to your 1Claw queue, so it can " +
+				"be answered away from this tab; without it, move the schedule to a time you " +
+				"are around, or take the approval off this step if it doesn't need one.",
 			Docs: "docs/approvals.md",
 		}
 	}

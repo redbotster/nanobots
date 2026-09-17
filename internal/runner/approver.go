@@ -50,16 +50,22 @@ type RunQueueApprover struct {
 	// the person answering can see what "yes" permits.
 	Writes []string
 
-	// OneClaw and the agent mirror the approval into 1Claw's queue. No
-	// client or no agent means local-only, which is what a demo run and a
-	// deployment without 1Claw both get.
-	OneClaw *oneclaw.Client
-	AgentID string
-	// AgentIDFn resolves the agent when the gate opens rather than when the
-	// approver is built — the fan-out case builds its approver before the
-	// first item has run. Takes precedence over AgentID.
-	AgentIDFn func() string
+	// Mirror resolves the agent that opens the 1Claw copy of this approval.
+	// nil, or a nil client, means local-only, which is what a run without
+	// 1Claw gets.
+	Mirror ApprovalMirror
 }
+
+// ApprovalMirror resolves the agent a 1Claw approval is opened by.
+//
+// Called when the gate opens rather than when the approver is built: the
+// fan-out case builds its approver before the first item has run, and a
+// deployment that never opens an approval should never create the agent.
+//
+// It returns an *agent-authenticated* client, not the human one. That is
+// the whole of this feature — see RunQueueApprover.mirror. The
+// implementation is Orchestrator.approvalAgent.
+type ApprovalMirror func() (client *oneclaw.Client, agentID string, err error)
 
 // mirrorPoll is how often the 1Claw queue is checked. Slower than a local
 // decision, which is instant — this is a network round trip against a
@@ -85,45 +91,50 @@ func (a *RunQueueApprover) Approve(summary, riskTier string) (bool, string, erro
 // convenience of approving from your phone, not the ability to approve at
 // all.
 //
-// Dormant as of this writing, and worth knowing why before spending time on
-// it. Two things have to be true and neither is:
+// This was dormant for the life of the repo, and the reason it was dormant
+// was a wrong conclusion written down as fact.
 //
-//  1. agentID is "" for every approving bot in the catalog. needsOneClawAgent
-//     grants an agent for ai.generate, memory.* or a live non-native service,
-//     and approve/email-drive-file/email-send-approved/post-publisher have
-//     none of those. So this returns at its first line, which is why 108 runs
-//     that opened an approval logged neither of the two lines below.
+// `POST /v1/approvals/request` is agent-only. Sent with the human key it
+// answers 403 "Only agents can request approvals." An earlier investigation
+// then tried the agent's `ocv_` key as a bearer token (401) and tried
+// exchanging it at the *human* endpoint `/v1/auth/api-key-token` (401), and
+// concluded from those two refusals that an agent could not open an
+// approval at all. The step it missed is that an agent key has its own
+// exchange:
 //
-//  2. Giving them an agent does not help, because 1Claw will not accept
-//     either credential for this endpoint. Probed against the live API:
+//	POST /v1/auth/agent-token   {"api_key":"ocv_…"}  -> 200, a JWT
+//	POST /v1/approvals/request  Authorization: Bearer <JWT>  -> the approval
+//	GET  /v1/approvals/{id}/status  same bearer  -> pending|approved|…
 //
-//     human key (1ck_ -> bearer)   POST /v1/approvals/request -> 403
-//     "Only agents can request approvals."
-//     agent key (ocv_) as bearer   POST /v1/approvals/request -> 401
-//     "Invalid or expired token"   (same on GET /v1/approvals, and the
-//     agent key cannot be exchanged at /v1/auth/api-key-token either)
+// All three verified against the live account. So the body this code was
+// already building was correct; it was being sent by the wrong client.
 //
-//     An agent's ocv_ key authenticates on shroud.1claw.co and nowhere else.
+// What it cost: on this machine, 54 runs died on an approval nobody was
+// awake to answer — 27 hours of container time — and across 108 runs that
+// opened a gate, not one logged either line below. Seven of the sixteen
+// catalog swarms pause for a human.
 //
-// So the code stays, because the day 1Claw accepts an agent-authenticated
-// approval request it is one line in needsOneClawAgent — but nothing in this
-// app should tell a user that approvals reach their phone, because they do
-// not. See docs/oneclaw-bridge.md and the "nobody answered" remedy in
-// internal/remedy, both of which used to say otherwise.
+// Listing an agent's own approvals is still human-only (403), which is why
+// this polls by id and records nothing it cannot reach again
+// (docs/1claw-feature-requests.md #10).
 func (a *RunQueueApprover) mirror(localID, summary, riskTier string, done <-chan struct{}) {
-	agentID := a.AgentID
-	if a.AgentIDFn != nil {
-		agentID = a.AgentIDFn()
-	}
-	if a.OneClaw == nil || !a.OneClaw.Configured() || agentID == "" {
+	if a.Mirror == nil {
 		return
 	}
-	ap, err := a.OneClaw.RequestApproval(agentID, summary, riskTier)
+	client, agentID, err := a.Mirror()
 	if err != nil {
 		a.Run.Log(a.Bot, a.Step, "could not also ask on 1Claw, so this is answerable here only: %v", err)
 		return
 	}
-	a.Run.Log(a.Bot, a.Step, "also asked on 1Claw (%s) — answer it here or on your phone", ap.ID)
+	if client == nil || !client.Configured() || agentID == "" {
+		return
+	}
+	ap, err := client.RequestApproval(agentID, summary, riskTier)
+	if err != nil {
+		a.Run.Log(a.Bot, a.Step, "could not also ask on 1Claw, so this is answerable here only: %v", err)
+		return
+	}
+	a.Run.Log(a.Bot, a.Step, "also asked on 1Claw (%s) — answer it here or there", ap.ID)
 
 	go func() {
 		ticker := time.NewTicker(mirrorPoll)
@@ -136,7 +147,7 @@ func (a *RunQueueApprover) mirror(localID, summary, riskTier string, done <-chan
 				// question is better than pretending to have one.
 				return
 			case <-ticker.C:
-				status, err := a.OneClaw.ApprovalStatus(ap.ID)
+				status, err := client.ApprovalStatus(ap.ID)
 				if err != nil || status == "pending" {
 					continue
 				}
