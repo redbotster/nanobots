@@ -5,7 +5,7 @@ package oneclaw
 // Shroud bills tokens against each agent's budget, and nothing in this
 // product ever showed the total. That was tolerable while every run was a
 // human clicking Run; it stops being tolerable the moment the scheduler
-// keeps nanobotd alive across reboots and fourteen cron triggers fire
+// keeps nanobotd alive across reboots and twelve cron triggers fire
 // unattended. "This ran thirty times last night" is a question a scheduled
 // product has to be able to answer.
 

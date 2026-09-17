@@ -24,7 +24,7 @@ func TestLevelsGroupIndependentBotsTogether(t *testing.T) {
 		want  [][]string
 	}{
 		{
-			// Nine of the fifteen catalog swarms look like this, and gain
+			// Eleven of the sixteen catalog swarms look like this, and gain
 			// nothing from waves — which is worth stating rather than
 			// implying the change speeds everything up.
 			name:  "a straight chain is one bot per wave",

@@ -12,7 +12,7 @@ before starting the next.
 
 ## What actually benefits
 
-Six of the fifteen catalog swarms have a wave wider than one:
+Five of the sixteen catalog swarms have a wave wider than one:
 
 | swarm | bots | waves |
 |---|---|---|
@@ -22,7 +22,7 @@ Six of the fifteen catalog swarms have a wave wider than one:
 | `meeting-to-action` | 4 | 1, 1, 2 |
 | `support-desk-lite` | 3 | 1, 2 |
 
-The other nine are straight chains and gain nothing. Worth saying plainly:
+The other eleven are straight chains and gain nothing. Worth saying plainly:
 this is not a general speed-up, it is a speed-up for swarms that branch.
 
 ## Why it's safe
