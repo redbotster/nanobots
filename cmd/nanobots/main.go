@@ -81,6 +81,8 @@ func main() {
 		err = runWebhook(args)
 	case "health":
 		err = runHealth(args)
+	case "agents":
+		err = runAgents(args)
 	case "export":
 		err = runExport(args)
 	case "import":
@@ -157,6 +159,7 @@ commands:
   spend                                   what this account has spent on models
   webhook <swarm> [--addr host:port]      print where to post to fire a webhook swarm
   health [--addr host:port] [--quiet]     ask a running daemon whether it is answering
+  agents [--prune]                        the 1Claw agents this repo made, and which are unused
   export -f <swarm.yaml> [-o <file>]      bundle a swarm to hand to someone else
   import <bundle.yaml>                    add a shared swarm to examples/swarms/
   version                                 print the build and Go toolchain
@@ -927,7 +930,15 @@ func agentForBot(oc *oneclaw.Client, botID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	id, _, err := oc.EnsureAgent(stateDir, "nanobots-"+nb.Metadata.Name,
+	// Through the same derivation the runner uses. This used to mint
+	// "nanobots-"+bot name on its own, which is how `nanobots connectors
+	// install` created an agent the runner would never look at again —
+	// a leftover the moment it was made.
+	name := runner.AgentNameFor(nb)
+	if name == "" {
+		return "", fmt.Errorf("bot %q needs no 1Claw agent, so there is nothing to install a connector on", botID)
+	}
+	id, _, err := oc.EnsureAgent(stateDir, name,
 		oneclaw.CreateAgentRequest{ShroudEnabled: true, MemoryEnabled: true})
 	if err != nil {
 		return "", fmt.Errorf("ensure this bot's 1Claw agent: %w", err)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/redbotster/nanobots/internal/agentname"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 )
 
@@ -20,7 +21,7 @@ import (
 // opens and never again. It is also the name `nanobots deploy 1claw`
 // expects to run as, and the direction Phase 2 item 15 takes the rest of
 // the per-bot agents in.
-const ApprovalAgentName = "nanobots"
+const ApprovalAgentName = agentname.Approvals
 
 // approvalAgent resolves the shared approvals agent, creating it on first
 // use, and returns a client authenticated *as that agent*.

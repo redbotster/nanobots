@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/redbotster/nanobots/internal/agentname"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 )
 
@@ -47,7 +48,7 @@ import (
 // shroudProxyAgentName is the agent this shim bills against — its own,
 // separate from any bot's, so the spend shows up as what it is and can
 // carry its own budget.
-const shroudProxyAgentName = "nanobots-shroud-proxy"
+const shroudProxyAgentName = agentname.ShroudProxy
 
 // shroudProxyDailyBudgetUSD caps what anything behind this shim can spend
 // in a day. Deliberately modest: this exists to meter a background memory

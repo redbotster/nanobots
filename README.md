@@ -71,6 +71,7 @@ nanobots plan -f examples/swarms/daily-email-recap.yaml   # type-check a swarm, 
 nanobots run  -f examples/swarms/daily-email-recap.yaml   # run it, printing the log
 nanobots conform bots                                     # check every bot honours the contract
 nanobots health                                           # is a running daemon answering?
+nanobots agents                                           # the 1Claw agents this repo made, and which are unused
 nanobots deploy 1claw --image <ref>                       # run it on a 1Claw Cloud Runtime
 ```
 

@@ -22,7 +22,13 @@ type ShroudConfig struct {
 // fields Nanobots actually sets are included — the live API accepts many
 // more (transaction/signing-related) that don't apply to a nanobot.
 type CreateAgentRequest struct {
-	Name                    string        `json:"name"`
+	Name string `json:"name"`
+	// Description is what the 1Claw dashboard shows beside the name. Worth
+	// sending: agents are named after their guardrail profile rather than
+	// after a bot now (see runner.agentNameFor), so without this an account
+	// holds several `nanobots-redact-7c1f9a` and no way to tell what any of
+	// them is for.
+	Description             string        `json:"description,omitempty"`
 	ShroudEnabled           bool          `json:"shroud_enabled,omitempty"`
 	ShroudConfig            *ShroudConfig `json:"shroud_config,omitempty"`
 	SystemPrompt            string        `json:"system_prompt,omitempty"`

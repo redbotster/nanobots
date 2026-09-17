@@ -16,13 +16,14 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/redbotster/nanobots/internal/agentname"
 	"github.com/redbotster/nanobots/internal/llm"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/planner"
 	"github.com/redbotster/nanobots/internal/schema"
 )
 
-const composeAgentName = "nanobots-composer"
+const composeAgentName = agentname.Composer
 
 type composeRequest struct {
 	Message string `json:"message"`

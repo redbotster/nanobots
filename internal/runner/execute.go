@@ -640,6 +640,8 @@ func (o *Orchestrator) memoryFor(agentID string) memory.Store {
 func agentRequestFor(nb *schema.Nanobot) oneclaw.CreateAgentRequest {
 	g := nb.Spec.Guardrails
 	return oneclaw.CreateAgentRequest{
+		Name:          agentNameFor(nb),
+		Description:   agentDescriptionFor(nb),
 		ShroudEnabled: true,
 		MemoryEnabled: true,
 		ShroudConfig: &oneclaw.ShroudConfig{
@@ -826,7 +828,7 @@ func (o *Orchestrator) agentFor(nb *schema.Nanobot) (id, apiKey string, err erro
 	if o.OneClaw == nil || !o.OneClaw.Configured() || !needsOneClawAgent(nb) {
 		return "", "", nil
 	}
-	id, apiKey, err = o.OneClaw.EnsureAgent(o.AgentStateDir, "nanobots-"+nb.Metadata.Name, agentRequestFor(nb))
+	id, apiKey, err = o.OneClaw.EnsureAgent(o.AgentStateDir, agentNameFor(nb), agentRequestFor(nb))
 	if err != nil {
 		return "", "", fmt.Errorf("ensure 1Claw agent: %w", err)
 	}

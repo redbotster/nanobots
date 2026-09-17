@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/redbotster/nanobots/internal/agentname"
 	"github.com/redbotster/nanobots/internal/contract"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/runner"
@@ -94,7 +95,7 @@ func (o *Orchestrator) run(job *Job, suggestedInputs []schema.InputPort, suggest
 	// coding agent's real token spend, and why that means it's fine for
 	// this to fail without failing the job.
 	if o.OneClaw != nil {
-		if _, _, err := o.OneClaw.EnsureAgent(o.AgentStateDir, "nanobots-foundry", oneclaw.CreateAgentRequest{
+		if _, _, err := o.OneClaw.EnsureAgent(o.AgentStateDir, agentname.Foundry, oneclaw.CreateAgentRequest{
 			ShroudEnabled: true,
 			ShroudConfig:  &oneclaw.ShroudConfig{PIIPolicy: "redact", EnableSecretRedaction: true, DailyBudgetUSD: 5},
 		}); err != nil {

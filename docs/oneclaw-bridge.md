@@ -23,7 +23,11 @@ For each bot instance in a run, `internal/runner.Orchestrator` calls `EnsureAgen
 
 ## A real limit worth knowing about: the account's agent cap
 
-`EnsureAgent` finds-or-creates by name, so it's idempotent across runs — but every distinct bot name in every swarm you've ever run against this account eventually gets its own agent, and 1Claw plans cap how many an account can hold (10 on the pro tier this was built against). Running out shows up as a 403 `"Agent limit reached"` from `EnsureAgent`, right when a swarm tries to run a bot whose agent doesn't exist yet. **Settings now shows the number before you hit it** — the Posture row reads `100/100 · 25/50 agents` with a line saying how many this app made, and turns amber at 80% of the allowance (`GET /api/posture`, from 1Claw's OTel summary plus `/v1/billing/subscription`). There's no code-level workaround — and this codebase never deletes an agent on its own, since agent memory (`memory.get`/`memory.put`'s "since last run" state) lives on it — but freeing a slot is safe: delete an agent you don't need (`Client.DeleteAgent`, or 1Claw's own dashboard) and the next run against that bot name just creates a fresh one.
+`EnsureAgent` finds-or-creates by name, so it's idempotent across runs, and 1Claw plans cap how many agents an account can hold (10 on the pro tier this was built against). Running out shows up as a 403 `"Agent limit reached"` from `EnsureAgent`, right when a swarm tries to run a bot whose agent doesn't exist yet.
+
+This used to be a cap you could reach by writing bots: every distinct bot name got its own agent, and this account reached 27. Agents are keyed by guardrail profile now (below), so the catalog wants a handful rather than one per bot — but the cap is still what to watch when you connect many accounts or share a plan. **Settings shows the number before you hit it**: the Posture row reads `100/100 · 25/50 agents` with a line saying how many this app made, and turns amber at 80% of the allowance (`GET /api/posture`, from 1Claw's OTel summary plus `/v1/billing/subscription`).
+
+This codebase never deletes an agent on its own — agent memory lives on it — but `nanobots agents --prune` will, after printing every name and asking.
 
 ## Try it
 
@@ -37,38 +41,79 @@ The first is a read-only smoke test against your real account (lists vaults/agen
 
 ## Which bots get a 1Claw agent
 
-Not all of them. A bot gets its own agent only when it actually needs one:
+Not all of them, and no longer one each.
 
-- it has an `ai.generate` step (proxied through that agent's Shroud credentials), or
-- it has a `memory.*` step (memory is namespaced per agent), or
-- it has a **live** (non-demo) service whose provider has no native client in this build, so the call goes through 1Claw's generic binding — which is addressed by agent id.
+A bot needs an agent at all only when it does one of three things:
 
-Approvals are not on that list either, but they do reach 1Claw — through one
-shared agent rather than one per bot. See [approvals.md](approvals.md) for
-the exchange; the short version is that `POST /v1/approvals/request` is
-agent-only, so the mirror authenticates as the `nanobots` agent, created on
-the first gate that opens.
+- an `ai.generate` step, proxied through that agent's Shroud credentials;
+- a `memory.*` step, since memory entries hang off an agent;
+- a **live** (non-demo) service whose provider has no native client in this
+  build, which reaches the provider through 1Claw's generic binding —
+  addressed by agent id.
 
-This page said the opposite for a long time, and the wrong version is worth
-keeping visible because of how it happened. It reported two refusals as
-proof the door was shut:
+`internal/runner.needsOneClawAgent` is that predicate. Ten of the catalog's
+bots are purely deterministic and need none.
 
-- the Human API key, refused `403 "Only agents can request approvals."` —
-  true, and still true;
-- an agent's `ocv_` key sent as a bearer token, refused `401 "Invalid or
-  expired token"` — also true, and not the conclusion it looked like.
+**Which agent** is a separate question, and the answer used to be "its own,
+named after it". That is how this account reached 27 agents against a plan
+cap of 50, all but one created by this repo, with `Agent limit reached`
+waiting mid-run for anyone who added a few more bots.
 
-The missing step was that an agent key has its own exchange,
-`POST /v1/auth/agent-token`, distinct from the human
-`/v1/auth/api-key-token`. Two refusals were read as "impossible" when they
-meant "not like that". Verified end to end before this was written: exchange,
-request, and poll all succeed as the agent.
+Agents are now keyed by **guardrail profile**:
 
-This used to be "every bot, always", and it was a real problem rather than just waste. Ten of the thirty catalog bots — `approve`, `drive-save`, `drive-watch`, `email-drive-file`, `email-send-approved`, `form-to-sheet`, `lead-router`, `notify`, `post-publisher`, `render-pdf` — are purely deterministic and never call an LLM, yet each burned one of the account's agent slots to never use it. On a pro tier that cap is 10, so a workspace with a handful of personal agents couldn't run a five-bot swarm. It also cost every one of those bots an agent-creation round-trip on its first run.
+```
+nanobots-redact-e7ecfa    16 bots
+nanobots-allow-fd69d1     11 bots
+```
 
-`internal/runner.needsOneClawAgent` is the predicate, and `TestRealCatalogNeedsFarFewerAgentsThanItHasBots` asserts it against the real catalog, so the number moving is something a test notices rather than something you discover at the cap.
+The obvious alternative — one agent for everything — was rejected because an
+agent *is* the guardrail boundary. `shroud_config` (PII policy, injection
+threshold, allowed providers, daily budget) is set per agent, and 1Claw's
+chat request body carries no per-call override; checked against the live
+OpenAPI, `SendChatMessageRequest` has no policy fields. One agent would mean
+one policy for every bot.
 
-**The cap is still real, though.** Twenty bots that do need agents still exceeds ten. Running the whole catalog live on a pro tier means either deleting agents between runs or upgrading the plan.
+So two bots that declare the same guardrails share an agent, and a bot that
+declares anything different gets its own automatically. The readable half of
+the name says what the policy is; the six hex characters are a hash of the
+whole profile, which is what stops two profiles that differ only in, say,
+daily budget from colliding on one name and running under each other's
+limits.
+
+Measured against the real catalog before choosing: the twenty-seven bots
+that need an agent declare exactly two distinct profiles. Twenty-seven
+agents down to two, with nothing given up.
+
+Four fixed agents sit alongside them — `nanobots` (approvals, and what a
+hosted deploy runs as), `nanobots-composer`, `nanobots-shroud-proxy` and
+`nanobots-foundry`. Every name this repo creates is registered in
+`internal/agentname`, which is the list `nanobots agents` reads.
+
+### Cleaning up what the old scheme left
+
+Renaming the scheme does not tidy the account: the old per-bot agents keep
+existing and keep counting.
+
+```
+nanobots agents
+```
+
+lists what is on the account in three groups — in use, made by nanobots and
+now unused, and not made by nanobots (shown, never touched).
+`nanobots agents --prune` offers to delete the middle group, printing every
+name first and requiring an explicit yes. It is deliberately not automatic:
+an agent's `api_key` is shown exactly once, so a wrong deletion cannot be
+undone by anyone.
+
+Pruning also drops the saved credential file for each agent it deletes,
+which is what stops `EnsureAgent` reporting a mismatch for an agent that is
+no longer there.
+
+If you used the `1claw` memory backend, read the migration note in
+[memory.md](memory.md) before pruning: entries written under the old agents
+stay there and do not follow.
+
+**The cap stops being the thing you plan around.** The whole catalog now wants two agents plus four fixed ones, so a pro tier's ten is no longer something a five-bot swarm can walk into.
 
 ## Stale agent credentials heal themselves
 
