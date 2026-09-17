@@ -47,21 +47,37 @@ A cron expression that *can't* be parsed now surfaces as `schedule_error` and re
 Standard cron accepts both `0` and `7` for Sunday. This parser only allowed `0-6`, so `0 9 * * 7` failed to parse — and the scheduler's response to a parse failure is to log and skip, meaning the swarm silently never ran. `Parse` now normalises `7` to `0`, which keeps `matches` comparing against `time.Weekday()` (only ever 0-6).
 
 
-## Triggers that aren't wired up
+## The event triggers became polls
 
-`internal/scheduler` only handles `type: cron`. Three catalog swarms declare something else — `lead-to-meeting` wants `webhook: website.form.submitted`, and `meeting-to-action` and `repurpose-everything` want `event: drive.file.created`. Nothing in this build fires any of them.
+`internal/scheduler` only handles `type: cron`. Two catalog swarms used to
+declare `event: drive.file.created` — `meeting-to-action` and
+`repurpose-everything` — and nothing fired them. Their cards said so
+honestly ("not wired up yet, so runs on demand"), which is disclosure, not
+a working swarm: two of the sixteen never ran themselves.
 
-They used to render identically to a swarm with no trigger at all, which reads as "manual by design" rather than "its automation isn't built yet". `GET /api/swarms` now reports `trigger_type` for every swarm and `inert_trigger` for those two kinds, and the card says so:
+Nothing in 1Claw can deliver that event either. Its automation
+`trigger_type: event` accepts vault and policy lifecycle events, not a new
+file in your Drive (`docs/1claw-feature-requests.md` #5). Waiting for a push
+that has no sender is how a feature stays unbuilt for a year.
 
-```
-⚡ drive.file.created — not wired up yet, so runs on demand
-```
+So they poll, hourly, offset from each other (`15 * * * *` and
+`45 * * * *`). That only became a sensible default once `drive-watch`
+learned to remember: a run with nothing new ends at its `stop.if` after one
+Drive list call, skips everything behind it, and shows up as "nothing to do"
+rather than as another success ([runs.md](runs.md),
+[bot-contract.md](bot-contract.md)). Before that, an hourly poll would have
+reprocessed the same transcript twenty-four times a day.
 
-This is disclosure, not a fix: those swarms still only run when someone clicks Run.
+`lead-to-meeting` still declares `webhook: website.form.submitted`, and that
+one really does fire — see [webhooks.md](webhooks.md).
+
+The `inert_trigger` field stays. No shipped swarm sets it now, but a swarm
+someone writes with an `event:` trigger is still a swarm nothing fires, and
+it should say so rather than looking manual by design.
 
 ## Making it survive a reboot
 
-Twelve of the sixteen catalog swarms carry a cron trigger, and this
+Fourteen of the sixteen catalog swarms carry a cron trigger, and this
 scheduler fires them — but only while nanobotd is running. Until now that
 meant a terminal window someone remembered to leave open. Close the laptop
 and the morning brief doesn't happen. A catalog written entirely in the
@@ -153,7 +169,7 @@ something without also firing it.
 
 ## The composer can schedule
 
-Twelve of the sixteen catalog swarms carry a cron trigger, and until now
+Fourteen of the sixteen catalog swarms carry a cron trigger, and until now
 nothing you built could have one. `draftToNanoswarm` hardcoded
 `trigger: {type: manual}`, so composing *"every friday summarise my overdue
 invoices and email me the list"* produced a swarm the model had described as

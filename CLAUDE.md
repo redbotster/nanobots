@@ -189,7 +189,7 @@ and the commit says that.
   (orchestration, Docker, runs), `api` (REST+SSE), `planner`, `scheduler`,
   `schema`, `foundry`, plus the pluggable `llm` and `memory` backends.
 - `bots/` — 39 catalog bots, one directory each.
-- `examples/swarms/` — 16 swarms: 12 cron, 2 event, 1 webhook, 1 manual.
+- `examples/swarms/` — 16 swarms: 14 cron, 1 webhook, 1 manual.
 - `web/` — the React app. `docs/` — one page per concept, indexed by
   `docs/README.md` and reachable from the front page.
 

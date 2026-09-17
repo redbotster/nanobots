@@ -77,8 +77,19 @@ func everyPhrase(expr, minute, hour, dom, dow string) string {
 		}
 	case minute == "*" && hour == "*":
 		interval = "Every minute"
-	case minute == "0" && hour == "*":
-		interval = "Hourly"
+	case hour == "*":
+		// Every hour, at some minute past it. `0 * * * *` was already
+		// handled; `15 * * * *` was not, and fell all the way through to
+		// printing the raw cron on a swarm card — to the person this
+		// product is for, who was promised they would never see YAML.
+		// meeting-to-action and repurpose-everything both poll on the hour
+		// at an offset, so this is now two of sixteen cards.
+		if n, err := parseSingleInt(minute); err == nil {
+			interval = "Hourly"
+			if n > 0 {
+				interval = fmt.Sprintf("Hourly at :%02d", n)
+			}
+		}
 	}
 	if interval == "" {
 		return expr

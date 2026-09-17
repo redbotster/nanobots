@@ -18,6 +18,21 @@ metadata:
 # publishable. Standalone `approve` is skipped for the same reason as every
 # other swarm here — post-publisher's own built-in gate is the one approval.
 
+# The trigger is a poll, not a push, and that is the honest shape. This
+# used to declare `trigger: {type: event, expr: drive.file.created}`, which
+# nothing in this build fires and nothing in 1Claw can deliver: its
+# automation `trigger_type: event` accepts vault and policy lifecycle
+# events, not a new file in your Drive (docs/1claw-feature-requests.md #5).
+# So the card read "not wired up yet, so runs on demand" and the swarm
+# never ran itself.
+#
+# Polling hourly is what that gap leaves, and it is now cheap and quiet:
+# drive-watch remembers the last file it handed on, so a run with nothing
+# new ends at its `stop.if` after one Drive list call, skips everything
+# behind it, and shows up as "nothing to do" rather than as another
+# success (docs/runs.md).
+# At :45 past, offset from meeting-to-action at :15 (see there).
+
 spec:
   defaults:
     model: { provider: anthropic, name: claude-sonnet-4-6 }
@@ -31,8 +46,9 @@ spec:
     watch_folder: "Published"
 
   trigger:
-    type: event
-    expr: "drive.file.created"
+    type: cron
+    expr: "45 * * * *"
+    timezone: America/Chicago
 
   bots:
     - id: watcher

@@ -23,6 +23,15 @@ func TestDescribe(t *testing.T) {
 		{"0 9 * * 0-6", "Every day at 9:00 AM"},
 		{"0 9 * * 7", "Sundays at 9:00 AM"}, // cron allows 7 for Sunday
 
+		// Hourly at an offset. meeting-to-action and repurpose-everything
+		// poll on the hour at :15 and :45, and both printed raw cron on
+		// their card before this — to the person who was promised they
+		// would never see YAML.
+		{"15 * * * *", "Hourly at :15"},
+		{"45 * * * *", "Hourly at :45"},
+		{"5 * * * *", "Hourly at :05"},
+		{"0 * * * *", "Hourly"},
+
 		// Intervals.
 		{"*/15 * * * *", "Every 15 minutes"},
 		{"*/1 * * * *", "Every minute"},

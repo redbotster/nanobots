@@ -1,7 +1,7 @@
 // Package service installs nanobotd as something your machine keeps
 // running.
 //
-// Twelve of the sixteen catalog swarms carry a cron trigger — "every
+// Fourteen of the sixteen catalog swarms carry a cron trigger — "every
 // morning", "every Monday", "every 30 minutes" — and the scheduler that
 // fires them works. None of it happens unless `nanobots up` is running,
 // which until now meant a terminal window someone remembered to leave open.

@@ -661,7 +661,7 @@ func decideApproval(run *runner.Run, pa *runner.PendingApproval, stdin *bufio.Re
 
 // runService manages the background job that keeps nanobotd alive.
 //
-// Twelve of the sixteen catalog swarms carry a cron trigger and the
+// Fourteen of the sixteen catalog swarms carry a cron trigger and the
 // scheduler that fires them works — but only while nanobotd is running,
 // which meant a terminal window someone remembered to leave open. A
 // catalog written entirely in the future tense has to survive a reboot.

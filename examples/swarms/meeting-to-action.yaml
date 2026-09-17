@@ -16,6 +16,23 @@ metadata:
 # swarm-level reshaping step, neither of which this build has; documented
 # rather than hidden, same as lead-to-meeting.yaml's similar case.
 
+# The trigger is a poll, not a push, and that is the honest shape. This
+# used to declare `trigger: {type: event, expr: drive.file.created}`, which
+# nothing in this build fires and nothing in 1Claw can deliver: its
+# automation `trigger_type: event` accepts vault and policy lifecycle
+# events, not a new file in your Drive (docs/1claw-feature-requests.md #5).
+# So the card read "not wired up yet, so runs on demand" and the swarm
+# never ran itself.
+#
+# Polling hourly is what that gap leaves, and it is now cheap and quiet:
+# drive-watch remembers the last file it handed on, so a run with nothing
+# new ends at its `stop.if` after one Drive list call, skips everything
+# behind it, and shows up as "nothing to do" rather than as another
+# success (docs/runs.md).
+# At :15 past, offset from repurpose-everything at :45 — both watch a
+# Drive folder, and two polls landing on the same minute is a small
+# self-inflicted burst for no reason.
+
 spec:
   defaults:
     model: { provider: anthropic, name: claude-sonnet-4-6 }
@@ -30,8 +47,9 @@ spec:
     action_items_channel: "slack:#team"
 
   trigger:
-    type: event
-    expr: "drive.file.created"
+    type: cron
+    expr: "15 * * * *"
+    timezone: America/Chicago
 
   bots:
     - id: watcher
