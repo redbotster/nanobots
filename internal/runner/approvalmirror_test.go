@@ -42,9 +42,11 @@ func TestTheMirrorIsRefusedWithoutAnAgentCredential(t *testing.T) {
 
 	// The local gate still opens, and is still the one that decides.
 	id := waitForPending(t, run)
-	if said := logContains(run, "could not also ask on 1Claw"); !said {
-		t.Error("a refused mirror said nothing in the run log")
-	}
+	// Waited for, not sampled once: the mirror runs from the callback that
+	// fires as the gate opens, and it has an HTTP round trip to make first.
+	// Asserting immediately passed on a fast laptop and failed in CI, which
+	// is the only reason this comment exists.
+	waitForLog(t, run, "could not also ask on 1Claw")
 	if said := logContains(run, "also asked on 1Claw"); said {
 		t.Error("the run claimed 1Claw was asked, and it was refused")
 	}
@@ -77,15 +79,23 @@ func TestNoMirrorIsSilent(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			run := NewRun("probe")
 			a := &RunQueueApprover{Run: run, Bot: "sender", Step: "approve", Mirror: tc.mirror}
-			go func() { _, _, _ = a.Approve("Send it", "low") }()
+			done := make(chan struct{})
+			go func() { _, _, _ = a.Approve("Send it", "low"); close(done) }()
 
-			id := waitForPending(t, run)
+			_ = run.Decide(waitForPending(t, run), true, "cli")
+			// Asserted after the gate has closed, not while it is open: a
+			// check that runs before the mirror would have spoken proves
+			// nothing about whether it stays quiet.
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("the gate never returned")
+			}
 			for _, entry := range run.LogEntries() {
 				if strings.Contains(entry.Msg, "1Claw") {
 					t.Errorf("a run without 1Claw mentioned it: %q", entry.Msg)
 				}
 			}
-			_ = run.Decide(id, true, "cli")
 		})
 	}
 }
@@ -104,9 +114,7 @@ func TestAMirrorThatCannotResolveItsAgentSaysSo(t *testing.T) {
 	go func() { _, _, _ = a.Approve("Send it", "low") }()
 
 	id := waitForPending(t, run)
-	if !logContains(run, "could not also ask on 1Claw") {
-		t.Error("an unresolvable agent said nothing in the run log")
-	}
+	waitForLog(t, run, "could not also ask on 1Claw")
 	if !logContains(run, errAgentUnavailable.Error()) {
 		t.Error("the log did not carry the reason")
 	}
@@ -132,6 +140,18 @@ func waitForPending(t *testing.T, run *Run) string {
 		case <-time.After(5 * time.Millisecond):
 		}
 	}
+}
+
+func waitForLog(t *testing.T, run *Run, want string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if logContains(run, want) {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Errorf("the run log never said %q", want)
 }
 
 func logContains(run *Run, want string) bool {
