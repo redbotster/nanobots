@@ -29,18 +29,55 @@ type Options struct {
 	EnvFilePath string // ONECLAW_API_KEY source; "" uses the default (~/.secrets/nanobots.env)
 }
 
-// Run builds the Orchestrator + API server and blocks serving HTTP.
+// Run assembles everything and blocks serving HTTP.
+//
 // nanobotd binds loopback only — 127.0.0.1, never 0.0.0.0 — since the
 // /internal/steps/* callback surface has no auth beyond a run's own token
 // and was never meant to be reachable from outside this machine.
 func Run(opts Options) error {
+	srv, sched, opts, err := build(opts)
+	if err != nil {
+		return err
+	}
+
+	// Closes a real gap this build had since its first commit: cron
+	// triggers were declared in every catalog swarm's YAML and nothing ever
+	// fired one. Runs for the life of the process, same as the HTTP server;
+	// no graceful-shutdown story either has one yet.
+	go sched.Run(context.Background())
+
+	if webui.Available() {
+		log.Printf("nanobots listening on http://%s — open that in a browser (bots: %s)", opts.Addr, opts.BotsDir)
+	} else {
+		// Said plainly rather than left for someone to discover as a blank
+		// page: a binary built without `make ui` is the normal development
+		// case, not a broken install.
+		log.Printf("nanobotd listening on http://%s (API only, no UI in this binary; run `cd web && npm run dev`) (bots: %s)",
+			opts.Addr, opts.BotsDir)
+	}
+	return http.ListenAndServe(opts.Addr, srv.Handler())
+}
+
+// build is everything Run does except bind a port.
+//
+// Split out so the wiring can be checked without one. It is a hundred lines
+// of "this object is handed to that one", and the mistakes it invites are
+// the silent kind: a scheduler pointed at the wrong directory, or a
+// circuit breaker that is a second instance rather than the one the API
+// reads — which would leave the app unable to say why a schedule stopped,
+// with nothing failing anywhere to say so. None of that binds a socket, so
+// none of it needed to be untestable.
+//
+// Returns opts because it fills in the default address, and both the caller
+// and the log line need the filled-in one.
+func build(opts Options) (*api.Server, *scheduler.Scheduler, Options, error) {
 	if opts.Addr == "" {
 		opts.Addr = "127.0.0.1:7474"
 	}
 
 	apiKey, err := oneclaw.LoadAPIKey(opts.EnvFilePath)
 	if err != nil {
-		return fmt.Errorf("load 1Claw API key: %w", err)
+		return nil, nil, opts, fmt.Errorf("load 1Claw API key: %w", err)
 	}
 	oc := oneclaw.NewClient(apiKey)
 	if oc.Configured() {
@@ -51,7 +88,7 @@ func Run(opts Options) error {
 
 	svc, err := wiring.BuildServiceConfigs(oc, opts.EnvFilePath, func(f string, a ...any) { log.Printf(f, a...) })
 	if err != nil {
-		return err
+		return nil, nil, opts, err
 	}
 
 	// Independent of 1Claw entirely — the foundry's sandboxed coding agent
@@ -59,7 +96,7 @@ func Run(opts Options) error {
 	// doc comment on why Shroud can't back this).
 	anthropicKey, err := oneclaw.LoadEnvValue(opts.EnvFilePath, "ANTHROPIC_API_KEY")
 	if err != nil {
-		return fmt.Errorf("load Anthropic API key: %w", err)
+		return nil, nil, opts, fmt.Errorf("load Anthropic API key: %w", err)
 	}
 	if anthropicKey != "" {
 		log.Println("foundry: ANTHROPIC_API_KEY configured — the composer can escalate a real gap to a coding agent")
@@ -67,21 +104,21 @@ func Run(opts Options) error {
 
 	paths, err := wiring.ResolvePaths()
 	if err != nil {
-		return err
+		return nil, nil, opts, err
 	}
 	blobs, err := step.NewFSBlobStore(paths.BlobDir)
 	if err != nil {
-		return err
+		return nil, nil, opts, err
 	}
 
 	mem, err := wiring.BuildMemory(paths, opts.EnvFilePath, oc, func(f string, a ...any) { log.Printf(f, a...) })
 	if err != nil {
-		return err
+		return nil, nil, opts, err
 	}
 
 	gen, err := wiring.BuildLLM(opts.EnvFilePath, oc, func(f string, a ...any) { log.Printf(f, a...) })
 	if err != nil {
-		return err
+		return nil, nil, opts, err
 	}
 
 	// The Shroud shim lets a client that can only be handed a base URL and
@@ -92,7 +129,7 @@ func Run(opts Options) error {
 	if oc != nil && oc.Configured() {
 		tok, err := api.LoadShroudProxyToken(paths.StateDir)
 		if err != nil {
-			return err
+			return nil, nil, opts, err
 		}
 		shroudProxy = &api.ShroudProxy{Token: tok, Provider: "anthropic"}
 		log.Printf("shroud proxy: http://127.0.0.1:%s/shroud/v1 (token in %s)",
@@ -106,7 +143,7 @@ func Run(opts Options) error {
 
 	webhookToken, err := api.LoadWebhookToken(paths.StateDir)
 	if err != nil {
-		return err
+		return nil, nil, opts, err
 	}
 	webhookTrigger := &api.WebhookTrigger{Token: webhookToken}
 	log.Printf("webhooks: POST http://%s/webhooks/{swarm} (token in %s)",
@@ -151,34 +188,19 @@ func Run(opts Options) error {
 		UI:           webui.Handler(),
 	}
 
-	// Closes a real gap this build has had since its first commit: cron
-	// triggers were declared in every catalog swarm's YAML but nothing
-	// ever fired one — see internal/scheduler's own doc comment. Runs for
-	// the life of the process, same as the HTTP server itself; no
-	// graceful-shutdown story either has one yet.
-	// The breaker is shared with the API so the app can show why a
-	// schedule stopped and offer to start it again — a pause nobody can
-	// see is just a schedule that mysteriously doesn't run.
+	// The breaker is shared with the API rather than made twice, so the app
+	// can show why a schedule stopped and offer to start it again — a pause
+	// nobody can see is just a schedule that mysteriously does not run.
 	breaker := &scheduler.Breaker{Dir: paths.StateDir}
 	srv.ScheduleBreaker = breaker
 	sched := &scheduler.Scheduler{
 		Orchestrator: orch,
 		Runs:         srv.Runs,
-		SwarmsDir:    filepath.Join(filepath.Dir(opts.BotsDir), "examples", "swarms"),
-		Breaker:      breaker,
+		// Beside bots/, which is how every other path here is derived.
+		SwarmsDir: filepath.Join(filepath.Dir(opts.BotsDir), "examples", "swarms"),
+		Breaker:   breaker,
 	}
-	go sched.Run(context.Background())
-
-	if webui.Available() {
-		log.Printf("nanobots listening on http://%s — open that in a browser (bots: %s)", opts.Addr, opts.BotsDir)
-	} else {
-		// Said plainly rather than left for someone to discover as a blank
-		// page: a binary built without `make ui` is the normal development
-		// case, not a broken install.
-		log.Printf("nanobotd listening on http://%s (API only, no UI in this binary; run `cd web && npm run dev`) (bots: %s)",
-			opts.Addr, opts.BotsDir)
-	}
-	return http.ListenAndServe(opts.Addr, srv.Handler())
+	return srv, sched, opts, nil
 }
 
 func portOf(addr string) string {

@@ -10,7 +10,7 @@ go build ./... && go vet ./... && go test ./... -race
 cd web && npx tsc -b && npm run test
 ```
 
-715 table-driven Go tests across every package
+724 table-driven Go tests across every package
 (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`,
 so the number stays checkable), including:
 
@@ -23,6 +23,12 @@ so the number stays checkable), including:
   clients, built against each provider's real documented endpoint shapes
   (verified against `@1claw/openapi-spec` and each provider's own docs, not
   guessed).
+- `internal/daemon` and `internal/wiring`'s assembly tests — the hundred
+  lines of "this object is handed to that one" that nothing used to cover:
+  that the scheduler and the API share one circuit breaker and one run
+  store, that a container is told to call back on host.docker.internal
+  rather than localhost, and that startup's workspace pruning keeps the
+  workspaces of runs the app still lists.
 - `internal/runner`'s run-history tests — a run really written to a temp dir,
   a second store really reading it back, plus the awkward cases: a corrupt
   file, an over-cap directory, and a run left mid-flight by a restart
