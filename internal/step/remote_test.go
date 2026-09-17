@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/redbotster/nanobots/internal/schema"
@@ -51,6 +52,31 @@ func TestRemoteDepsErrorResponsePropagates(t *testing.T) {
 	_, err := rd.ServiceCall(schema.Service{ID: "nope"}, "op", nil)
 	if err == nil {
 		t.Fatal("expected the callback error to propagate")
+	}
+	// Verbatim, with nothing in front of it. The daemon has already worded
+	// this one for a person — "no connected account yet ... connect it from
+	// Settings" — and it used to arrive on the Runs page behind `callback
+	// /internal/steps/service_call:`, which is a path nobody can act on.
+	if err.Error() != "no such service" {
+		t.Errorf("the daemon's own message came back as %q", err)
+	}
+}
+
+// The other errors in RemoteDeps.call are about the callback itself, and
+// there the path is the only thing that says which one failed.
+func TestACallbackThatNeverAnsweredNamesTheCallback(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "nope", http.StatusBadGateway)
+	}))
+	defer srv.Close()
+
+	rd := NewRemoteDeps(srv.URL, "tok", nil)
+	err := rd.Notify("hello", "slack")
+	if err == nil {
+		t.Fatal("a 502 from nanobotd was treated as success")
+	}
+	if !strings.Contains(err.Error(), "/internal/steps/notify") {
+		t.Errorf("a transport failure does not say which callback broke: %q", err)
 	}
 }
 

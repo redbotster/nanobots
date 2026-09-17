@@ -3,6 +3,7 @@ package step
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -76,7 +77,17 @@ func (r *RemoteDeps) call(path string, in any, out any) error {
 		return fmt.Errorf("callback %s: parse response: %w", path, err)
 	}
 	if rc.Error != "" {
-		return fmt.Errorf("callback %s: %s", path, rc.Error)
+		// Unprefixed, unlike every other error in this function.
+		//
+		// The others are about the callback itself — it did not connect, it
+		// answered a non-200, its body did not parse — and naming the path
+		// is the only way to say which one. This one is the daemon
+		// succeeding at the callback and relaying a failure it has already
+		// worded for a person: "no connected account yet ... connect it
+		// from Settings". Prefixing that with `callback
+		// /internal/steps/notify:` put the plumbing in front of the
+		// sentence, on the Runs page, where nobody can act on the path.
+		return errors.New(rc.Error)
 	}
 	if out != nil && len(rc.Result) > 0 {
 		if err := json.Unmarshal(rc.Result, out); err != nil {

@@ -466,3 +466,59 @@ func TestAnAgentClientUsesTheAgentTokenEndpoint(t *testing.T) {
 		t.Errorf("the agent client did not use the agent exchange: %v", paths)
 	}
 }
+
+// What a person reads on the Runs page when a service is not connected.
+//
+// 1Claw answers errors as RFC 7807, and the whole envelope used to be
+// pasted into the run error — 285 characters of which the middle 130 were
+// `{"type":"about:blank","title":"Not Found","status":404,"detail":"Secret
+// slack/bot_token not found"}`, wrapped in a sentence that already said the
+// same thing and ended with what to do about it.
+func TestAnApiErrorReadsAsASentence(t *testing.T) {
+	for name, tc := range map[string]struct {
+		body string
+		want string
+		gone []string
+	}{
+		"rfc 7807 with a detail": {
+			body: `{"type":"about:blank","title":"Not Found","status":404,` +
+				`"detail":"Secret slack/bot_token not found"}`,
+			want: "1Claw said (404): Secret slack/bot_token not found",
+			// about:blank is RFC 7807 for "no type URI" and reads like
+			// something is broken; title is a status phrase the code already
+			// carries.
+			gone: []string{"about:blank", `"status"`, "Not Found"},
+		},
+		"a title and nothing better": {
+			body: `{"type":"about:blank","title":"Forbidden","status":403}`,
+			want: "1Claw said (404): Forbidden",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := (&apiError{Status: 404, Body: []byte(tc.body)}).Error()
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+			for _, s := range tc.gone {
+				if strings.Contains(got, s) {
+					t.Errorf("%q is still in the message: %q", s, got)
+				}
+			}
+		})
+	}
+}
+
+// An error shape this does not recognise keeps its bytes. Swallowing them
+// would make the one case where the body is worth reading the one case
+// where it is gone.
+func TestAnUnrecognisedErrorBodyIsNotSwallowed(t *testing.T) {
+	for _, body := range []string{"upstream timed out", "", "<html>502</html>"} {
+		got := (&apiError{Status: 502, Body: []byte(body)}).Error()
+		if !strings.Contains(got, "request failed (502)") {
+			t.Errorf("body %q produced %q, which drops the status", body, got)
+		}
+		if body != "" && !strings.Contains(got, body) {
+			t.Errorf("body %q was dropped from %q", body, got)
+		}
+	}
+}

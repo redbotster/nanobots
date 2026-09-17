@@ -301,7 +301,45 @@ type apiError struct {
 }
 
 func (e *apiError) Error() string {
+	if d := problemDetail(e.Body); d != "" {
+		return fmt.Sprintf("1Claw said (%d): %s", e.Status, d)
+	}
 	return fmt.Sprintf("oneclaw: request failed (%d): %s", e.Status, truncate(e.Body))
+}
+
+// problemDetail pulls the one human sentence out of an RFC 7807 body.
+//
+// 1Claw answers errors as `{"type":"about:blank","title":"Not Found",
+// "status":404,"detail":"Secret slack/bot_token not found"}`, and this used
+// to be pasted whole into the run error. What a person actually saw on the
+// Runs page was 285 characters of which the middle 130 were that envelope:
+//
+//	bot notify: step "send": callback /internal/steps/notify: no connected
+//	account yet (oneclaw: request failed (404): {"type":"about:blank",
+//	"title":"Not Found","status":404,"detail":"Secret slack/bot_token not
+//	found"}) — connect it from Settings
+//
+// Everything that matters is the first clause and the last. `detail` is the
+// only field carrying anything the surrounding sentence does not already
+// say, and `about:blank` — which is RFC 7807 for "no type URI" — reads like
+// something is broken.
+//
+// Falls back to the raw body rather than swallowing it: an error shape this
+// does not recognise is exactly when the bytes are worth seeing.
+func problemDetail(body []byte) string {
+	var p struct {
+		Detail string `json:"detail"`
+		Title  string `json:"title"`
+	}
+	if err := json.Unmarshal(body, &p); err != nil {
+		return ""
+	}
+	if p.Detail != "" {
+		return p.Detail
+	}
+	// Not "about:blank" — `title` is a generic status phrase, so it is worth
+	// having only when there is nothing better.
+	return p.Title
 }
 
 // rawRequest performs an authenticated JSON request and returns the status

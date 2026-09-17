@@ -146,6 +146,47 @@ to compute one boolean, "has anything ever run here". It reads the shared
 
 What is left is one full copy of each list per tab, which is the floor.
 
+## An error is a sentence, not an envelope
+
+Seen on the Runs page, on a swarm whose Slack account was never connected:
+
+```
+bot notify: step "send": callback /internal/steps/notify: no connected
+account yet (oneclaw: request failed (404): {"type":"about:blank","title":
+"Not Found","status":404,"detail":"Secret slack/bot_token not found"}) —
+connect it from Settings
+```
+
+285 characters. The two that matter are the first clause and the last, and
+they are 130 characters apart because 1Claw's RFC 7807 error body was pasted
+in whole — including `about:blank`, which is RFC 7807 for "no type URI" and
+reads like something is broken.
+
+It is 168 characters now, and every one of them says something:
+
+```
+bot notify: step "send": no connected account yet
+(1Claw said (404): Secret slack/bot_token not found) — connect it from Settings
+```
+
+Two changes, in two places, each with a rule behind it:
+
+- **`detail` is the sentence.** `internal/oneclaw`'s `apiError` reads it out
+  and drops the rest. An error body it does *not* recognise keeps its bytes
+  verbatim — the one case where the raw response is worth reading is exactly
+  the case where swallowing it would hurt.
+- **The daemon's own wording is not re-prefixed.** `RemoteDeps.call` names
+  the callback path on a transport failure, because there the path is the
+  only thing that says which callback broke. It does not name it when the
+  callback *succeeded* and the daemon relayed a message it had already
+  worded for a person.
+
+One thing this could quietly have broken, so it is a test: the "Connect
+Slack" button on the Runs page comes from `internal/remedy` reading the
+service out of `Secret slack/bot_token not found` — which is the `detail`.
+Shortening the message is what keeps that working; dropping it entirely
+would have cost the one click that fixes the problem.
+
 ## The run log is live now
 
 The landing page said "every step streams to a run log in real time". It

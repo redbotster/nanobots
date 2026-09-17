@@ -306,3 +306,27 @@ func TestTheTimeoutAdviceDoesNotSwallowItsNeighbours(t *testing.T) {
 		t.Errorf("the unanswered-approval advice was displaced: %+v", r)
 	}
 }
+
+// The advice for an unconnected service is found by reading the service out
+// of `Secret slack/bot_token not found`, which is 1Claw's RFC 7807 `detail`.
+//
+// That coupling is easy to break from the other end. The envelope used to
+// be pasted into the run error whole, and shortening it to just the detail
+// (internal/oneclaw's apiError) was a readability change that could silently
+// have cost the Runs page its "Connect Slack" button. So the shape that
+// change produces is asserted here, where the dependency actually lives.
+func TestTheServiceIsStillFoundInAShortened1ClawError(t *testing.T) {
+	const real = `bot notify: step "send": no connected account yet ` +
+		`(1Claw said (404): Secret slack/bot_token not found) — connect it from Settings`
+
+	r := For(real)
+	if r == nil {
+		t.Fatal("no remedy at all for a service that is simply not connected")
+	}
+	if !strings.Contains(r.Advice, "Slack") {
+		t.Errorf("the advice does not name the service: %q", r.Advice)
+	}
+	if r.Action == nil || r.Action.Page != "settings" {
+		t.Error("no Settings action, so the one click that fixes this is not offered")
+	}
+}
