@@ -27,12 +27,15 @@ function Banner({
   );
 }
 
-/** The prerequisites that silently break everything, reported before you
- * press Run rather than several steps into a failed run.
+/** The prerequisites that silently break things, reported before you press
+ * Run rather than several steps into a failed run.
  *
- * Docker: every bot runs in a container, so a stopped daemon makes the whole
- * product a no-op — you used to find out by clicking Run, waiting, and
- * reading "cannot connect to the Docker daemon" at the bottom of a log.
+ * Docker: it used to be all-or-nothing, and this banner said so — "nothing
+ * can run until you start Docker Desktop". That stopped being true when 34
+ * of the 39 bots moved in-process (internal/runner/inprocess.go), and a
+ * banner announcing the product is dead when almost all of it works is a
+ * worse bug than the missing dependency it is reporting. It now says what
+ * Docker actually costs you: the bots that render a PDF or a chart.
  *
  * The 1Claw vault: it re-locks on its own schedule, and while locked every
  * bot holding a Slack/GitHub/Stripe/HubSpot credential fails — typically as
@@ -62,8 +65,8 @@ export function PrereqBanners({
           headline={status.docker_reason || "Docker isn't available"}
           detail={
             status.docker_reason === "Docker isn't installed"
-              ? "— bots run in containers. Install Docker Desktop to run anything for real."
-              : "— bots run in containers, so nothing can run until you start Docker Desktop."
+              ? "— most bots run without it. The ones that render a PDF or a chart need Docker Desktop."
+              : "— most bots run without it. The ones that render a PDF or a chart need it started."
           }
         />
       )}

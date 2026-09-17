@@ -166,10 +166,13 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
           <StatusRow
             tone={status?.docker_available ? "ok" : "warn"}
             label="Docker"
+            // "Running — every bot gets its own container" was true until 34
+            // of the 39 bots moved in-process, and then it was a claim this
+            // page made that the run log contradicted every run.
             detail={
               status?.docker_available
-                ? "Running — every bot gets its own container"
-                : `${status?.docker_reason ?? "Checking…"} — bots run in containers, so nothing runs until it's up`
+                ? "Running — the bots that render a PDF or a chart have their container"
+                : `${status?.docker_reason ?? "Checking…"} — most bots run without it; the ones that render a PDF or a chart need it`
             }
           />
         </div>
@@ -393,7 +396,8 @@ function PostureRow() {
     >
       {p.nanobots_agents > 0 && (
         <p className="text-[12px] leading-snug text-muted">
-          {p.nanobots_agents} of them were made by this app, one per bot name you've run.
+          {p.nanobots_agents} of them were made by this app — one per set of guardrails, plus a few
+          fixed ones. It used to be one per bot name, which is how an account reaches the cap.
           {p.agents_near_cap && (
             <>
               {" "}
