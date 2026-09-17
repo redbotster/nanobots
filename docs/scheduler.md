@@ -77,7 +77,7 @@ it should say so rather than looking manual by design.
 
 ## Making it survive a reboot
 
-Fourteen of the sixteen catalog swarms carry a cron trigger, and this
+Fifteen of the eighteen catalog swarms carry a cron trigger, and this
 scheduler fires them — but only while nanobotd is running. Until now that
 meant a terminal window someone remembered to leave open. Close the laptop
 and the morning brief doesn't happen. A catalog written entirely in the
@@ -169,7 +169,7 @@ something without also firing it.
 
 ## The composer can schedule
 
-Fourteen of the sixteen catalog swarms carry a cron trigger, and until now
+Fifteen of the eighteen catalog swarms carry a cron trigger, and until now
 nothing you built could have one. `draftToNanoswarm` hardcoded
 `trigger: {type: manual}`, so composing *"every friday summarise my overdue
 invoices and email me the list"* produced a swarm the model had described as

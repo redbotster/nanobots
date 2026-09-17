@@ -278,7 +278,7 @@ type saveSwarmRequest struct {
 	// overdue invoices" and you got a swarm the model had described as
 	// "Every Friday, finds overdue invoices…" that would never once fire on
 	// a Friday — the description was true about the intent and false about
-	// the thing. Fourteen of the sixteen catalog swarms carry a cron
+	// the thing. Fifteen of the eighteen catalog swarms carry a cron
 	// trigger, so this was the normal case, unreachable.
 	Schedule *string `json:"schedule,omitempty"`
 	Timezone string  `json:"timezone,omitempty"`

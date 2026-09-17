@@ -1,0 +1,64 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanoswarm
+metadata:
+  name: thread-from-an-idea
+  description: Brainstorm post ideas for your niche, turn the best one into an X thread, and show it to you before anything is posted.
+  owner: me@example.com
+
+# `x-thread-writer` was in the catalog and in no swarm. content-engine
+# writes a single post and publishes it; a thread is a different artifact
+# with its own bot, and nothing showed how to get one.
+#
+# Nothing is published here, deliberately. post-publisher takes `posts:json`
+# and a thread is `list<string>` — a real shape gap, and the honest end of
+# this swarm is the preview in front of a human who can paste it. Bridging
+# it by forcing a snap between two shapes that do not match is the wart
+# lead-to-meeting and meeting-to-action already apologise for in their own
+# headers; one more would be a habit.
+#
+# `ideas.0` rather than `ideas.*`: fanning out would write a thread for
+# every idea, which is several model calls to produce work you asked for
+# one of. Same cost decision content-engine documents.
+
+spec:
+  defaults:
+    model: { provider: anthropic, name: claude-sonnet-4-6 }
+    guardrails:
+      pii: allow
+      injection_threshold: 0.7
+      daily_budget_usd: 5
+    resources: { preset: small }
+
+  vars:
+    niche: "developer tools for solo founders"
+    notify_channel: "#me"
+
+  # Manual on purpose. A thread is something you write when you have
+  # something to say, not every Tuesday at nine.
+  trigger:
+    type: manual
+
+  bots:
+    - id: ideas
+      use: content-ideas@0.1.0
+      inputs:
+        niche: "{{vars.niche}}"
+    - id: writer
+      use: x-thread-writer@0.1.0
+      inputs:
+        max_posts: "6"
+        instructions: "Open with the specific claim, not a hook. One idea per post. No thread emoji, no 'a thread 🧵'."
+    - id: notifier
+      use: notify@0.1.0
+      inputs:
+        channel: "{{vars.notify_channel}}"
+      on_error: continue
+
+  snaps:
+    - from: ideas.ideas.0
+      to: writer.idea
+    - from: writer.preview
+      to: notifier.message
+
+  deploy:
+    target: local

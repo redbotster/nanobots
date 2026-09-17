@@ -170,7 +170,7 @@ identically.
 | `x-mentions`, `linkedin-comments`, `comment-responder` | `linkedin-dm-triage` |
 | `recap-emails-to-pdf`, `email-drive-file`, `github-issues-digest` | `review-board`, `reviewer`, `review-synthesis` ([docs/supervisors.md](docs/supervisors.md)) |
 
-**16 swarms** (`examples/swarms/`), each with a header comment documenting
+**18 swarms** (`examples/swarms/`), each with a header comment documenting
 any place it simplifies the catalog's own aspirational diagram:
 
 | Swarm | What it does |
@@ -190,6 +190,8 @@ any place it simplifies the catalog's own aspirational diagram:
 | `meeting-to-action` | File a new transcript's notes, flag action items, draft follow-ups. |
 | `weekly-client-report` | Build a client's spend report and email them the link once approved. |
 | `supervisor-review` | A review board picks reviewers from your role library, each reviews in parallel, one synthesis reconciles them ([docs/supervisors.md](docs/supervisors.md)). |
+| `watch-the-competition` | Every Monday, read a competitor's pages, say what changed since last week, and send it in your own voice. |
+| `thread-from-an-idea` | Brainstorm post ideas for your niche and turn the best one into an X thread, previewed before anything is posted. |
 
 What a bot and a swarm look like as files, in real YAML from this repo:
 [docs/anatomy.md](docs/anatomy.md).

@@ -69,7 +69,7 @@ With every Google service still on `connection: demo`, everything in this swarm 
 
 These are two separate things, and the second one used to have no bulk path.
 
-Every bot ships on `connection: demo`. That is the right default — nothing should read a real inbox or write to a real Drive until a human says so. But it means connecting an account changes nothing on its own, and the catalog is lopsided: **24 of the 34 declared services are Google**. Measured on a fresh install, all 16 swarms sit entirely on demo data. Getting one of them live meant one OAuth round trip followed by up to twenty-four individual toggles, hunted down one bot at a time in the bot library.
+Every bot ships on `connection: demo`. That is the right default — nothing should read a real inbox or write to a real Drive until a human says so. But it means connecting an account changes nothing on its own, and the catalog is lopsided: **24 of the 34 declared services are Google**. Measured on a fresh install, every swarm sits entirely on demo data. Getting one of them live meant one OAuth round trip followed by up to twenty-four individual toggles, hunted down one bot at a time in the bot library.
 
 Settings now says, per provider, what connecting it would get you, and offers the second half in one action:
 

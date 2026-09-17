@@ -2,7 +2,7 @@
 
 This repo implements the full 28-brick, 12-swarm launch catalog from
 `context/NANOBOTS-CATALOG.md` (Tranches A, B and C), plus the two bricks and
-two swarms that predate it and everything added since — **39 nanobots, 16
+two swarms that predate it and everything added since — **39 nanobots, 18
 nanoswarms** — end to end and verified live, not just type-checked.
 
 The short version of the honesty question is the table at the bottom: [what
@@ -131,7 +131,7 @@ is real and what is simulated](#whats-real-vs-simulated). The list first.
   ([sharing.md](sharing.md)). Bots are named, not carried, so nobody ends up
   running a silent fork. Bundles carry no credentials.
 - **The CLI can check the whole catalog.** `nanobots conform bots` runs all
-  39 bots' fixtures and `nanobots plan` type-checks all 16 swarms, one line
+  39 bots' fixtures and `nanobots plan` type-checks all 18 swarms, one line
   each, continuing past a failure so you see everything that broke.
 - **1Claw's own telemetry, where you already look.** The Settings System
   block gains a Posture row — score, open threats, and agent usage against
@@ -151,6 +151,30 @@ is real and what is simulated](#whats-real-vs-simulated). The list first.
   JSON file under `~/.nanobots/history/`, capped at 200. A run killed
   mid-flight by a restart is restored as failed rather than sitting in the
   list as "running" forever ([run-history.md](run-history.md)).
+
+## Bots with no swarm to show them
+
+Eight of the thirty-nine bricks were in no swarm at all, which for a product
+whose pitch is "these snap together" is the pitch going undemonstrated.
+`watch-the-competition` and `thread-from-an-idea` take three of them
+(`competitor-watch`, `tone`, `x-thread-writer`). The other five are honest
+gaps rather than oversights:
+
+- `newsletter-drafter` and `quote-builder` need a shape bridge that does not
+  exist. A snap is one field to one field, and only a bot's own steps can
+  build a new shape from its own data — so nothing in the catalog can turn
+  one file's outputs into the `list<string>` pair a newsletter wants.
+  Forcing the snap is the wart `lead-to-meeting` and `meeting-to-action`
+  already apologise for in their headers; two is enough.
+- `review-responder` needs Google Business Profile, for which no client
+  exists ([connections.md](connections.md)). A swarm built on it could never
+  run against a real account.
+- `linkedin-dm-triage` needs LinkedIn messages, which have no API path at
+  all — not a todo, a wall.
+- `linkedin-comments` reads the comments on one post, and deduping repeat
+  reads needs a filter the step language does not have. `listen-and-reply`
+  says so in its own header rather than shipping a branch that fails for
+  most people.
 
 ## Not built yet
 

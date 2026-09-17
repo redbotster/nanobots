@@ -1,0 +1,75 @@
+apiVersion: nanobots.dev/v1alpha1
+kind: Nanoswarm
+metadata:
+  name: watch-the-competition
+  description: Every Monday, read a competitor's pages, say what changed since last week, and send it in your own voice.
+  owner: me@example.com
+
+# Why this swarm exists: `competitor-watch` and `tone` were both in the
+# catalog and in no swarm at all. A brick nothing composes is a brick nobody
+# finds, and this product's whole pitch is that they snap together — so the
+# shipped catalog has to show it, not just claim it.
+#
+# The shape is the point. competitor-watch already remembers last week's
+# summary and asks the model what moved, so the weekly run is a diff rather
+# than a fresh scrape read cold (docs/memory.md). tone then rewrites the
+# result in the house voice before it reaches you, which is exactly the job
+# that bot exists for and the reason it is worth having as a brick rather
+# than as a paragraph in every other bot's prompt.
+#
+# No approval gate: nothing here writes to anyone but you.
+
+spec:
+  defaults:
+    model: { provider: anthropic, name: claude-sonnet-4-6 }
+    guardrails:
+      pii: allow
+      injection_threshold: 0.7
+      daily_budget_usd: 5
+    resources: { preset: small }
+
+  vars:
+    notify_channel: "slack:#competitors"
+
+  trigger:
+    type: cron
+    expr: "0 8 * * 1"
+    timezone: America/Chicago
+
+  bots:
+    - id: watcher
+      use: competitor-watch@0.1.0
+      inputs:
+        # Replace these with the pages you actually watch — a competitor's
+        # pricing, changelog and careers pages say what they are doing
+        # without anyone having to be told.
+        #
+        # The default is example.com, which exists, answers 200 and belongs
+        # to nobody. `web.fetch` has no demo mode: it is credential-free, so
+        # LiveDeps really fetches whatever is here. A placeholder URL that
+        # 404s makes the shipped swarm fail on its first real run
+        # (example.com/pricing does, which is how this was found), and a
+        # real competitor's URL would point every install on a weekly cron
+        # at a stranger's server.
+        urls:
+          - "https://example.com"
+    - id: voice
+      use: tone@0.1.0
+      inputs:
+        instructions: "Keep every number and date exactly as written. Cut hedging. Short sentences."
+    - id: notifier
+      use: notify@0.1.0
+      inputs:
+        channel: "{{vars.notify_channel}}"
+      # A notification is the last thing this swarm does and nothing reads
+      # it — see docs/error-policy.md.
+      on_error: continue
+
+  snaps:
+    - from: watcher.summary_md
+      to: voice.text
+    - from: voice.text
+      to: notifier.message
+
+  deploy:
+    target: local

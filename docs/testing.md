@@ -18,7 +18,7 @@ so the number stays checkable), including:
   conformance-tests all 39 bots under `bots/` against their own fixtures, no
   Docker and no network.
 - `internal/planner`'s `TestPlanAllExampleSwarms` — auto-discovers and
-  type-checks all 16 swarms under `examples/swarms/`.
+  type-checks all 18 swarms under `examples/swarms/`.
 - httptest-mocked 1Claw/Google/Slack/GitHub/Stripe/HubSpot/X/LinkedIn
   clients, built against each provider's real documented endpoint shapes
   (verified against `@1claw/openapi-spec` and each provider's own docs, not
@@ -40,7 +40,7 @@ every claim in prose is a claim that rots. Today it checks:
 | Test | What would otherwise drift |
 |---|---|
 | `TestTheClaimedTestCountIsAccurate` | the number on this page |
-| `TestTheHeadlineCatalogCountsAreAccurate` | **39 bots** / **16 swarms** wherever they are stated |
+| `TestTheHeadlineCatalogCountsAreAccurate` | **39 bots** / **18 swarms** wherever they are stated |
 | `TestEveryDocCountIsCurrent` | any `N bots`/`N swarms` in any prose page, README and CLAUDE.md included |
 | `TestTheDocsNameEveryBot` / `…EverySwarm` | a bot or swarm nobody wrote a row for |
 | `TestEveryDocIsReachableFromTheReadme` | a page written, linked from nowhere, and invisible |

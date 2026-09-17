@@ -319,7 +319,12 @@ func TestEveryDocCountIsCurrent(t *testing.T) {
 		if err != nil {
 			continue
 		}
-		for _, m := range re.FindAllStringSubmatch(stripFences(string(raw)), -1) {
+		// Whitespace collapsed first, because prose wraps. "**39 nanobots,
+		// 16\nnanoswarms**" hid a stale count from this test through two
+		// swarms being added — the number and its noun sat either side of a
+		// line break, so the pattern never saw them together.
+		flat := strings.Join(strings.Fields(stripFences(string(raw))), " ")
+		for _, m := range re.FindAllStringSubmatch(flat, -1) {
 			got, err := strconv.Atoi(m[1])
 			if err != nil {
 				continue
