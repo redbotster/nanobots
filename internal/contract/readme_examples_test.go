@@ -7,17 +7,21 @@ import (
 	"testing"
 )
 
-// The README quotes a real bot and a real swarm, so a reader can see the
-// two artifacts the whole system is made of without opening the repo.
+// docs/anatomy.md quotes a real bot and a real swarm, so a reader can see
+// the two artifacts the whole system is made of without opening the repo.
 //
 // Quoted YAML is the kind of thing that rots quietly: someone edits the bot,
-// the README keeps showing last month's ports, and the first thing a new
+// the page keeps showing last month's ports, and the first thing a new
 // reader learns is that the docs lie. The same argument as the test-count
 // and catalog-count checks in this package — if it is a claim, it checks
 // itself.
-func TestReadmeQuotesTheRealFiles(t *testing.T) {
+//
+// Checked against every prose page rather than one file: these two blocks
+// lived in the README until it was split into docs/, and pinning the check
+// to a filename would have made moving them look like deleting them.
+func TestTheDocsQuoteTheRealFiles(t *testing.T) {
 	root := repoRoot(t)
-	readme := readFile(t, filepath.Join(root, "README.md"))
+	corpus := docsCorpus(t, root)
 
 	for _, tc := range []struct {
 		file  string
@@ -48,10 +52,10 @@ func TestReadmeQuotesTheRealFiles(t *testing.T) {
 		}
 		want = strings.TrimRight(want, "\n")
 
-		if !strings.Contains(readme, want) {
-			t.Errorf("README's copy of %s (%s) no longer matches the file.\n"+
-				"Re-copy it from %s, or quote a smaller slice.",
-				tc.what, tc.file, tc.file)
+		if !strings.Contains(corpus, want) {
+			t.Errorf("the docs' copy of %s (%s) no longer matches the file.\n"+
+				"Re-copy it into docs/anatomy.md, or quote a smaller slice.",
+				tc.what, tc.file)
 		}
 	}
 }

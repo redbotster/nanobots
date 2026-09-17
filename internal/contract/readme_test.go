@@ -11,22 +11,53 @@ import (
 	"testing"
 )
 
-// The README states how many tests this repo has, and prints the command
-// that produces the number so a reader can check it. That number drifted
-// twice in one day of work — a claim nobody can be expected to
-// hand-maintain is a claim that will be wrong. This makes the repo check
-// its own README.
-func TestReadmeTestCountIsAccurate(t *testing.T) {
-	root := repoRoot(t)
-	readme, err := os.ReadFile(filepath.Join(root, "README.md"))
+// The prose pages are one corpus: README.md plus every page in docs/.
+//
+// The README used to hold every claim these tests check. It reached 567
+// lines that way, so the reference sections moved into docs/ — the test
+// count to docs/testing.md, the catalog tables' prose to docs/status.md, the
+// quoted YAML to docs/anatomy.md. The claims did not stop being claims by
+// moving, so these tests follow them instead of pinning them to one file.
+// Where a claim lives is a writing decision; whether it is true is not.
+func docPages(t *testing.T, root string) []string {
+	t.Helper()
+	pages := []string{filepath.Join(root, "README.md")}
+	docs, err := filepath.Glob(filepath.Join(root, "docs", "*.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := regexp.MustCompile(`(?m)^(\d+) table-driven Go tests`).FindSubmatch(readme)
-	if m == nil {
-		t.Skip("README no longer states a test count")
+	return append(pages, docs...)
+}
+
+// docsCorpus is every prose page concatenated, for the checks that only ask
+// "is this stated anywhere a reader will find it".
+func docsCorpus(t *testing.T, root string) string {
+	t.Helper()
+	var all strings.Builder
+	for _, p := range docPages(t, root) {
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		all.Write(raw)
+		all.WriteString("\n")
 	}
-	claimed, err := strconv.Atoi(string(m[1]))
+	return all.String()
+}
+
+// The docs state how many tests this repo has, and print the command that
+// produces the number so a reader can check it. That number drifted twice in
+// one day of work — a claim nobody can be expected to hand-maintain is a
+// claim that will be wrong.
+func TestTheClaimedTestCountIsAccurate(t *testing.T) {
+	root := repoRoot(t)
+	corpus := docsCorpus(t, root)
+	m := regexp.MustCompile(`(?m)^(\d+) table-driven Go tests`).FindStringSubmatch(corpus)
+	if m == nil {
+		t.Fatal("no page states a test count in the expected form " +
+			"(`<n> table-driven Go tests` at the start of a line) — it lives in docs/testing.md")
+	}
+	claimed, err := strconv.Atoi(m[1])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,21 +76,18 @@ func TestReadmeTestCountIsAccurate(t *testing.T) {
 	}
 
 	if claimed != actual {
-		t.Errorf("README claims %d tests; there are %d. Update the number in README.md.", claimed, actual)
+		t.Errorf("the docs claim %d tests; there are %d. Update the number in docs/testing.md.", claimed, actual)
 	}
 }
 
-// The README also counts bots and swarms. Same reasoning as the test
-// count, and the same outcome without a check: both had drifted — 30 bots
-// where there were 33, 14 swarms where there were 15 — because three
-// review bots and a supervisor swarm were added without anyone
-// re-counting. A number in prose is a claim, and an unchecked claim rots.
-func TestReadmeCatalogCountsAreAccurate(t *testing.T) {
+// The docs also count bots and swarms. Same reasoning as the test count, and
+// the same outcome without a check: both had drifted — 30 bots where there
+// were 33, 14 swarms where there were 15 — because three review bots and a
+// supervisor swarm were added without anyone re-counting. A number in prose
+// is a claim, and an unchecked claim rots.
+func TestTheHeadlineCatalogCountsAreAccurate(t *testing.T) {
 	root := repoRoot(t)
-	readme, err := os.ReadFile(filepath.Join(root, "README.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	corpus := docsCorpus(t, root)
 
 	for _, tc := range []struct {
 		what    string
@@ -78,86 +106,113 @@ func TestReadmeCatalogCountsAreAccurate(t *testing.T) {
 			},
 		},
 	} {
-		m := regexp.MustCompile(tc.pattern).FindSubmatch(readme)
+		m := regexp.MustCompile(tc.pattern).FindStringSubmatch(corpus)
 		if m == nil {
-			t.Errorf("README no longer states a %s count in the expected form", tc.what)
+			t.Errorf("no page states a %s count in the expected form (**<n> %s** at the start of a line)",
+				tc.what, tc.what)
 			continue
 		}
-		claimed, err := strconv.Atoi(string(m[1]))
+		claimed, err := strconv.Atoi(m[1])
 		if err != nil {
 			t.Fatal(err)
 		}
 		if actual := tc.count(); claimed != actual {
-			t.Errorf("README claims %d %s; there are %d.", claimed, tc.what, actual)
+			t.Errorf("the docs claim %d %s; there are %d.", claimed, tc.what, actual)
 		}
 	}
 }
 
-// The README's swarm table is the catalog's front door, and a swarm nobody
-// added a row for is a swarm nobody finds. supervisor-review shipped
-// without one.
-func TestReadmeNamesEverySwarm(t *testing.T) {
+// The swarm table is the catalog's front door, and a swarm nobody added a row
+// for is a swarm nobody finds. supervisor-review shipped without one.
+func TestTheDocsNameEverySwarm(t *testing.T) {
 	root := repoRoot(t)
-	readme, err := os.ReadFile(filepath.Join(root, "README.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	corpus := docsCorpus(t, root)
 	files, err := filepath.Glob(filepath.Join(root, "examples", "swarms", "*.yaml"))
 	if err != nil || len(files) == 0 {
 		t.Fatalf("no swarms found: %v", err)
 	}
 	for _, f := range files {
 		name := strings.TrimSuffix(filepath.Base(f), ".yaml")
-		if !strings.Contains(string(readme), "`"+name+"`") {
-			t.Errorf("swarm %q has no row in the README's table", name)
+		if !strings.Contains(corpus, "`"+name+"`") {
+			t.Errorf("swarm %q is named in no prose page — add a row to the README's table", name)
 		}
 	}
 }
 
 // Same for bots: the catalog list is how someone discovers what can snap
 // into what, and the AI composer's prompt is built from the same directory.
-func TestReadmeNamesEveryBot(t *testing.T) {
+func TestTheDocsNameEveryBot(t *testing.T) {
 	root := repoRoot(t)
-	readme, err := os.ReadFile(filepath.Join(root, "README.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	corpus := docsCorpus(t, root)
 	var missing []string
 	for _, id := range allBotIDs(t, root) {
-		if !strings.Contains(string(readme), "`"+id+"`") {
+		if !strings.Contains(corpus, "`"+id+"`") {
 			missing = append(missing, id)
 		}
 	}
 	if len(missing) > 0 {
-		t.Errorf("these bots have no mention in the README: %s", strings.Join(missing, ", "))
+		t.Errorf("these bots are named in no prose page: %s", strings.Join(missing, ", "))
 	}
 }
 
-// Every page in docs/ should be reachable from the README. docs/memory.md
-// was the one that wasn't — written, linked from other docs, and invisible
-// to anyone starting at the front page.
-func TestReadmeLinksEveryDoc(t *testing.T) {
+// Every page in docs/ has to be reachable from the README by following
+// links. docs/memory.md was the one that wasn't — written, linked from other
+// docs, and invisible to anyone starting at the front page.
+//
+// This used to demand a direct `docs/<name>.md` mention in the README, which
+// is what a 567-line README with a link to all of them looks like. The front
+// page now links the ones most people want first and hands the rest to
+// docs/README.md, so the check is reachability rather than adjacency: a page
+// may be one hop away, it may not be zero hops from anywhere.
+func TestEveryDocIsReachableFromTheReadme(t *testing.T) {
 	root := repoRoot(t)
-	readme, err := os.ReadFile(filepath.Join(root, "README.md"))
-	if err != nil {
-		t.Fatal(err)
+
+	// A page "links" another if it names the file at all — a markdown link,
+	// a bare docs/<name>.md, or a backticked reference. All three are how
+	// this repo's pages actually cross-reference each other, and all three
+	// leave a reader somewhere they can follow.
+	ref := regexp.MustCompile(`([A-Za-z0-9_-]+\.md)`)
+	linksFrom := func(page string) []string {
+		raw, err := os.ReadFile(page)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, m := range ref.FindAllStringSubmatch(string(raw), -1) {
+			target := filepath.Join(root, "docs", m[1])
+			if _, err := os.Stat(target); err == nil {
+				out = append(out, target)
+			}
+		}
+		return out
 	}
-	entries, err := os.ReadDir(filepath.Join(root, "docs"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var missing []string
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+
+	seen := map[string]bool{}
+	queue := linksFrom(filepath.Join(root, "README.md"))
+	for len(queue) > 0 {
+		page := queue[0]
+		queue = queue[1:]
+		if seen[page] {
 			continue
 		}
-		if !strings.Contains(string(readme), "docs/"+e.Name()) {
-			missing = append(missing, e.Name())
+		seen[page] = true
+		queue = append(queue, linksFrom(page)...)
+	}
+
+	var unreachable []string
+	docs, err := filepath.Glob(filepath.Join(root, "docs", "*.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range docs {
+		if !seen[d] {
+			unreachable = append(unreachable, filepath.Base(d))
 		}
 	}
-	if len(missing) > 0 {
-		t.Errorf("these docs are never linked from the README, so nobody starting at the front"+
-			" page will find them: %s", strings.Join(missing, ", "))
+	if len(unreachable) > 0 {
+		t.Errorf("these docs cannot be reached by following links from the README, so nobody"+
+			" starting at the front page will find them: %s\nAdd each to docs/README.md.",
+			strings.Join(unreachable, ", "))
 	}
 }
 
@@ -221,7 +276,7 @@ func numberWord(n int) string {
 
 // Every catalog count in the README, not just the two headline ones.
 //
-// TestReadmeCatalogCountsAreAccurate only matches a bolded count at the
+// TestTheHeadlineCatalogCountsAreAccurate only matches a bolded count at the
 // start of a line, so four prose claims sat at "30 nanobots, 14 nanoswarms"
 // through nine bots and two swarms being added — including the sentence
 // that introduces the whole catalog. A number the tests do not read is a

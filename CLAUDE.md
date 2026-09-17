@@ -79,11 +79,14 @@ react-hooks' compiler-era rules on except three, each switched off in
 `eslint.config.js` with the reason and the finding count — read that before
 turning any of them back on.
 
-Some claims check themselves, in `internal/contract` — the README's test
-count, bot count and swarm count; that every doc is linked from the README;
-that `docs/bot-contract.md` names every step type; that `schemas/*.json`
-match the Go types; that every Go file is gofmt-clean. If you add a doc or a
-test, they will tell you. Fix the claim, don't weaken the test.
+Some claims check themselves, in `internal/contract` — the test count, bot
+count and swarm count wherever they are stated; that every doc is reachable
+by following links from the README; that `docs/bot-contract.md` names every
+step type; that `schemas/*.json` match the Go types; that every Go file is
+gofmt-clean. If you add a doc or a test, they will tell you. Fix the claim,
+don't weaken the test. Where a claim lives is a writing decision, so those
+tests read `README.md` and `docs/*.md` as one corpus rather than pinning a
+sentence to a filename.
 
 That last one is there because unformatted Go builds, vets and tests clean:
 two mis-indented lines from a scripted edit survived a full verification
@@ -146,6 +149,31 @@ Ids that come from `os.ReadDir` are already single directory names and are
 deliberately left unchecked; guarding them would imply the entries might be
 hostile, which is a lie about where they come from.
 
+## The docs ship with the change, not after it
+
+Every change updates the README and the `docs/` page for the concept it
+touches, **in the same commit**. Not a follow-up, not a batch at the end of a
+phase: a feature whose page still describes the old behaviour is an honesty
+bug of exactly the kind the rule above is about, and it is the cheapest one
+to avoid.
+
+Where things go:
+
+- **`README.md`** is the front page and stays short. What nanobots is, why
+  bricks instead of one agent, how to install it, the catalog, and links into
+  `docs/`. It is not the place for reference material — it reached 567 lines
+  that way, and nobody reads line 400 of a README.
+- **`docs/<concept>.md`** is one page per concept, each ending in how to run
+  the thing for real. A new capability gets a page; an extended one edits its
+  page.
+- **`docs/README.md`** is the index, and every new page needs a row in it —
+  `TestEveryDocIsReachableFromTheReadme` fails otherwise.
+- **`CLAUDE.md`** is how to work here, not what the thing does.
+
+When a 1Claw gap forces a workaround, it goes in
+`docs/1claw-feature-requests.md` with what it blocks and what shipped
+instead. Never fake the capability.
+
 ## Report honestly
 
 Say what was done, what was measured, and what was left. If a change is
@@ -162,7 +190,8 @@ and the commit says that.
   `schema`, `foundry`, plus the pluggable `llm` and `memory` backends.
 - `bots/` — 39 catalog bots, one directory each.
 - `examples/swarms/` — 16 swarms: 12 cron, 2 event, 1 webhook, 1 manual.
-- `web/` — the React app. `docs/` — 21 pages, all linked from the README.
+- `web/` — the React app. `docs/` — one page per concept, indexed by
+  `docs/README.md` and reachable from the front page.
 
 Credentials live in `~/.secrets/nanobots.env` and never in the repo or a
 log. Never delete a 1Claw resource without asking first.

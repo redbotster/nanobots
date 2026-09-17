@@ -4,556 +4,210 @@
 
 *Legos for AI. Snap micro-agents together, run them anywhere, keep the keys in 1Claw.*
 
-Nanobots is a local-first system for composing single-job AI/deterministic containers ("nanobots") into typed, DAG-shaped workflows ("nanoswarms"), with secrets, OAuth, LLM routing, and guardrails delegated to [1Claw](https://docs.1claw.co).
+Nanobots is a local-first system for composing single-job AI and
+deterministic containers ("nanobots") into typed, DAG-shaped workflows
+("nanoswarms"), with secrets, OAuth, LLM routing and guardrails delegated to
+[1Claw](https://docs.1claw.co).
 
-The full product spec lives in [`context/NANOBOTS-BLUEPRINT.md`](context/NANOBOTS-BLUEPRINT.md) and [`context/NANOBOTS-CATALOG.md`](context/NANOBOTS-CATALOG.md). Treat those as the source of truth for the YAML schemas and the launch catalog; this README covers what's actually built, and is kept in sync with it — if something here contradicts the code, the code wins. `docs/` has one page per concept — contract, connections, harnesses, approvals, the 1Claw bridge, Browser Bridge, the foundry, the scheduler, run history, fan-out, memory, models, parallelism, error policy, supervisors, fixtures, connectors, sharing, webhooks, setup, hosting — each ending in how to run it for real. [`docs/1claw-feature-requests.md`](docs/1claw-feature-requests.md) is the other direction: what nanobots needs from 1Claw that does not exist yet, what each gap blocks, and the workaround shipped meanwhile.
-
-## Why nanobots, not one big agent
-
-The obvious way to automate "recap my inbox, prep my meetings, and post my content" is one big agent with a giant prompt and every tool bolted on. That's also the way you end up with something slow, expensive to run, impossible to debug when it does the wrong thing, and terrifying to grant real Gmail/Stripe/LinkedIn access to, because there's no boundary around what it might decide to do with any of them at once.
-
-Nanobots' bet is the opposite one — the Unix philosophy applied to AI automation: lots of small bricks that each do one job extremely well, wired together instead of merged together. Concretely, that means every bot in `bots/` is built to be:
-
-- **Small** — one job per bot, statable in one sentence. `inbox-triage` sorts mail; it doesn't also draft replies (that's `draft-replies`) or send them (`email-send-approved`).
-- **Fast** — most bots run in the `bare` harness (no LLM loop, no browser, a plain deterministic container) and finish in seconds; only the ones that genuinely need Chrome or an LLM call reach for more.
-- **Powerful** — small doesn't mean thin. Each bot is backed by a real integration wherever one exists (direct Gmail/Slack/GitHub/Stripe/HubSpot/X/LinkedIn clients, not just fixtures) and does its one job completely, not partially.
-- **Modular** — every input and output is a typed, named port (`docs/bot-contract.md`), so a bot never has to know or trust anything about its neighbors beyond the shape of the data crossing the wire.
-- **Orchestratable** — because the ports are typed and the contract is uniform, any bot can be snapped into any swarm the planner can type-check, and swapped for another bot with compatible ports without touching anything else. Composing bricks this way, instead of writing one monolithic agent, is what makes 39 bots and 16 swarms possible to build, test, and trust independently — you never have to reason about the whole system to trust one piece of it, and a piece you don't trust yet (a bot still on `connection: demo`) can't leak scope into the pieces you do.
-
-That's the actual product: not a chatbot that does automation, but a growing, composable catalog of small, real, individually-provable automation bricks — plus, since assembling bricks by hand is still work, an AI composer that does the assembly for you from one sentence of plain English (next section).
-
-## Who this is for
-
-The primary customer is a **busy solo operator** — a solo founder, indie hacker, or anyone running their own show without an assistant: inbox triage, meeting prep, content, and follow-ups eat their day, and they'd rather describe the outcome they want than configure automation software. That's who the AI composer, the basic-mode UI, and the swarm gallery are built to hook in one sentence ("Help me automate a daily email recap and list it by priority") — no YAML, no drag-and-drop tutorial, no OAuth screens, a working swarm on the canvas in seconds.
-
-The full catalog also covers a second, secondary persona: a small business owner running light sales/ops (leads, quotes, invoices, reviews) who's ready to graduate from the basic mode into the bot library and the manual builder. Those bricks are real and fully wired, they're just not the first thing a new user sees — see [Basic vs. advanced mode](#basic-vs-advanced-mode).
-
-## Status
-
-This repo implements the full 28-brick, 12-swarm launch catalog from `context/NANOBOTS-CATALOG.md` (Tranches A, B, and C), plus the two bricks and two swarms that predate it and everything added since — **39 nanobots, 16 nanoswarms** — end to end and verified live, not just type-checked:
-
-- **The bot contract, planner, and Docker-backed local runner**: bots run as real, non-root, read-only-filesystem containers, wired to each other's outputs across separate containers, streamed live over SSE. `nanobots conform` proves every bot honors the contract without Docker; `nanobots plan` type-checks every swarm's snaps against real port types.
-- **A real [1Claw](https://docs.1claw.co) bridge**: Human API key → bearer token exchange, agent creation/deletion, Shroud (LLM proxy) chat completions, vault secrets, agent memory, approval requests, and a Browser Bridge client — all exercised against the real API, not mocked.
-- **Seven real, standalone direct-service clients** for what 1Claw doesn't natively cover: Google (`internal/google` — Gmail, Drive, Sheets, Calendar), Slack (`internal/slack`), GitHub (`internal/github`), Stripe (`internal/stripe`), HubSpot (`internal/hubspot`), X (`internal/x`), LinkedIn (`internal/linkedin`) — each dispatched from `internal/step.LiveDeps` once a bot's service is switched off `connection: demo` **and** a human has connected the account — plus a credential-free `web.fetch` step for reading public pages. X and LinkedIn share a small, provider-agnostic OAuth2+PKCE core (`internal/oauth2pkce`) rather than each hand-rolling Google's original loopback-redirect flow. None of these is the default connection for any bot out of the box (see [What's real vs. simulated](#whats-real-vs-simulated)).
-- **An AI composer** ("the head nanobot" — see below) that turns a plain-English request into a validated draft swarm.
-- **A dead-simple WebUI** (Vite + React + TypeScript + Tailwind + Radix) with a basic/advanced mode toggle, a bot library (searchable, grouped by service, with a per-service demo/live switch that connects an account inline), a Team view of the bots you've told how to work and the teams they work in, a swarm gallery showing at a glance how much of each swarm is live vs. demo, a live run viewer with SSE log streaming and inline approvals, browser notifications when something needs your approval, a Settings page where connecting a service — including 1Claw itself — is a button or a pasted token, and a visual swarm builder (including picking a nested field of a `json` output, not just whole-port connections) for anyone who wants to build or tweak by hand.
-- **Per-bot customisation**: every LLM bot takes an optional `instructions` port with a suggestion written for its job — "Anything mentioning data loss or billing is top priority" — editable from its card in the UI, or overridable per swarm. It shapes how a bot works, never what it's allowed to do; the precedence rule lives in one place in Go rather than in nineteen prompt files (`docs/bot-contract.md`).
-- **Any model provider, 1Claw first**: `ai.generate` and the composer both go through one small interface with four backends — 1Claw Shroud (the default, and the only one with a budget ceiling, PII redaction and injection screening), Anthropic, Gemini, and OpenAI-or-anything-speaking-its-format (OpenRouter, Groq, vLLM, Ollama). One key is the whole setup step. A bot asking for a model the backend can't serve gets a substitute, logged into the run rather than swapped silently (`docs/llm.md`).
-- **A swarm's independent branches run at once**: the planner always knew the DAG; the runner used to walk it one bot at a time. Five of the sixteen catalog swarms have a wave wider than one — `morning-brief` is four bots in two waves of two (`docs/parallelism.md`). The other eleven are straight chains and gain nothing, which is worth saying rather than implying a general speed-up.
-- **A first screen that says what's next**: three steps that tick themselves off from real state — point it at a model, run one on example data, connect an account when you want it real — and the card removes itself once they're done, without anyone dismissing it. Explicitly not a wizard: running on example data is a legitimate way to use this, not a degraded one.
-- **Demo data never passes for real**: every bot ships on `connection: demo`, so the default run succeeds with plausible invented output. The log marks each such call, and the run says which services were answered from example data with a button to connect an account (`docs/connections.md`). A convincing fake that looks exactly like a real result is the worst thing this product could quietly do.
-- **A real run can become a bot's test data**: fixtures are what `nanobots conform` replays offline, and they're hand-written — a guess at what a model returns, which drifts. A succeeded run offers back exactly what it got, marked new or replacing, side by side with what's committed (`docs/fixtures.md`). Approvals are never recorded, because a pinned "approved" would turn a gate into a rubber stamp.
-- **A failure at the edge doesn't lose the run**: a bot can be marked `on_error: continue`, and everything downstream of it is skipped rather than run against missing inputs (`docs/error-policy.md`). `get-paid` used to send every reminder and *then* fail the whole run because it couldn't post a Slack summary; now it finishes, and says plainly that one step didn't. Never silent — a tolerated failure is recorded on the run and rendered as a warning with the same one-click fix a real failure gets.
-- **Bots remember between runs**: local key/value by default, or a recall-capable backend that answers questions in plain language — `inbox-triage` recalls what you have actually treated as urgent (`docs/memory.md`). A bot that merely benefits from recall degrades on a key/value backend and says so; one that depends on it fails loudly.
-- **The builder fits the graph**: opening a swarm used to land you at 100% with the last bots off the right edge and nothing saying the canvas scrolled. It fits on open, and has zoom controls plus ctrl/cmd-wheel zoom about the cursor (`docs/builder.md`). One transformed layer over a sizer, so node coordinates and the connector SVG stay in content pixels — verified in a browser that connectors land within 1.5px of their ports at 80% and 125%, and that a dragged node tracks the cursor exactly.
-- **An approval says what approving does**: the prompt shows the risk tier and what the bot will write to — `sender will write to gmail. Declining stops the run here.` — instead of only the subject line (`docs/approvals.md`). All three facts already existed and were being thrown away. "Skip" is now "Don't approve", because declining ends the run rather than skipping a step.
-- **A wall of red reads as one fact**: the Runs page collapses consecutive identical failures ("and 42 more that failed the same way"), filters by All / Needs you / Failed / Succeeded, and the waiting-approval banner opens the run instead of just mentioning it.
-- **A bot cannot fetch your own machine**: `web.fetch` takes a URL from a bot's inputs and runs inside nanobotd, so it used to reach loopback — a swarm pointed at `127.0.0.1:7474` returned the daemon's own webhook token into its output (`docs/connections.md`). Loopback, cloud-metadata, private and multicast addresses are refused now, checked in the dialer at connect time so a hostname resolving to 127.0.0.1 and a redirect are both caught.
-- **The catalog does not sound like AI**: every prose bot's prompt states the house voice (no em dashes, none of delve/robust/leverage, no "it's not just X, it's Y"), and no bot's demo output contains an em dash. Both are asserted by tests, because the `tone` bot existed to strip exactly the habits the rest of the catalog was modelling.
-- **The run log is actually live**: it used to sit on three lines for sixteen seconds and then produce five at once, because the in-container agent buffered every line and wrote them on exit (`docs/runs.md`). The agent flushes per step now and the runner follows the file while the container runs, so a bot's work appears as it happens rather than after it finishes.
-- **You can stop a run**: a hanging bot used to hold its container for the whole ceiling — up to thirty minutes — with watching as the only option (`docs/runs.md`). Stop cancels the run's context and `docker kill`s the container, releases any approval gate (which waits on a person, not a context), and reports itself as *stopped* rather than *failed* everywhere that reads it — including the scheduler's circuit breaker, since five runs you stopped by hand are not a swarm that is broken.
-- **An idle tab costs almost nothing**: `GET /api/runs` is 91KB polled every two seconds and near-always identical. It now carries an ETag and answers 304 with no body; the client holds the tag and returns early, so there is no parse and no re-render either. Measured in a browser: 7 polls over 14 seconds went from 638KB to 2.1KB.
-- **What you ask for gets scheduled**: composing "every friday summarise my overdue invoices" used to produce a swarm that described itself as weekly and would never fire — every new swarm was hardcoded `manual` (`docs/scheduler.md`). The composer emits cron now, the builder shows it described back to you as you type ("Fridays at 9:00 AM"), and an expression the scheduler can't parse is refused rather than saved as a swarm that silently never runs.
-- **A schedule that never works stops trying**: after five consecutive failures the scheduler pauses it, and the card says why with the error and a **Try it again** button (`docs/scheduler.md`). Found on a real machine: one swarm had failed 85 times because Slack was never connected, 41 of those runs holding a container open for the full 30-minute ceiling — about twenty hours spent re-learning one fact, with nothing anywhere saying so. Derived from run history, so it survives a restart; one success clears it.
-- **Webhook triggers actually fire**: `POST /webhooks/{swarm}` starts a run with the body as `{{trigger.payload}}` (`docs/webhooks.md`). Token-guarded, refuses a swarm that didn't declare a webhook trigger, and answers 202 rather than holding the sender open through an approval gate. `lead-to-meeting` was written around one and could only ever be run by hand. Open a webhook swarm and it hands you the URL, the token and a runnable `curl` — or `nanobots webhook <swarm>` from a terminal. The token is fetched on click rather than carried on the swarm list, which every open tab polls.
-- **A swarm can leave the machine**: `nanobots export` bundles one — the file verbatim, the bots it needs as `id@version`, the accounts it wants, and what it can write to when it runs — and `import` refuses before writing anything if a bot is missing (`docs/sharing.md`). Both are in the app too — **Share** on a swarm downloads the bundle, **Add a shared swarm** takes one back, in two steps so you read what it can write to before it lands. Bots are named, not carried, so nobody ends up running a silent fork. Bundles carry no credentials.
-- **The CLI can check the whole catalog**: `nanobots conform bots` runs all 39 bots' fixtures and `nanobots plan` (no `-f`) type-checks all 16 swarms, one line each, continuing past a failure so you see everything that broke rather than the first thing. Both loops existed only inside the test suite. Also `--version` and `<command> --help`, which used to answer `unknown flag "--help"`.
-- **1Claw's own telemetry, where you already look**: the Settings System block gains a Posture row from 1Claw's OpenTelemetry surface — score, open threats, and agent usage against your plan's cap (`docs/oneclaw-bridge.md`). That last one is the actionable number: every bot name this repo runs takes an agent slot, and running out surfaces as a 403 mid-run. It says how many of them this app made, and turns amber at 80%.
-- **What it cost is visible**: `nanobots spend` and the Model section of Settings read the same 1Claw token-billing figure (`docs/llm.md`). On a direct provider key it says the spend isn't metered here rather than showing a confident `$0.00` that actually means "no idea".
-- **One place to wire up a real account**: `nanobots connectors` uses 1Claw's connector presets — Gmail, Calendar, Sheets, Slack, GitHub, X, Notion — so a provider is a preset rather than another Go package and another refresh-token dance (`docs/connectors.md`). It does *not* remove the provider console: 1Claw ships no shared OAuth apps, so you still register your own app once, with 1Claw rather than with this repo. Installing a connector is also what finally provisions the agent binding `LiveDeps.ServiceCall` has always executed against.
-- **`nanobots spend`**: what 1Claw has billed this account for model tokens this period — the question a scheduled product has to answer once it runs unattended (`docs/llm.md`).
-- **It survives a reboot**: `nanobots service install` writes a per-user LaunchAgent so nanobotd keeps running, which is what makes twelve cron triggers more than aspiration (`docs/scheduler.md`). It prints what it wrote and leaves loading it to you; missed runs deliberately don't fire late.
-- **A real scheduler**: every catalog swarm's `trigger: {type: cron, ...}` now actually fires — see `docs/scheduler.md`. Previously nothing in this build ever executed one; every run was a human clicking Run.
-- **Run history that survives a restart**: every finished run is kept as a JSON file under `~/.nanobots/history/`, capped at 200 — see `docs/run-history.md`. A failed run shows *why* it failed and offers to run the same swarm again. A run killed mid-flight by a restart is restored as failed rather than sitting in the list as "running" forever.
-
-Not built yet: the `kubernetes`/`apple` compile targets, a real dynamic agent loop (see `docs/harnesses.md` — today's harnesses run a fixed, pre-written step list, not an LLM deciding what to do), container-level network egress (a bot's declared `network_egress` is now enforced for `web.fetch`, which is the step that fetches on your behalf — but an `openclaw` bot's in-container Chromium can still reach remote assets, see `docs/harnesses.md`), a real OAuth integration for Google Business Profile (`review-responder` stays on `connection: demo`, gap called out in `docs/connections.md`), and the hosted multi-tenant control plane.
-
-## The AI composer — the "head nanobot"
-
-The fastest way to build a swarm is to describe what you want:
-
-> Help me automate a daily email recap and list it by priority
-
-Type that into the box at the top of **Swarms** and click **Automate it**. Under the hood (`internal/api/compose.go`, `POST /api/compose`):
-
-1. The real bot catalog (every bot's id, description, and every input/output port with its type) is handed to Shroud along with your message, via a dedicated `nanobots-composer` 1Claw agent.
-2. The model's answer — a proposed set of bots and the snaps connecting them — is parsed into the exact same shape the visual builder already saves.
-3. That draft is run through the real planner (`planner.PlanSwarm`), the same type-checker a manual save uses. A hallucinated bot id or a mismatched port type comes back as a normal validation error, not a silent bad save.
-4. The validated draft opens directly in the visual builder, pre-populated — you see the assembled swarm on the canvas immediately, free to rename, tweak, or delete a node before saving.
-
-**It never saves or runs anything by itself.** Every swarm the composer proposes still goes through the same human-reviews-before-it's-real path as one built by hand — consistent with this whole product's approval-first philosophy: nothing acts without a human seeing it first.
-
-### The foundry — when the catalog genuinely can't do it
-
-The composer writes in the full language, not a subset: it fans a bot out over a list with `.*`, collapses the results back with `join:`, and marks a trailing notification `on_error: continue` — and the catalog it's shown lists the *fields* inside each json port, because a snap can drill into one and a model shown only types will invent a field that isn't there. Asked for "find every overdue invoice, email each customer a reminder once I approve, then post one summary to Slack", it now produces essentially `get-paid`.
-
-If no combination of existing bots can satisfy the request, the composer says so instead of guessing (`{"gap": true, "missing_capability": "..."}`), and the WebUI offers to escalate: a sandboxed coding agent (Claude Code, running inside its own Docker container — see `docs/foundry.md` for why a container and not just CLI permission flags) authors a brand-new bot, self-tests it against the real conformance runner, and opens the same human-approval gate a swarm's `approve` step uses before the bot ever becomes part of the real catalog. Approve it and the composer automatically retries your original request. This needs its own `ANTHROPIC_API_KEY` (see `docs/foundry.md`) — a real, separate prerequisite from `ONECLAW_API_KEY`, since 1Claw's Shroud proxy can't back a multi-turn, tool-using coding session.
-
-## Basic vs. advanced mode
-
-A toggle in the header (labeled **Advanced**) switches the whole UI between two modes, stored per-browser (`web/src/lib/uiMode.ts`):
-
-- **Basic** (the default for a new user): the nav shows Swarms, Runs, Settings. Swarms opens straight into the composer box and a gallery of ready-made swarms — nothing to learn before you can automate something. No Bot Library, no blank-canvas "build manually" entry point.
-- **Advanced**: adds **Bot Library** to the nav and a **Build manually** button to Swarms, revealing the drag-and-drop canvas builder — everything basic mode has, plus the tools to build or edit a swarm by hand, bot by bot, port by port.
-
-The toggle only changes which entry points are visible. It never changes how a swarm actually runs — a swarm built by the composer, built by hand, or hand-edited from a composer draft all execute identically.
+One binary serves the UI and the API. Nothing runs in a second terminal, no
+account is required to start, and every bot ships answering from this repo's
+own example data — so the first run does real work against fake data and
+touches nothing of yours.
 
 ## Quick start
 
-One binary. It serves the WebUI and the API on one port, so there is nothing
-to run in a second terminal.
-
-```
+```sh
 git clone https://github.com/redbotster/nanobots && cd nanobots
 make build          # WebUI + binary. Needs Go 1.25+ and Node 22+
 ./bin/nanobots init # optional: 1Claw and a model, or skip both
 ./bin/nanobots up
 ```
 
-Then open <http://127.0.0.1:7474>.
+Then open <http://127.0.0.1:7474>, type what you want automated into the box
+at the top of **Swarms**, and press **Automate it** — or pick a ready-made
+swarm from the gallery below it and press **Run**.
 
-[`docs/setup.md`](docs/setup.md) covers what `init` writes and the difference between the two kinds of 1Claw key. It is optional — skip it entirely and everything still runs. No 1Claw account, no model key and no OAuth app are needed to start: every
-bot ships on `connection: demo` and answers from this repo's own example
-inbox, invoices and files, so the first run does real work against fake data
-and touches nothing of yours.
-
-**Docker is optional.** 34 of the 39 bots run in this process, because a
-container was not protecting anything: their steps are a declared list run
-by this repo's own interpreter, and every step that reaches the outside
-world (`service.call`, `ai.generate`, `web.fetch`, `memory.*`, `approve`)
-already runs in `nanobotd` rather than in the container. The 5 that still
-need Docker are the ones that drive a real headless browser to render a PDF
-or a chart — `meeting-prep`, `quote-builder`, `recap-emails-to-pdf`,
-`render-pdf`, `sheet-reporter` — and the run log says which path each bot
-took, every run.
-
-Once there is a tagged release, this becomes `brew install
-redbotster/tap/nanobots` or `npx nanobots`; the packaging is in
-`.goreleaser.yaml` and `npm/`, and neither is published yet.
+**Docker is optional.** 34 of the 39 bots run in this process; the 5 that
+need a container are the ones driving a real headless browser to render a
+PDF or a chart, and the run log says which path each bot took, every run
+([docs/architecture.md](docs/architecture.md)).
 
 `make build` is `npm run build` plus `go build`. A plain `go build` also
-works and is what you want while developing — it produces a binary with no
-UI inside it, which says so when you open it, and you run `cd web && npm run
-dev` alongside for hot reload.
+works while developing — it produces a binary with no UI inside it, which
+says so when you open it, and you run `cd web && npm run dev` alongside for
+hot reload.
 
-Other things the CLI does:
+Once there is a tagged release this becomes `brew install
+redbotster/tap/nanobots` or `npx nanobots`. The packaging is in
+`.goreleaser.yaml` and `npm/`, and neither is published yet.
 
-```
+```sh
 nanobots plan -f examples/swarms/daily-email-recap.yaml   # type-check a swarm, print its DAG
 nanobots run  -f examples/swarms/daily-email-recap.yaml   # run it, printing the log
 nanobots conform bots                                     # check every bot honours the contract
-nanobots version
+nanobots deploy 1claw --image <ref>                       # run it on a 1Claw Cloud Runtime
 ```
 
-`nanobots` reads your 1Claw Human API key from `$NANOBOTS_ENV_FILE` (default `~/.secrets/nanobots.env`, `ONECLAW_API_KEY=...`) at startup only — it's never written into this repo, logged, or handed to a bot container (see `docs/oneclaw-bridge.md`). Without *any* model configured, every bot runs in demo mode against its fixtures. 1Claw is the best option — it's the only one that bills against a per-agent budget, redacts PII and secrets, and screens for injection — but it is no longer the only one: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` (including any chat-completions gateway, via `OPENAI_BASE_URL`) or `GEMINI_API_KEY` each work on their own, for bots and for the composer alike (`docs/llm.md`).
+Making it act on your real accounts is three optional layers — a model,
+1Claw to hold the credentials, then one account at a time:
+[docs/going-live.md](docs/going-live.md).
 
-Once it's running, in **basic mode** (the default): type what you want automated into the box at the top of Swarms, review the draft that opens, and hit Save — or just pick one of the ready-made swarms in the gallery below it and click **Run**. Flip the header toggle to **Advanced** for the bot library and the manual canvas builder. **Settings** connects a real account — click **Connect** on Google (real OAuth consent screen) or paste a Slack/GitHub/Stripe/HubSpot token directly; every credential lands in a 1Claw vault secret, never on this machine's disk, and connecting an account never changes a bot's behavior by itself — each bot ships on `connection: demo` until you deliberately switch a specific service to a live connection in its `nanobot.yaml`.
+## Why nanobots, not one big agent
 
-## What a bot and a swarm actually look like
+The obvious way to automate "recap my inbox, prep my meetings, and post my
+content" is one big agent with a giant prompt and every tool bolted on. That
+is also how you end up with something slow, expensive, impossible to debug
+when it does the wrong thing, and terrifying to grant real
+Gmail/Stripe/LinkedIn access to, because nothing bounds what it might decide
+to do with all of them at once.
 
-Both are YAML you can read. These two are real files in this repo, not
-illustrations — `internal/contract`'s tests fail if they drift from what is
-quoted here.
+Nanobots takes the opposite bet — the Unix philosophy applied to AI
+automation. Every bot in `bots/` is:
 
-A **nanobot** declares typed ports and a fixed list of steps. Nothing else
-in the system needs to know how it works:
+- **Small** — one job, statable in one sentence. `inbox-triage` sorts mail;
+  it does not also draft replies (`draft-replies`) or send them
+  (`email-send-approved`).
+- **Fast** — most run with no LLM loop and no browser, and finish in
+  seconds.
+- **Powerful** — backed by a real integration wherever one exists, doing its
+  one job completely rather than partially.
+- **Modular** — every input and output is a typed, named port, so a bot
+  never has to know anything about its neighbours beyond the shape of the
+  data crossing the wire ([docs/bot-contract.md](docs/bot-contract.md)).
+- **Orchestratable** — any bot snaps into any swarm the planner can
+  type-check, and swaps for another with compatible ports without touching
+  anything else.
 
-```yaml
-  ports:
-    inputs:
-      - name: repo
-        type: string
-        required: true
-      - name: max_issues
-        type: string
-        default: "10"
-      - name: instructions
-        type: string
-        required: false
-        description: "How you want this bot to work — tone, priorities, wording. Shapes how it does its job, never what it is allowed to do."
-        default: "Lead with anything blocking a release. Group by area, not by date."
-    outputs:
-      - name: digest
-        type: string
+That is the product: not a chatbot that does automation, but a growing,
+composable catalog of small, real, individually-provable automation bricks —
+plus an AI composer that does the assembly for you from one sentence of
+plain English.
 
-  steps:
-    - name: fetch
-      type: service.call
-      service: github
-      op: issues.list
-      params: { repo: "{{inputs.repo}}", max: "{{inputs.max_issues}}" }
-    - name: summarise
-      type: ai.generate
-      prompt_file: ./prompts/digest.md
-      inputs: { issues: "{{steps.fetch.output}}", instructions: "{{inputs.instructions}}" }
-      outputs:
-        digest: "{{steps.summarise.output.digest}}"
-```
+**Who it is for.** A busy solo operator — founder, indie hacker, anyone
+running their own show without an assistant — who would rather describe the
+outcome than configure automation software. The catalog also covers a small
+business owner running light sales and ops, who is ready to graduate into
+the bot library and the manual builder.
 
-That is `bots/github-issues-digest/nanobot.yaml`. `service.call` and
-`ai.generate` are callbacks to `nanobotd`, so the container never sees a
-GitHub token or a model key.
+## The AI composer
 
-A **nanoswarm** says which bots to run and how to wire them. A `snap`
-connects one bot's output port to another's input port, and the planner
-refuses the swarm if the types do not match:
+Type what you want into the box at the top of **Swarms**:
 
-```yaml
-apiVersion: nanobots.dev/v1alpha1
-kind: Nanoswarm
-metadata:
-  name: github-digest-to-slack
-  description: Every weekday morning, summarise a repo's newest open issues and post the digest to Slack.
-  owner: me@example.com
+> Help me automate a daily email recap and list it by priority
 
-spec:
-  defaults:
-    model: { provider: anthropic, name: claude-sonnet-4-6 }
-    guardrails:
-      pii: allow
-      injection_threshold: 0.7
-      daily_budget_usd: 5
-    resources: { preset: small }
+Under the hood (`internal/api/compose.go`, `POST /api/compose`): the real bot
+catalog — every bot's id, description, and every port with its type and the
+fields inside its json ports — goes to the model along with your message; the
+answer is parsed into the exact shape the visual builder already saves; that
+draft runs through the real planner, so a hallucinated bot id or a mismatched
+port type comes back as a normal validation error rather than a silent bad
+save; and the validated draft opens in the builder, pre-populated.
 
-  vars:
-    repo: "redbotster/nanobots"
-    notify_channel: "slack:#eng"
+**It never saves or runs anything by itself.** Every proposed swarm goes
+through the same human-reviews-it-first path as one built by hand.
 
-  trigger:
-    type: cron
-    expr: "0 8 * * 1-5"
-    timezone: America/Chicago
+If no combination of existing bots can satisfy the request, the composer says
+so instead of guessing, and offers to escalate: a sandboxed coding agent
+authors a brand-new bot, self-tests it against the real conformance runner,
+and opens the same approval gate a swarm's `approve` step uses before the bot
+ever joins the catalog. Approve it and the composer retries your original
+request automatically ([docs/foundry.md](docs/foundry.md)).
 
-  bots:
-    - id: digest
-      use: github-issues-digest@0.1.0
-      inputs:
-        repo: "{{vars.repo}}"
-        max_issues: "10"
-    - id: notifier
-      use: notify@0.1.0
-      inputs:
-        channel: "{{vars.notify_channel}}"
-      # A notification is the last thing this swarm does and nothing
-      # reads it. Losing it should not fail a run whose real work already
-      # succeeded — see docs/error-policy.md.
-      on_error: continue
-
-  snaps:
-    - from: digest.digest
-      to: notifier.message
-
-  deploy:
-    target: local
-```
-
-That is `examples/swarms/github-digest-to-slack.yaml`. Run it with
-`nanobots run -f examples/swarms/github-digest-to-slack.yaml`, or open it on
-the canvas. `on_error: continue` is why a failed Slack post leaves the
-digest itself intact — see `docs/error-policy.md`.
-
-## Setup: going from demo data to real accounts
-
-Everything below is optional. With nothing configured at all, `nanobots up` runs
-the whole catalog against fixtures — a fresh clone can run a four-bot swarm to
-success before you have set up anything. This section is about making it real.
-
-There are three layers, and each is useful on its own.
-
-### 1. A model — makes bots think
-
-Without one, every `ai.generate` step returns its canned fixture text. Any one
-of these in `~/.secrets/nanobots.env` is enough:
-
-```sh
-ONECLAW_API_KEY=...     # best: per-agent budget, PII redaction, injection screening
-ANTHROPIC_API_KEY=...   # or
-OPENAI_API_KEY=...      # or (any chat-completions gateway, with OPENAI_BASE_URL)
-GEMINI_API_KEY=...      # or
-```
-
-Restart `nanobotd` after editing the file; it is read at startup only, and is
-never written into this repo, logged, or handed to a bot container. Settings
-shows which backend is live and whether guardrails are on.
-
-### 2. 1Claw — holds the credentials
-
-`ONECLAW_API_KEY` does double duty: it is a model backend *and* the vault every
-connected account lands in. Without it you can still run bots against a model,
-but there is nowhere safe to put a Gmail token, so real service calls stay off.
-
-One thing to watch: this repo gives **every distinct bot name its own 1Claw
-agent**, and plans cap how many an account can hold. Settings → System → Posture
-shows the count against your plan (`25/50 agents`) and turns amber at 80%. Past
-the cap, a run that needs a new bot fails with `Agent limit reached`
-(`docs/oneclaw-bridge.md`).
-
-### 3. Connect an account — makes bots act
-
-All of this happens in **Settings → Connect a service**. Two kinds, very
-different effort.
-
-**Paste a token.** No OAuth app, about a minute each:
-
-| Provider | Where to get it | Scope |
-|---|---|---|
-| GitHub | a personal access token | `repo`, or `public_repo` for public repos only |
-| Slack | api.slack.com/apps → bot token (`xoxb-…`) | `chat:write` |
-| Stripe | dashboard.stripe.com/apikeys | a secret key |
-| HubSpot | a private app token | `crm.objects.contacts.read`, `.write` |
-
-**Register your own OAuth app.** Longer, and the client id goes in
-`~/.secrets/nanobots.env` before the Connect button will do anything:
-
-| Provider | Env var | Scopes it asks for |
-|---|---|---|
-| Google | `GOOGLE_OAUTH_CLIENT_ID` | Gmail read/send/compose/modify, Drive file+readonly, Calendar readonly |
-| X | `X_OAUTH_CLIENT_ID` | `tweet.read`, `tweet.write`, `users.read`, `offline.access` |
-| LinkedIn | `LINKEDIN_OAUTH_CLIENT_ID` | `openid`, `profile`, `w_member_social` |
-
-No client secret: all three use OAuth2 + PKCE as a public client
-(`internal/oauth2pkce`).
-
-**Register it as a "Desktop app" / native client.** The redirect is a loopback
-URL on an **ephemeral port** — `http://127.0.0.1:<random>/` — because the flow
-starts a throwaway local listener. Google's Desktop-app client type accepts any
-loopback port, which is the path this build is tested on. A provider console
-that demands one exact redirect URI does not fit that, and X and LinkedIn have
-not been taken through registration here — treat those two as implemented but
-unverified end to end.
-
-1Claw's connector presets (`nanobots connectors`, `docs/connectors.md`) do **not**
-remove this step. 1Claw ships no shared OAuth apps, so you still register your
-own app once — with 1Claw rather than with this repo.
-
-### What each swarm needs
-
-Connecting nothing is fine; those swarms run on fixtures. This is the cost of
-making each one real:
-
-| Swarm | Needs connected | Your own OAuth app? |
-|---|---|---|
-| `supervisor-review` | nothing | no |
-| `github-digest-to-slack` | github, slack | no |
-| `daily-email-recap` | google | google |
-| `inbox-autopilot` | google | google |
-| `listen-and-reply` | x | x |
-| `never-drop-a-thread` | google | google |
-| `weekly-client-report` | google | google |
-| `bookkeeping-assistant` | google, slack | google |
-| `daily-inbox-recap` | google, slack | google |
-| `meeting-to-action` | google, slack | google |
-| `morning-brief` | google, slack | google |
-| `support-desk-lite` | google, slack | google |
-| `get-paid` | google, slack, stripe | google |
-| `lead-to-meeting` | google, hubspot, slack | google |
-| `content-engine` | linkedin, x | linkedin, x |
-| `repurpose-everything` | google, linkedin, x | google, linkedin, x |
-
-`supervisor-review` needs nothing because it only reasons. **`github-digest-to-slack`
-is the cheapest real automation**: two pasted tokens, no OAuth app, and it is
-already on a weekday-morning cron. Google is the widest unlock: one OAuth app
-turns on twelve of the sixteen.
-
-`review-responder` declares `google_business_profile`, for which no client exists
-yet; that bot stays on fixtures whatever you connect (`docs/connections.md`).
-
-### Checking it worked
-
-```sh
-nanobots conform bots     # all 39 bots against their fixtures
-nanobots plan             # all 16 swarms type-check
-nanobots webhook <swarm>  # the URL and token for a webhook swarm
-nanobots spend            # what the models have cost
-```
-
-A run tells you which services were fixtures and which were real: the run detail
-page shows a **DEMO DATA** banner naming them, and each log line says
-`-> ok (demo data — not your real google)` when it was a fixture.
+A header toggle switches the whole UI between **basic** (Swarms, Runs,
+Settings — nothing to learn before you can automate something) and
+**advanced** (adds the bot library and the blank-canvas builder). It only
+changes which entry points are visible; a swarm built either way executes
+identically.
 
 ## The catalog
 
-**39 bots** (`bots/`) — 33 job bricks plus 6 utility bricks (`approve`, `notify`, `render-pdf`, `drive-save`, `drive-watch`, `form-to-sheet`), all at `0.1.0`:
+**39 bots** (`bots/`) — 33 job bricks plus 6 utility bricks (`approve`,
+`notify`, `render-pdf`, `drive-save`, `drive-watch`, `form-to-sheet`), all at
+`0.1.0`:
 
 | Busy-person / solo-founder story (hero path) | SMB ops story (advanced) |
 |---|---|
 | `inbox-triage`, `draft-replies`, `follow-up-chaser`, `email-send-approved` | `lead-enricher`, `lead-router`, `quote-builder` |
 | `meeting-prep`, `calendar-scheduler`, `meeting-notes-filer` | `invoice-chaser`, `receipt-filer`, `sheet-reporter` |
 | `content-ideas`, `post-writer`, `x-thread-writer`, `post-publisher`, `repurposer`, `newsletter-drafter`, `tone` | `support-triage`, `review-responder`, `competitor-watch` |
-| `x-mentions`, `linkedin-comments`, `comment-responder` (read what came back, draft replies) | `linkedin-dm-triage` |
-| `recap-emails-to-pdf`, `email-drive-file`, `github-issues-digest` | `review-board`, `reviewer`, `review-synthesis` (a supervisor team — `docs/supervisors.md`) |
+| `x-mentions`, `linkedin-comments`, `comment-responder` | `linkedin-dm-triage` |
+| `recap-emails-to-pdf`, `email-drive-file`, `github-issues-digest` | `review-board`, `reviewer`, `review-synthesis` ([docs/supervisors.md](docs/supervisors.md)) |
 
-**16 swarms** (`examples/swarms/`), each with a header comment documenting any place it simplifies the catalog's own aspirational diagram (usually: a downstream bot acts on the first item where fanning out would multiply container starts — see `docs/fan-out.md`):
+**16 swarms** (`examples/swarms/`), each with a header comment documenting
+any place it simplifies the catalog's own aspirational diagram:
 
 | Swarm | What it does |
 |---|---|
-| `daily-email-recap`, `daily-inbox-recap` | Recap the inbox to a PDF in Drive, notify or email the link (the two original, pre-catalog swarms). |
+| `daily-email-recap`, `daily-inbox-recap` | Recap the inbox to a PDF in Drive, notify or email the link. |
 | `github-digest-to-slack` | Summarise a repo's newest issues and post the digest to Slack. |
 | `inbox-autopilot` | Triage the inbox, draft replies to anything urgent, send them all once approved. |
 | `morning-brief` | Triage the inbox and prep today's meetings into one brief. |
 | `never-drop-a-thread` | Find sent threads that never got a reply, draft and send a nudge for every one. |
 | `content-engine` | Brainstorm post ideas, write up the first one, publish it once approved. |
 | `repurpose-everything` | Turn a new Drive file into posts across formats, publish once approved. |
-| `listen-and-reply` | Pull new X mentions every weekday, draft replies to the ones worth answering, and send the list. |
-| `lead-to-meeting` | Log, enrich, and route a new lead; draft a scheduling reply once approved. |
+| `listen-and-reply` | Pull new X mentions every weekday, draft replies to the ones worth answering, send the list. |
+| `lead-to-meeting` | Log, enrich and route a new lead; draft a scheduling reply once approved. |
 | `support-desk-lite` | Triage support mail, flag anything urgent to Slack, send every drafted reply once approved. |
 | `bookkeeping-assistant` | File today's receipts and produce a spend report with a chart. |
 | `get-paid` | Find every overdue invoice, send each reminder once approved, post one summary of what went out. |
 | `meeting-to-action` | File a new transcript's notes, flag action items, draft follow-ups. |
 | `weekly-client-report` | Build a client's spend report and email them the link once approved. |
-| `supervisor-review` | A review board picks reviewers from your role library — two to five, plus any you've marked *on every team* — each reviews in parallel, one synthesis reconciles them (`docs/supervisors.md`). |
+| `supervisor-review` | A review board picks reviewers from your role library, each reviews in parallel, one synthesis reconciles them ([docs/supervisors.md](docs/supervisors.md)). |
 
-## Architecture
+What a bot and a swarm look like as files, in real YAML from this repo:
+[docs/anatomy.md](docs/anatomy.md).
 
-The design principle behind every layer here: a bot container never gets to touch a real credential, and a human never has to understand OAuth, an API key, or a redirect URI to connect a service. Concretely:
+## What is actually built
 
-```mermaid
-flowchart TB
-    swarm["<b>nanoswarm.yaml</b><br/>which bots, wired how"]
-    planner["<b>planner</b><br/>type-checks every snap, builds the DAG"]
-    runner["<b>runner</b><br/>one container per bot, in wave order"]
-    swarm --> planner --> runner
+The bot contract, the planner, the runner, the 1Claw bridge, seven direct
+service clients, the composer, the foundry, the scheduler, approvals,
+fan-out, run history and the WebUI are all real and exercised against live
+APIs. Published packages are not: no release is tagged, so `brew` and `npx`
+do not work yet. Container-level network egress is reported per bot rather
+than enforced. No bot ships connected to a real account — every one starts on
+`connection: demo` until a human deliberately flips it.
 
-    subgraph sandbox["Docker: non-root, read-only filesystem, no credentials inside"]
-        direction LR
-        a["<b>nanobot-agent</b><br/>runs bot A's spec.steps"]
-        b["<b>nanobot-agent</b><br/>runs bot B's spec.steps"]
-    end
-    runner --> a
-    runner --> b
-    a -- "output to input (a snap)" --> b
+The full list, and the line-by-line table of what is real versus simulated,
+is [docs/status.md](docs/status.md). The gaps that are 1Claw's rather than
+ours — what each one blocks and the honest workaround shipped meanwhile — are
+[docs/1claw-feature-requests.md](docs/1claw-feature-requests.md).
 
-    daemon["<b>nanobotd</b><br/>holds every credential<br/>REST + SSE on 127.0.0.1"]
-    a -. "service.call, ai.generate, approve...<br/>callback over a per-run token" .-> daemon
-    b -. " " .-> daemon
+## Documentation
 
-    daemon --> fixtures["<b>demo fixtures</b><br/>connection: demo, the default"]
-    daemon --> oneclaw["<b>1Claw</b><br/>vault secrets, Shroud, approvals"]
-    daemon --> clients["<b>direct clients</b><br/>Gmail, Drive, Slack, GitHub,<br/>Stripe, HubSpot, X, LinkedIn"]
-```
+[**docs/**](docs/README.md) has one page per concept, each ending in how to
+run it for real. The ones most people want first:
 
-Every step that needs the outside world — `service.call`, `ai.generate`,
-`web.fetch`, `memory.*`, `approve`, `notify` — is a callback to `nanobotd`
-rather than something the container does for itself. The container holds a
-random per-run token and nothing else; the credentials never leave the
-daemon. One interpreter (`internal/step`) runs every bot's steps whatever
-its harness, so a bot behaves identically on `bare`, `llm` and `openclaw` —
-see `docs/harnesses.md`.
-
-Every branch is reachable from the exact same `nanobot.yaml`, decided per-service by a single `connection:` field. A bot's steps never know or care which branch actually ran.
-
-**The bot contract** (`docs/bot-contract.md`): a bot is any container that reads `/run/inputs.json` (one already-defaulted, already-validated JSON value per declared input port, mounted read-only alongside the bot's own `nanobot.yaml`/`bot.md`/`prompts`/`fixtures` at `/bot`), writes one file per declared output port under `/run/outputs/`, and exits 0 on success. That's the whole interface — `nanobots conform ./bots/<id>` proves a bot honors it without Docker or a network, by running its `spec.steps` in-process against fixture data (`internal/contract`).
-
-**The step interpreter** (`internal/step`): one Go program, baked into every harness image, that executes a bot's declared `spec.steps` in order — `service.call`, `ai.generate`, `transform.render`/`transform.now`/`transform.pick`, `web.fetch`, `memory.get`/`put`, `approve`, `notify`. It runs identically against three interchangeable backends (`step.Deps`):
-- `DemoDeps` — fixture data from `bots/<id>/fixtures/*.json`, no network at all. What `nanobots conform` and the WebUI's demo mode use.
-- `LiveDeps` — the real 1Claw Human API + Shroud, with a per-service `connection:` deciding whether a given service call actually hits 1Claw, hits a direct client (Google/Slack/GitHub/Stripe/HubSpot), does a plain `web.fetch`, or falls back to a fixture.
-- `RemoteDeps` — what actually runs *inside* a container: every method is an HTTP callback to nanobotd, authenticated by a random token issued for that one run and rejected the instant the run ends. The container-side half of "no credential ever touches the container."
-
-**The planner** (`internal/planner`): parses a `nanoswarm.yaml`, resolves each `bots[].use:`/`path:` reference to a real `nanobot.yaml`, type-checks every `snaps[]` connection against the two bots' declared port types (including dotted field paths into a `json`-typed port's own JSON Schema, and numeric indices into a `list<T>` port), and builds/cycle-checks the run DAG. `nanobots plan -f <swarm.yaml>` runs this standalone; the runner runs it before every real execution; the WebUI's visual builder and the AI composer both run it live before a swarm is ever saved or shown.
-
-**The runner** (`internal/runner`): builds the two harness Docker images on first use (`harness/bare` — distroless, no LLM, no browser, also used by the `llm` harness since `ai.generate` is a callback to nanobotd rather than anything in the container; `harness/openclaw` — same interpreter plus headless Chromium for HTML→PDF/PNG rendering), runs each bot in the planner's topological order as `docker run --rm --read-only --user <non-root>`, mounts a content-addressed blob store for `file`-typed ports, and streams every log line to the run's SSE subscribers as it happens — including the exact moment an `approve` step opens a gate (`docs/approvals.md`).
-internal/wiring/    Shared startup wiring, so nanobotd and the CLI build it once
-
-**The 1Claw bridge** (`internal/oneclaw`): a real client for 1Claw's Human API — API-key-for-bearer-token exchange, agent creation/update (including `memory_enabled`, `shroud_config`), Shroud chat completions, vault create/ensure, vault secret read/write (`PutSecret`/`GetSecret`, verified against `@1claw/openapi-spec`), agent memory get/put, approval request/wait, and a Browser Bridge client (pairing, credential bindings, gated browser sessions — real and tested, currently used for none of this build's bots specifically, because it's a dead end for Google; see `docs/browser-bridge.md`).
-
-**Direct service clients** (`internal/google`, `internal/x`, `internal/linkedin`, `internal/slack`, `internal/github`, `internal/stripe`, `internal/hubspot`): standalone REST clients for what 1Claw doesn't natively cover, split into two families. Google, X, and LinkedIn are OAuth flows — Google was built first with its own hand-rolled PKCE+loopback client (no client secret, since 1Claw's own OAuth registry has no Gmail scopes and Browser Bridge is a dead end specifically for Google — it drives a real, CDP-automated browser, and Google refuses sign-in outright on any automation-controlled browser instance); X and LinkedIn came later and share a small, provider-agnostic OAuth2+PKCE core instead (`internal/oauth2pkce`) rather than duplicating that flow a second and third time — X is a true public client like Google (PKCE only, no secret), LinkedIn isn't (it requires a client secret on the token exchange even with PKCE, and may issue no refresh token at all, both documented in `internal/linkedin`'s package doc and handled honestly in `internal/step/linkedin_live.go`). Slack, GitHub, Stripe, and HubSpot are simpler: a token that never expires, so it's paste-once-into-a-vault-secret rather than an OAuth dance (`internal/step/vault_token.go` is the shared "fetch a static secret from the vault at most once per process" logic all four share).
-
-## What's real vs. simulated
-
-Being explicit about this matters more here than in most projects, because so much of what Nanobots *is* is "the layer that hides whether something is real" — from a user's perspective a bot's Gmail call should look the same whether it's live or fixture data, which makes it easy to accidentally paper over what's actually happening. So, plainly:
-
-| Real | Simulated / not yet |
+| | |
 |---|---|
-| One binary serves the WebUI and the API on a single port (`make build && nanobots up`), and 34 of 39 bots run without Docker. A 23MB distroless container image builds from `Dockerfile` | Published packages: the GoReleaser config and the npx shim exist and validate, but no release is tagged, so `brew install` and `npx nanobots` do not work yet. `nanobots deploy 1claw` needs an image you have pushed yourself — there is no 1Claw runtime template that runs a Go binary, and no file-transfer API to carry your own swarms to a hosted one ([`docs/hosting.md`](docs/hosting.md)) |
-| 1Claw Human API, Shroud, vault secrets, agent memory, approval requests | 1Claw's execution-intent bindings (`internal/oneclaw.Execute`) assume a binding already exists on the agent — provisioning one from a `nanobot.yaml` service isn't wired up |
-| Docker execution for the 5 browser bots: non-root, read-only fs, real container-to-container I/O wiring | Guardrails' `network_egress` allowlist is reported per bot, not enforced as an actual container network policy |
-| The step interpreter, for every harness type, incl. `web.fetch` and PDF/PNG rendering | The *dynamic agent loop* a harness name like `openclaw` implies — every harness today runs the same fixed, pre-written `spec.steps` list, not an LLM deciding what to do (`docs/harnesses.md`) |
-| The Google OAuth client (`internal/google`) — real PKCE flow, real REST calls (Gmail, Drive, Sheets, Calendar), unit-tested against fake servers | No bot ships with a non-demo Google connection by default — every bot's Google service is `connection: demo` until a human deliberately flips it (`docs/connections.md`) |
-| The Slack/GitHub/Stripe/HubSpot clients — real REST calls, unit-tested against fake servers; `notify`'s Slack delivery is genuinely wired, not a no-op, once connected | Google Business Profile replies (`review-responder`) need a dedicated integration — out of scope for this pass, stays on `connection: demo`, called out in `docs/connections.md` |
-| The X and LinkedIn OAuth2+PKCE clients (`internal/x`, `internal/linkedin`) and the shared `internal/oauth2pkce` core — real token exchange/refresh, real posting calls, unit-tested against fake servers; wired end to end into `post-publisher`'s `x`/`linkedin` services and the WebUI's Settings page | No bot ships with a non-demo `x`/`linkedin` connection by default — like Google, `post-publisher` stays on `connection: demo` until a human deliberately connects a real account and flips it (`docs/connections.md`); live end-to-end posting hasn't been exercised against a real X/LinkedIn developer app in this build, only against fake test servers |
-| The AI composer — a real Shroud call, a real planner validation pass, a real hydrate-into-the-builder handoff | The composer never auto-saves or auto-runs; a hallucinated bot id or type mismatch surfaces as a normal validation error for the human to see, by design |
-| The unified Connect UI (Settings) — real vault writes/reads, real Google OAuth kicked off server-side | Connections are always whole-port-to-port in the visual builder and the composer (no picking a nested field of a `json` output the way a couple of example swarms do by hand); a swarm's trigger/vars/deploy config has no UI yet; canvas layout isn't persisted |
-| Approvals — a run blocks, flips to `awaiting_approval`, and waits for a real decision from the WebUI, the CLI, or 1Claw's own queue on your phone; first answer wins (`docs/approvals.md`) | A local answer leaves the mirrored 1Claw approval pending, since its API has no cancel |
-| Per-item fan-out *and* the join back — a `.*` snap runs a downstream bot once per list item with one approval covering the batch, and `join: lines\|json\|count\|flatten\|first` collapses the results into one value for a bot that isn't fanned out (`docs/fan-out.md`). `get-paid` now chases every overdue invoice and posts one summary, where it used to chase the first | Two swarms still snap `.0`: `content-engine` and `meeting-to-action` would fan out cleanly but multiply container starts, which is a cost decision rather than a missing primitive |
-| Basic/advanced mode toggle — a real, tested UI gate | Purely a UI-visibility gate; it never changes what actually executes |
+| [setup.md](docs/setup.md) | `nanobots init`, and the two kinds of 1Claw key |
+| [anatomy.md](docs/anatomy.md) | what a bot and a swarm look like |
+| [going-live.md](docs/going-live.md) | from demo data to real accounts |
+| [architecture.md](docs/architecture.md) | how the pieces fit, and why no credential reaches a container |
+| [bot-contract.md](docs/bot-contract.md) | the whole interface a bot honors |
+| [connections.md](docs/connections.md) | every connection method, per provider |
+| [scheduler.md](docs/scheduler.md) | cron triggers and the circuit breaker |
+| [approvals.md](docs/approvals.md) | the gate, and answering from your phone |
+| [testing.md](docs/testing.md) | the verification pass, and the claims that check themselves |
+| [status.md](docs/status.md) | what works today, real vs. simulated |
 
-**A real constraint hit repeatedly while building and testing this, worth knowing about**: 1Claw vaults can require passkey verification before `GetSecret` succeeds, depending on the account's own vault security tier — a 403 `"Passkey verification required to access vault secrets"` from 1Claw itself, not a bug here. It means a connected credential can sit in the vault but be temporarily unreadable until a human unlocks it with their passkey in a browser. It surfaced again during this session's final live-run pass (the connections status check correctly reported every service as disconnected while it was in effect) and correctly errors bots that need it instead of pretending to deliver. Bots and swarms that only need Shroud (`ai.generate`) or `web.fetch` are unaffected — that's most of the busy-person hero path — and account-level agent caps are a separate, real, tier-based constraint (this account is capped at 10 concurrent agents on its current plan; deleting an unused agent frees the slot instantly since agents are recreated on demand by name).
+The full product spec lives in
+[`context/NANOBOTS-BLUEPRINT.md`](context/NANOBOTS-BLUEPRINT.md) and
+[`context/NANOBOTS-CATALOG.md`](context/NANOBOTS-CATALOG.md). Treat those as
+the source of truth for the YAML schemas and the launch catalog; everything
+under `docs/` covers what is actually built, and if it contradicts the code,
+the code wins.
 
-## Repo layout
+## Contributing
 
-```
-cmd/nanobotd/       Go daemon — REST+SSE API, binds loopback only
-cmd/nanobots/       Go CLI — plan, conform, schema, up, run, connect (init/add/save/publish/compile: not yet)
-cmd/nanobot-agent/  the container entrypoint every harness image runs
-internal/schema/    Nanobot/Nanoswarm Go types, YAML loading, JSON Schema generation
-internal/planner/   resolves a swarm's bots, type-checks snaps, builds/cycle-checks the run DAG
-internal/step/      the universal step interpreter + Demo/Live/Remote Deps backends, incl. web.fetch and all direct-service dispatch
-internal/contract/  the conformance test runner (`nanobots conform`)
-internal/oneclaw/   real 1Claw Human API + Shroud + vaults/secrets + memory + agent CRUD + Browser Bridge client
-internal/google/    real Gmail/Drive/Sheets/Calendar OAuth + REST client (PKCE, no client secret)
-internal/oauth2pkce/ shared, provider-agnostic OAuth2+PKCE core (used by internal/x, internal/linkedin)
-internal/x/         real X (Twitter) OAuth2+PKCE client (post a tweet)
-internal/linkedin/  real LinkedIn OAuth2+PKCE client (resolve member URN, post a share)
-internal/slack/     real Slack Web API client (chat.postMessage)
-internal/github/    real GitHub REST client (issues.list)
-internal/stripe/    real Stripe REST client (invoices.list)
-internal/hubspot/   real HubSpot CRM REST client (contact search/upsert)
-internal/foundry/   the composer's escalation path — a sandboxed coding agent authors a new bot on a real gap, self-tests it, and gates it behind human approval
-internal/scheduler/ a real cron scheduler — polls examples/swarms/ and fires any swarm whose trigger is due, no dependency
-internal/runner/    Docker-backed orchestrator: builds harness images, runs bots, wires I/O
-internal/api/       REST+SSE handlers, incl. the visual builder's + Connect UI's + AI composer's + foundry's endpoints and the container callback endpoints
-internal/daemon/    wires the above together; shared by cmd/nanobotd and `nanobots up`
-harness/            Dockerfiles for the bot runtime images (bare, openclaw) and the foundry's own agent sandbox (foundry-agent)
-schemas/            Generated JSON Schema for Nanobot / Nanoswarm
-bots/               Individual nanobots (nanobot.yaml + instructions + fixtures) — 30 today
-examples/swarms/    Example nanoswarms — 14 today
-web/                WebUI — Vite + React + TypeScript + Tailwind + Radix primitives
-  src/pages/           LandingPage, BotLibrary, SwarmsPage (composer + gallery + gap/foundry flow), SwarmView, BuilderPage, FoundryJobPage, RunsPage, RunDetail, SettingsPage
-  src/components/      shared UI (run log, results, snap trail, YAML drawer, basic/advanced Switch, BotCard, ...)
-  src/components/builder/  the visual swarm builder's canvas, grouped palette, and per-node inspector
-  src/lib/uiMode.ts    basic/advanced mode hook (localStorage-backed)
-docs/               Concept docs, each ending in how to run it for real
-```
+`CLAUDE.md` is the working style, and the short version is: never let the app
+say something that is not so, measure before improving, verify in a real
+browser, and keep the docs current in the same commit as the change. The full
+verification pass:
 
-## Testing
-
-Per the project's own working style, expensive verification is a single consolidated pass at the end rather than after every piece — here's exactly what that pass covers and how to repeat it.
-
-**1. Everything that's cheap and automated:**
-
-```
-go build ./... && go vet ./... && go test ./...
-```
-
-670 table-driven Go tests across every package (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`, so the number stays checkable), including:
-- `internal/contract`'s `TestRunConformanceOnLaunchBots` — auto-discovers and conformance-tests all 39 bots under `bots/` against their own fixtures, no Docker or network.
-- `internal/planner`'s `TestPlanAllExampleSwarms` — auto-discovers and type-checks all 16 swarms under `examples/swarms/`.
-- httptest-mocked 1Claw/Google/Slack/GitHub/Stripe/HubSpot/X/LinkedIn API clients, built against each provider's real, documented endpoint shapes (verified against `@1claw/openapi-spec` and each provider's own docs, not guessed).
-- `internal/runner`'s run-history tests — a run really written to a temp dir, a second store really reading it back, plus the awkward cases: a corrupt file, an over-cap directory, and a run left mid-flight by a restart (`docs/run-history.md`).
-
-```
+```sh
+go build ./... && go vet ./... && go test ./... -race
 cd web && npx tsc -b && npm run test
 ```
-
-TypeScript strict-mode compilation and Vitest + Testing Library component tests, including the AI composer's request/response types and the `useUIMode` hook.
-
-**2. Real Docker executions against the live 1Claw API** (needs `ONECLAW_API_KEY`, Docker running):
-
-```
-go run ./cmd/nanobots run -f examples/swarms/never-drop-a-thread.yaml
-go run ./cmd/nanobots run -f examples/swarms/content-engine.yaml
-```
-
-Both were run for real this session, end to end: real openclaw/bare Docker containers, a real Shroud-generated draft, a real approval gate answered from the terminal, and — for `content-engine` specifically — two independent live `ai.generate` calls chained across separate containers followed by a real (demo-connection) publish. Both finished `succeeded`.
-
-**3. A live Puppeteer pass** exercising the two things a screenshot proves better than a unit test: the AI composer producing a real validated draft from the project's own example prompt, and the basic/advanced toggle actually gating the UI. Driven ad hoc against a real `nanobotd` + `vite dev`, not a project dependency — the shape of it:
-
-1. Load the app, log in, confirm basic mode's nav has no "Bot library" entry.
-2. Type `Help me automate a daily email recap and list it by priority` into the composer box, click **Automate it**.
-3. Poll for the builder to open with a validated draft (a real `POST /api/compose` round trip to Shroud). Confirmed this session: a 4-bot draft (`inbox-triage` → `recap-emails-to-pdf` → `drive-save` → `notify`) came back named "Daily Priority Email Recap", already marked "ready to run" by the planner.
-4. Flip the header toggle to Advanced, confirm "Bot library" and "Build manually" now appear.
-
-That practice has also caught real bugs no unit test would have over the course of this build: the visual builder's own null-array crash and snap-trail mislabeling, a CSS Grid layout bug where the bot palette silently couldn't scroll past its first screenful, and a pre-existing `email-drive-file` timeout bug (its `max_runtime_secs: 60` guardrail was too short for its own approval gate to ever be answered in time).
 
 ## License
 
