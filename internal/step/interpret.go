@@ -24,6 +24,13 @@ type LogLine struct {
 type Result struct {
 	Outputs map[string]any
 	Log     []LogLine
+	// Stopped is a bot that ended early on purpose because there was
+	// nothing to do, with StopReason saying why. Its declared output ports
+	// are deliberately not filled in — there was nothing to put in them —
+	// so a caller must treat this as "produced nothing, successfully"
+	// rather than as a failure or as an empty answer. See the stop.if step.
+	Stopped    bool
+	StopReason string
 }
 
 // Interpret runs every step in nb.Spec.Steps, in order, against resolvedInputs
@@ -255,6 +262,31 @@ func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, swarmVars map[
 				}
 			}
 
+		case "stop.if":
+			// The primitive a watch bot needs: end here, successfully,
+			// because nothing has changed.
+			//
+			// Every bot before this ran its whole step list every time, so
+			// `drive-watch` on an hourly cron downloaded and reprocessed
+			// the same newest file every hour — the swarm behind it posting
+			// the same document twenty-four times a day. The bot could see
+			// it was the same file; it had no way to say so.
+			//
+			// Deliberately not a general `if`. A branch needs a second
+			// list of steps, somewhere to put it in the YAML, and a
+			// planner that can type-check both arms. One early exit covers
+			// the case that actually exists and adds no nesting.
+			left := fmt.Sprint(resolveValue(s.Value, ctx))
+			right := fmt.Sprint(resolveValue(s.Equals, ctx))
+			if left == right {
+				res.Stopped = true
+				res.StopReason = firstNonEmpty(fmt.Sprint(resolveValue(s.Summary, ctx)), "nothing to do")
+				log(s.Name, "nothing to do — %s", res.StopReason)
+				return res, nil
+			}
+			out = false
+			log(s.Name, "carrying on: %q is not %q", left, right)
+
 		case "notify":
 			message, _ := resolveValue(s.Params["message"], ctx).(string)
 			channel, _ := resolveValue(s.Params["channel"], ctx).(string)
@@ -285,6 +317,11 @@ func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, swarmVars map[
 		lastOutput = out
 	}
 
+	if res.Stopped {
+		// A bot that stopped has no outputs by definition, and the check
+		// below would report that as the failure it is not.
+		return res, nil
+	}
 	for _, port := range nb.Spec.Ports.Outputs {
 		val, ok := outputsCtx[port.Name]
 		if !ok {
@@ -759,6 +796,7 @@ func Types() []string {
 		"memory.remember",
 		"approve",
 		"notify",
+		"stop.if",
 	}
 }
 

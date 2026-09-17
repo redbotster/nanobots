@@ -856,3 +856,87 @@ func TestAnApprovalsRiskTierIsResolvedLikeItsSummary(t *testing.T) {
 		})
 	}
 }
+
+// The primitive a watch bot needs: end here, successfully, because nothing
+// has changed.
+//
+// Before this existed, every bot ran its whole step list every time, so
+// `drive-watch` on an hourly cron re-downloaded and reprocessed the same
+// newest file every hour — and the swarm behind it posted the same document
+// twenty-four times a day. The bot could see it was the same file. It had
+// no way to say so.
+func TestStopIfEndsTheBotWithoutFailingIt(t *testing.T) {
+	bot := func() *schema.Nanobot {
+		return simpleBot([]schema.Step{
+			{
+				Name: "seen", Type: "memory.get", Key: "last_id",
+				Output: "seen",
+			},
+			{
+				Name: "fresh", Type: "stop.if",
+				Value:   "{{inputs.newest}}",
+				Equals:  "{{steps.seen.output}}",
+				Summary: "no new file since the last run",
+			},
+			{
+				Name: "remember", Type: "memory.put", Key: "last_id",
+				Value: "{{inputs.newest}}",
+			},
+			{
+				Name: "emit", Type: "transform.pick",
+				Data:    "{{inputs.newest}}",
+				Outputs: map[string]string{"file_id": "{{steps.emit.output}}"},
+			},
+		}, []schema.OutputPort{{Name: "file_id", Type: "string"}})
+	}
+
+	t.Run("the same id as last time stops, and writes nothing", func(t *testing.T) {
+		deps := &fakeDeps{memory: map[string]string{"test-bot/last_id": "file-7"}}
+		res, err := Interpret(bot(), map[string]any{"newest": "file-7"}, nil, deps)
+		if err != nil {
+			t.Fatalf("a bot with nothing to do reported an error: %v", err)
+		}
+		if !res.Stopped {
+			t.Error("the bot did not stop")
+		}
+		if res.StopReason != "no new file since the last run" {
+			t.Errorf("reason = %q", res.StopReason)
+		}
+		if len(res.Outputs) != 0 {
+			t.Errorf("a stopped bot produced outputs: %v", res.Outputs)
+		}
+		// And it must not have moved the watermark on, or the next genuinely
+		// new file would be compared against the wrong thing.
+		if got := deps.memory["test-bot/last_id"]; got != "file-7" {
+			t.Errorf("last_id = %q after a stop", got)
+		}
+	})
+
+	t.Run("a different id carries on", func(t *testing.T) {
+		deps := &fakeDeps{memory: map[string]string{"test-bot/last_id": "file-7"}}
+		res, err := Interpret(bot(), map[string]any{"newest": "file-8"}, nil, deps)
+		if err != nil {
+			t.Fatalf("Interpret: %v", err)
+		}
+		if res.Stopped {
+			t.Error("the bot stopped on a new file")
+		}
+		if res.Outputs["file_id"] != "file-8" {
+			t.Errorf("outputs = %v", res.Outputs)
+		}
+		if got := deps.memory["test-bot/last_id"]; got != "file-8" {
+			t.Errorf("last_id = %q, want the new file remembered", got)
+		}
+	})
+
+	t.Run("nothing remembered yet is not a match", func(t *testing.T) {
+		deps := &fakeDeps{}
+		res, err := Interpret(bot(), map[string]any{"newest": "file-1"}, nil, deps)
+		if err != nil {
+			t.Fatalf("Interpret: %v", err)
+		}
+		if res.Stopped {
+			t.Error("the first ever run stopped, so a watch would never fire once")
+		}
+	})
+}

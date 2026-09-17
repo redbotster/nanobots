@@ -232,6 +232,18 @@ func (o *Orchestrator) runLevels(run *Run, rs *planner.ResolvedSwarm, levels [][
 			if err == nil {
 				continue
 			}
+			var nothing *NothingToDoError
+			if errors.As(err, &nothing) {
+				// A watch that looked and found nothing new. Everything
+				// downstream is skipped because its inputs genuinely never
+				// arrived, and the run still succeeds — this is the correct
+				// outcome of a watch, not a tolerated failure, and an
+				// hourly one should read as quiet rather than as
+				// twenty-four warnings.
+				run.Log(botID, "", "nothing to do — %s", nothing.Reason)
+				gone[botID] = "nothing to do: " + nothing.Reason
+				continue
+			}
 			if onErrorContinue(rs, botID) {
 				// The swarm said this bot's failure doesn't end the run.
 				// Recorded rather than swallowed: a run that quietly stops
@@ -286,6 +298,12 @@ func (o *Orchestrator) runOneBot(run *Run, rs *planner.ResolvedSwarm, botID stri
 // this bot is not retryable either — there is nothing left to run into.
 func worthRetrying(err error) bool {
 	msg := err.Error()
+	var nothing *NothingToDoError
+	if errors.As(err, &nothing) {
+		// Retrying a watch that found nothing would poll the same folder
+		// three times in a row and reach the same answer.
+		return false
+	}
 	for _, decision := range []string{
 		"not approved",
 		"the run ended before",

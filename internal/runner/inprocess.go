@@ -104,6 +104,12 @@ func interpretInProcess(
 	if got.err != nil {
 		return fmt.Errorf("bot %s: %w", nb.Metadata.Name, got.err)
 	}
+	if got.res.Stopped {
+		// Not a failure and not an empty answer: this bot looked, found
+		// nothing new, and wrote nothing. runLevels turns it into a skip
+		// for everything downstream. See the stop.if step.
+		return &NothingToDoError{Bot: nb.Metadata.Name, Reason: got.res.StopReason}
+	}
 
 	outDir := filepath.Join(runDir, "outputs")
 	if err := os.MkdirAll(outDir, 0o755); err != nil {

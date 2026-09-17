@@ -104,6 +104,17 @@ func run() error {
 
 	outDir := filepath.Join(runDir, "outputs")
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		return err
+	}
+	if result.Stopped {
+		// Stopped on purpose, with nothing to hand on. Exit 0 and no
+		// outputs is indistinguishable from a bot that forgot to write
+		// any, so leave the reason where the runner looks for it — see
+		// runner.NothingToDoMarker and docs/bot-contract.md.
+		return os.WriteFile(filepath.Join(outDir, ".nothing-to-do"),
+			[]byte(result.StopReason), 0o644)
+	}
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return fmt.Errorf("create outputs dir: %w", err)
 	}
 	for name, val := range result.Outputs {

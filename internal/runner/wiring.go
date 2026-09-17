@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/redbotster/nanobots/internal/planner"
@@ -156,7 +157,24 @@ func (o *Orchestrator) resolveSnapValueAt(run *Run, snap schema.Snap, at fanInde
 // <port>.mime) for a file port, which get moved into nanobotd's own
 // persistent blob store so later bots (running in their own, separate
 // containers) and the WebUI can both reach them by nbf:// reference.
+// NothingToDoMarker is how a container says it stopped early on purpose.
+//
+// The in-process path returns a value; a container only has its filesystem
+// and an exit code, and exit 0 with no outputs is indistinguishable from a
+// bot that forgot to write any. So the agent leaves this file, holding the
+// reason, and collectOutputs reads it before deciding anything is missing.
+// Named in docs/bot-contract.md, because any container honouring the
+// contract may write it.
+const NothingToDoMarker = ".nothing-to-do"
+
 func collectOutputs(nb *schema.Nanobot, blobs step.BlobStore, outDir string) (map[string]any, error) {
+	if raw, err := os.ReadFile(filepath.Join(outDir, NothingToDoMarker)); err == nil {
+		reason := strings.TrimSpace(string(raw))
+		if reason == "" {
+			reason = "nothing to do"
+		}
+		return nil, &NothingToDoError{Bot: nb.Metadata.Name, Reason: reason}
+	}
 	out := map[string]any{}
 	for _, port := range nb.Spec.Ports.Outputs {
 		jsonPath := filepath.Join(outDir, port.Name+".json")

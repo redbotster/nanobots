@@ -20,7 +20,7 @@ No bot container ever holds a real 1Claw credential, not even a short-lived one.
 
 ## The step types
 
-These twelve are what the interpreter implements. `step.Types()` is the list in Go, and a test checks it against the interpreter's own switch — and this section against that list — so none of the three can drift apart:
+These thirteen are what the interpreter implements. `step.Types()` is the list in Go, and a test checks it against the interpreter's own switch — and this section against that list — so none of the three can drift apart:
 
 | step | does |
 |---|---|
@@ -35,8 +35,33 @@ These twelve are what the interpreter implements. `step.Types()` is the list in 
 | `memory.remember` | record an observation for a recall-capable backend to derive from. Never fails a run |
 | `approve` | block until a human decides (`docs/approvals.md`) |
 | `notify` | send a message to a channel |
+| `stop.if` | end the bot here, successfully, because nothing has changed — the primitive a watch needs |
 
 A step binds its result to a port with `output:`, or pulls several fields out of one result at once with `outputs:`.
+
+### `stop.if`: a watch that finds nothing must be able to say so
+
+Every bot used to run its whole step list every time, which is wrong for anything that watches. `drive-watch` on an hourly cron re-downloaded and reprocessed the same newest file every hour, and the swarm behind it posted the same document twenty-four times a day. The bot could see it was the same file; it had no way to say so.
+
+```yaml
+- name: seen
+  type: memory.get
+  key: last_file_id
+  output: seen
+- name: fresh
+  type: stop.if
+  value: "{{steps.list.output.id}}"
+  equals: "{{steps.seen.output}}"
+  summary: "no new file since the last run"
+```
+
+When `value` and `equals` resolve to the same text, the bot ends there: no further steps, **no output ports produced**, and `summary` recorded as the reason. Anything downstream of it in the swarm is skipped, and the run still **succeeds** — looking and finding nothing is the correct outcome of a watch, not a failure and not an empty answer. An hourly watch should read as quiet runs, not as warnings.
+
+Put the `memory.put` that moves the watermark **after** the `stop.if`, so a run that stops does not record having handled something it did not.
+
+Deliberately not a general `if`. A branch needs a second list of steps, somewhere to put it in the YAML, and a planner that can type-check both arms; one early exit covers the case that exists and adds no nesting.
+
+In a container, the agent signals this by writing `outputs/.nothing-to-do` holding the reason — exit 0 with no outputs is otherwise indistinguishable from a bot that forgot to write any. Any container honouring this contract may write that file.
 
 `transform.render` and `transform.now` run entirely inside the container — rendering needs no credential, so there's no reason to round-trip it through nanobotd.
 

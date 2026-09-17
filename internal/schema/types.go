@@ -91,8 +91,12 @@ type Service struct {
 // Step is one entry in a Nanobot's spec.steps pipeline. Only the fields
 // relevant to its Type are meaningful; see internal/step for the interpreter.
 type Step struct {
-	Name       string         `json:"name" yaml:"name"`
-	Type       string         `json:"type" yaml:"type"` // service.call | ai.generate | http.request | transform.render | transform.now | memory.get | memory.put | memory.search | approve | if | notify | wait
+	Name string `json:"name" yaml:"name"`
+	// Type is one of step.Types(). That list is the authority; this comment
+	// used to name http.request, memory.search, `if` and wait, none of
+	// which the interpreter has ever implemented — a vocabulary that
+	// existed only in a comment, and in the JSON Schema generated from it.
+	Type       string         `json:"type" yaml:"type"`
 	Service    string         `json:"service,omitempty" yaml:"service,omitempty"`
 	Op         string         `json:"op,omitempty" yaml:"op,omitempty"`
 	Params     map[string]any `json:"params,omitempty" yaml:"params,omitempty"`
@@ -128,6 +132,12 @@ type Step struct {
 	Outputs  map[string]string `json:"outputs,omitempty" yaml:"outputs,omitempty"`
 	Summary  string            `json:"summary,omitempty" yaml:"summary,omitempty"`
 	RiskTier string            `json:"risk_tier,omitempty" yaml:"risk_tier,omitempty"`
+	// Equals is stop.if's comparison: when Value resolves to the same text
+	// as Equals, the bot ends there having done nothing, and Summary says
+	// why. Text on both sides on purpose — the thing being compared is an
+	// id, an etag or a timestamp, and "is this the same one as last time"
+	// does not need a type system.
+	Equals string `json:"equals,omitempty" yaml:"equals,omitempty"`
 }
 
 // Guardrails are constraints a bot declares about itself.
