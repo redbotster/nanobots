@@ -73,6 +73,13 @@ A bot with **no** such fixture is treated as having no recall available, not as 
 
 ## Verified
 
+- **A watch remembers what it already handed on.** `drive-watch` stores the
+  id of the last file it emitted and ends the run with `stop.if` when the
+  newest file is that same one ([bot-contract.md](bot-contract.md)). Without
+  it the bot emitted the newest file every run, so an hourly schedule
+  reprocessed the same document twenty-four times a day. The `memory.put`
+  comes *after* the gate on purpose: a run that stops must not record having
+  handled something it did not.
 - **Bots really using it.** Three, each with a matching `memory.remember` so a recall-capable backend has something to derive from: `inbox-triage` recalls what this person has treated as urgent before, `support-triage` what this team has escalated to a human, and `draft-replies` what was already promised or declined to a correspondent. All three are `optional: true`. `support-triage` also ships a `fixtures/memory.recall.json`, so the catalog's conformance run exercises both the answered path and the degraded one rather than only the degraded one.
 
   `inbox-triage` recalls what this person has treated as urgent before (`optional: true`) and remembers each call. On the default key/value backend it logged `memory.recall skipped: this deployment has key/value memory only` and succeeded. Pointed at a recall-capable backend, the same bot and the same swarm — no code change, only `NANOBOTS_MEMORY=honcho` — logged `memory.recall ... -> 74 chars`, hitting `/v3/workspaces/nanobots/peers/inbox-triage/chat` and `/v3/workspaces/nanobots/sessions/inbox-triage-runs/messages`.

@@ -39,6 +39,30 @@ spec:
       service: gdrive
       op: files.list
       params: { folder: "{{inputs.folder}}", order_by: "createdTime desc", max: 1 }
+    # What this bot handed on last time. Nothing remembered yet reads as
+    # "", which never matches a real file id — so the first run of a new
+    # watch fires, rather than swallowing the file that was already there.
+    - name: seen
+      type: memory.get
+      key: last_file_id
+      output: seen
+    # The point of a watch. Without this the bot emitted the newest file
+    # every single run, so an hourly schedule reprocessed the same document
+    # twenty-four times a day — see docs/bot-contract.md.
+    - name: fresh
+      type: stop.if
+      value: "{{steps.list.output.id}}"
+      equals: "{{steps.seen.output}}"
+      summary: "no new file in this folder since the last run"
+    # After the gate, never before: a run that stops must not record having
+    # handled a file it did not hand on.
+    - name: remember
+      type: memory.put
+      key: last_file_id
+      value: "{{steps.list.output.id}}"
+    - name: emit
+      type: transform.pick
+      data: "{{steps.list.output}}"
       outputs:
         file_id: "{{steps.list.output.id}}"
         event: "{{steps.list.output}}"

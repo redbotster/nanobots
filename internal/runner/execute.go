@@ -187,7 +187,12 @@ func (o *Orchestrator) runLevels(run *Run, rs *planner.ResolvedSwarm, levels [][
 		var toRun []string
 		for _, botID := range wave {
 			if why, ok := upstreamMissing(dependsOn[botID], gone); ok {
-				gone[botID] = fmt.Sprintf("skipped: %s", why)
+				// Inherited verbatim, not re-wrapped. Each hop used to add
+				// its own prefix, so the third bot in a chain read
+				// "skipped — notes: skipped: watcher: nothing to do: no new
+				// file…". What everyone behind a stopped watch needs to
+				// know is the same single fact, said once.
+				gone[botID] = why
 				run.Log(botID, "", "skipped — %s", why)
 				continue
 			}
@@ -241,7 +246,7 @@ func (o *Orchestrator) runLevels(run *Run, rs *planner.ResolvedSwarm, levels [][
 				// hourly one should read as quiet rather than as
 				// twenty-four warnings.
 				run.Log(botID, "", "nothing to do — %s", nothing.Reason)
-				gone[botID] = "nothing to do: " + nothing.Reason
+				gone[botID] = fmt.Sprintf("%s had nothing to do: %s", botID, nothing.Reason)
 				continue
 			}
 			if onErrorContinue(rs, botID) {
@@ -250,7 +255,7 @@ func (o *Orchestrator) runLevels(run *Run, rs *planner.ResolvedSwarm, levels [][
 				// notifying anyone every night is the thing to avoid.
 				run.Log(botID, "", "FAILED, but this swarm continues without it: %v", err)
 				run.AddTolerated(botID, err.Error())
-				gone[botID] = "the bot it needed failed, and this swarm was told to continue without it"
+				gone[botID] = fmt.Sprintf("%s failed, and this swarm was told to continue without it", botID)
 				continue
 			}
 			if errors.Is(err, ErrStopped) {
@@ -336,7 +341,15 @@ func retriesFor(rs *planner.ResolvedSwarm, botID string) int {
 // produced outputs, and names the first such bot for the log.
 func upstreamMissing(deps []string, gone map[string]string) (string, bool) {
 	for _, d := range deps {
-		if _, missing := gone[d]; missing {
+		if why, missing := gone[d]; missing {
+			// The stored reason, not just the fact. "watcher never produced
+			// its outputs" is true of a watch that found nothing new, of a
+			// bot that failed under on_error: continue, and of a bot that
+			// was itself skipped — three very different things, and the
+			// difference is exactly what someone reading a quiet run wants.
+			if why != "" {
+				return why, true
+			}
 			return fmt.Sprintf("%s never produced its outputs", d), true
 		}
 	}
