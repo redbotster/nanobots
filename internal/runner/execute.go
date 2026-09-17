@@ -182,6 +182,12 @@ func (o *Orchestrator) runLevels(run *Run, rs *planner.ResolvedSwarm, levels [][
 	// Skipping is transitive for free: a skipped bot joins the set, so
 	// anything behind it is skipped on the next wave too.
 	gone := map[string]string{} // botID -> why its outputs never arrived
+	// Whether anything in this run actually did work, and the first reason
+	// it did not. A watch that finds nothing leaves a run where every bot
+	// either stopped or was skipped behind one — true, successful, and
+	// worth saying out loud rather than filing as another "succeeded".
+	didWork := false
+	quietReason := ""
 
 	for _, wave := range levels {
 		var toRun []string
@@ -235,6 +241,7 @@ func (o *Orchestrator) runLevels(run *Run, rs *planner.ResolvedSwarm, levels [][
 		for _, botID := range toRun {
 			err := results[botID]
 			if err == nil {
+				didWork = true
 				continue
 			}
 			var nothing *NothingToDoError
@@ -247,6 +254,9 @@ func (o *Orchestrator) runLevels(run *Run, rs *planner.ResolvedSwarm, levels [][
 				// twenty-four warnings.
 				run.Log(botID, "", "nothing to do — %s", nothing.Reason)
 				gone[botID] = fmt.Sprintf("%s had nothing to do: %s", botID, nothing.Reason)
+				if quietReason == "" {
+					quietReason = nothing.Reason
+				}
 				continue
 			}
 			if onErrorContinue(rs, botID) {
@@ -270,6 +280,9 @@ func (o *Orchestrator) runLevels(run *Run, rs *planner.ResolvedSwarm, levels [][
 		if len(fatal) > 0 {
 			return waveError(toRun, fatal)
 		}
+	}
+	if !didWork && quietReason != "" {
+		run.SetNothingToDo(quietReason)
 	}
 	return nil
 }

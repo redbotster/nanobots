@@ -86,6 +86,11 @@ func runSummaryToJSON(run *runner.Run) map[string]any {
 	if run.WasStoppedByUser() {
 		out["stopped_by_user"] = true
 	}
+	// Same reasoning: only when there is something to say. A quiet watch
+	// run is the only kind that carries this.
+	if why := run.GetNothingToDo(); why != "" {
+		out["nothing_to_do"] = why
+	}
 	return out
 }
 
@@ -140,7 +145,11 @@ func runToJSON(run *runner.Run) map[string]any {
 		// Whether someone stopped this on purpose. Without it a run you
 		// ended yourself is indistinguishable from one that broke — same
 		// red dot, same "failed".
-		"stopped_by_user":   run.WasStoppedByUser(),
+		"stopped_by_user": run.WasStoppedByUser(),
+		// Why this run did no work, when a watch found nothing new. A run
+		// where every bot was skipped is a success, and saying only
+		// "succeeded" about it hides the one run in a day that acted.
+		"nothing_to_do":     run.GetNothingToDo(),
 		"swarm_path":        run.SwarmPath,
 		"log":               run.LogEntries(),
 		"pending_approvals": pending,

@@ -126,6 +126,16 @@ type Run struct {
 	// body. Reaches every bot's input templates as {{trigger.payload}}.
 	// Set once at construction and never mutated, like SwarmPath.
 	TriggerPayload any `json:"trigger_payload,omitempty"`
+	// NothingToDo is why a run did no work: a watch looked and found
+	// nothing new, so every bot either stopped or was skipped behind one.
+	//
+	// Not a status. The run genuinely succeeded — it did exactly what a
+	// watch is for — and calling it anything else would make an hourly
+	// schedule look broken. But "succeeded" alone, on twenty-four rows a
+	// day, hides the one run that actually did something, which is the
+	// only row anybody is looking for.
+	NothingToDo string `json:"nothing_to_do,omitempty"`
+
 	// Tolerated are bots that failed while the swarm was told to continue
 	// without them. Guarded by mu — read it with GetTolerated.
 	Tolerated []ToleratedFailure `json:"tolerated,omitempty"`
@@ -417,6 +427,20 @@ func (r *Run) AddTolerated(bot, msg string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.Tolerated = append(r.Tolerated, ToleratedFailure{Bot: bot, Error: msg})
+}
+
+// SetNothingToDo records that this run found nothing to do, and why.
+func (r *Run) SetNothingToDo(reason string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.NothingToDo = reason
+}
+
+// GetNothingToDo returns why this run did no work, or "" if it did some.
+func (r *Run) GetNothingToDo() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.NothingToDo
 }
 
 // GetTolerated returns the failures this run continued past.

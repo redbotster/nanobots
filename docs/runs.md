@@ -48,6 +48,28 @@ reported alongside it, and everything that reads a run uses it:
   by hand are not a swarm that is broken, and pausing its schedule over them
   would be the app misreading a deliberate act
 
+## A run that found nothing to do says so
+
+A watch bot on a schedule produces a run every time it fires, and most of
+those runs correctly do nothing: `drive-watch` looks at the folder, sees the
+same file as last time, and stops ([bot-contract.md](bot-contract.md)).
+
+Those runs **succeed**, because that is what happened. But an hourly watch
+writes twenty-four of them a day, and a list where all twenty-four say
+"succeeded" hides the one that acted — the same problem a wall of identical
+red failures had, where eighty-five rows buried the two that were different.
+
+So a run whose bots all either stopped or were skipped behind one carries
+`nothing_to_do` with the reason, and the Runs page renders it as a muted dot
+reading *nothing to do*, with the reason underneath and consecutive ones
+collapsed into "and 23 more with nothing to do".
+
+It is deliberately not a status. The run is `succeeded`; the scheduler's
+circuit breaker sees a success, because a watch finding nothing is the
+system working. Making it a fourth status would have meant every consumer —
+history, the breaker, the filters, the API — learning a new word for
+"fine".
+
 ## Polling costs almost nothing now
 
 `GET /api/runs` is polled every two seconds by the Runs page and the

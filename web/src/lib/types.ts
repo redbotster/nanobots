@@ -122,6 +122,12 @@ export interface RunCore {
    * "failed" — it did not finish — but a run you ended yourself should not
    * look like one that broke. */
   stopped_by_user?: boolean;
+  /** Why this run did no work: a watch looked and found nothing new, so
+   * every bot either stopped or was skipped behind one. The status is
+   * still "succeeded", because that is what happened — but an hourly watch
+   * writes twenty-four of those a day, and a list that calls them all
+   * "succeeded" hides the one that acted. */
+  nothing_to_do?: string;
 }
 
 /** What GET /api/runs returns per run: everything a list renders, and

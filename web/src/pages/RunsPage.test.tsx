@@ -81,3 +81,36 @@ describe("RunsPage", () => {
     expect(screen.queryByText("morning-brief")).toBeNull();
   });
 });
+
+// A watch that finds nothing new produces a run an hour that correctly does
+// nothing. Twenty-four rows saying "succeeded" bury the one row that acted
+// just as effectively as a wall of red buried the two failures that were
+// different — which is the problem the failure collapsing already solved.
+describe("a run that found nothing to do", () => {
+  it("says so instead of just succeeding, and collapses the repeats", async () => {
+    withRuns([
+      run({ id: "a", status: "succeeded", swarm_name: "meeting-to-action", error: undefined }),
+      run({
+        id: "b",
+        status: "succeeded",
+        swarm_name: "meeting-to-action",
+        error: undefined,
+        nothing_to_do: "no new file in this folder since the last run",
+      }),
+      run({
+        id: "c",
+        status: "succeeded",
+        swarm_name: "meeting-to-action",
+        error: undefined,
+        nothing_to_do: "no new file in this folder since the last run",
+      }),
+    ]);
+    render(<RunsPage />);
+
+    expect(screen.getByText("nothing to do")).toBeTruthy();
+    expect(screen.getByText(/no new file in this folder since the last run/)).toBeTruthy();
+    expect(screen.getByText(/and 1 more with nothing to do/)).toBeTruthy();
+    // The run that did work is not swallowed into the group.
+    expect(screen.getByText("succeeded")).toBeTruthy();
+  });
+});
