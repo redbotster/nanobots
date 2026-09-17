@@ -158,9 +158,9 @@ func TestLateApprovalDoesNotResurrectAFailedRun(t *testing.T) {
 // live in different packages and drifted silently; this is what notices.
 func TestContainerHTTPTimeoutOutlastsApprovals(t *testing.T) {
 	deps := step.NewRemoteDeps("http://host.docker.internal:7474", "token", nil)
-	if deps.HTTPClient.Timeout <= approvalTimeout {
+	if deps.HTTPClient.Timeout <= ApprovalTimeout {
 		t.Errorf("RemoteDeps HTTP timeout is %s but approvals may take %s — a human approving inside the budget would still fail the run",
-			deps.HTTPClient.Timeout, approvalTimeout)
+			deps.HTTPClient.Timeout, ApprovalTimeout)
 	}
 }
 

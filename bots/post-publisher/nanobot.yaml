@@ -58,7 +58,14 @@ spec:
 
   guardrails:
     pii: allow
-    max_runtime_secs: 60
+    # A bot that stops to ask a person has to budget for a person. This was
+    # 60, so a run that opened "Publish this post to X and LinkedIn?" was
+    # killed one minute later — four real runs in two days, on a Monday
+    # cron, each one failing while the question was still on screen. The
+    # other three approving bots in the catalog all use 1800, which is
+    # runner.ApprovalTimeout; this is now the same, and a test holds it
+    # there.
+    max_runtime_secs: 1800
     network_egress: ["api.x.com", "api.linkedin.com"]
     approval_required_for: ["*"]
     # Catalog default: max 3 posts/day. Not enforced anywhere yet — this

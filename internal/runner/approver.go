@@ -8,7 +8,7 @@ import (
 	"github.com/redbotster/nanobots/internal/oneclaw"
 )
 
-// approvalTimeout bounds how long a run waits on a human decision before
+// ApprovalTimeout bounds how long a run waits on a human decision before
 // failing the step outright — long enough for a person to notice a mobile
 // push or come back to their laptop, short enough that a run doesn't hang
 // forever if nobody's watching.
@@ -29,7 +29,12 @@ import (
 // deliberately not done here, because a bot's runtime budget is the bot's
 // own declaration and changing it silently for every approving bot is a
 // bigger decision than a comment should make.
-const approvalTimeout = 30 * time.Minute
+// Exported because it is a budget other things have to be checked against:
+// internal/contract asserts that no bot ships an `approve` step with a
+// max_runtime_secs shorter than this. post-publisher shipped with 60, which
+// gave a person one minute to answer "Publish this post to X and LinkedIn?"
+// and killed four real runs in two days.
+const ApprovalTimeout = 30 * time.Minute
 
 // RunQueueApprover routes an `approve` step to a Run's own pending-approval
 // queue (surfaced over SSE and decided via the REST API), rather than
@@ -79,7 +84,7 @@ func (a *RunQueueApprover) Approve(summary, riskTier string) (bool, string, erro
 	done := make(chan struct{})
 	defer close(done)
 
-	return a.Run.RequestApprovalWithWrites(a.Bot, a.Step, summary, riskTier, a.Writes, approvalTimeout,
+	return a.Run.RequestApprovalWithWrites(a.Bot, a.Step, summary, riskTier, a.Writes, ApprovalTimeout,
 		func(localID string) { a.mirror(localID, summary, riskTier, done) })
 }
 

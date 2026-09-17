@@ -35,7 +35,7 @@ func NewRemoteDeps(callbackURL, runToken string, blobs BlobStore) *RemoteDeps {
 		RunToken:    runToken,
 		// Must outlast the longest thing a callback can legitimately block
 		// on, which is a human deciding an approval:
-		// runner.approvalTimeout is 30 minutes, and bots/approve,
+		// runner.ApprovalTimeout is 30 minutes, and bots/approve,
 		// bots/email-send-approved and bots/email-drive-file all declare
 		// max_runtime_secs: 1800 to match. This used to be 5 minutes with
 		// the comment "approvals can wait a while", so a human who

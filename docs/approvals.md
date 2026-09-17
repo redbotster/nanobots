@@ -129,3 +129,28 @@ run's `DeclinedByUser` flag, and would have blocked on the run's own mutex,
 holding it, if the waiter had not already drained the one-slot channel.
 `Decide` now refuses a second answer, and `PendingApprovals` stops listing a
 question the moment it is answered rather than when the waiter wakes.
+
+## A bot that asks a person has to budget for a person
+
+`max_runtime_secs` is the bot's own ceiling and the runner enforces it
+whether the bot is working or waiting. So it is also, for any bot with an
+`approve` step, how long you have to answer.
+
+`post-publisher` shipped with 60. A run that opened *"Publish this post to X
+and LinkedIn?"* was killed one minute later — four real runs in two days, on
+a Monday cron, each failing with the question still on screen while the swarm
+card said "pauses for you". The other three approving bots in the catalog all
+used 1800, which is exactly `runner.ApprovalTimeout`.
+
+This was the second time. A browser pass had already found the same thing in
+`email-drive-file` ([testing.md](testing.md)); that bot was fixed and the
+identical bug two directories over was not noticed. So the fix is a test
+rather than a second careful reading:
+`TestABotThatAsksAPersonWaitsLongEnoughForOne` checks every bot with an
+`approve` step against `runner.ApprovalTimeout` itself, so raising the
+approval window without raising the budgets cannot silently recreate it.
+
+The two budgets tie at 1800 rather than the bot's being longer, which means
+the container's SIGKILL lands first and the failure arrives as a container
+timeout. `describeTimeout` is what makes that honest, renaming it to name
+the approval nobody answered ([runs.md](runs.md)).

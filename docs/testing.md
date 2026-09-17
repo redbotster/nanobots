@@ -10,7 +10,7 @@ go build ./... && go vet ./... && go test ./... -race
 cd web && npx tsc -b && npm run test
 ```
 
-737 table-driven Go tests across every package
+738 table-driven Go tests across every package
 (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`,
 so the number stays checkable), including:
 
@@ -61,6 +61,7 @@ every claim in prose is a claim that rots. Today it checks:
 | `TestEveryProsePromptStatesTheHouseVoice` | a new prose bot learning its voice from the prompt's own style |
 | `TestGeneratedSchemasAreUpToDate` | `schemas/*.json` drifting from the Go types |
 | `TestTheBotContractDocNamesEveryStepType` | a new step type the contract doc never mentions |
+| `TestABotThatAsksAPersonWaitsLongEnoughForOne` | an approving bot whose runtime budget is shorter than the approval window ([approvals.md](approvals.md)) |
 
 When one of these fails, fix the claim. Do not weaken the test.
 
