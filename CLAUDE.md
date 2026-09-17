@@ -185,6 +185,9 @@ and the commit says that.
 
 - `cmd/` — three binaries: `nanobots` (CLI), `nanobotd` (daemon),
   `nanobot-agent` (runs inside each container). Nothing else belongs here.
+  One command per file in `cmd/nanobots` (`plan.go`, `run.go`, `share.go`,
+  …); `main.go` is dispatch, help and version only. It was one 1203-line
+  file, and the commands inside it were the untested ones.
 - `internal/` — `step` (the universal step interpreter), `runner`
   (orchestration, Docker, runs), `api` (REST+SSE), `planner`, `scheduler`,
   `schema`, `foundry`, plus the pluggable `llm` and `memory` backends.

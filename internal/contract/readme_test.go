@@ -245,8 +245,12 @@ func TestTheClaimedCronSwarmCountIsAccurate(t *testing.T) {
 	// Sentence case: the count opens a sentence, the total does not.
 	claim := fmt.Sprintf("%s of the %s catalog swarms carry a cron trigger",
 		strings.ToUpper(numberWord(cron)[:1])+numberWord(cron)[1:], numberWord(total))
+	// Where a claim lives is a writing decision; whether it is true is not.
+	// This one moved from cmd/nanobots/main.go to service.go when that
+	// 1203-line file was split one command per file, and the test followed
+	// it rather than the file being kept fat to satisfy the test.
 	for _, f := range []string{
-		"cmd/nanobots/main.go",
+		"cmd/nanobots/service.go",
 		"internal/service/service.go",
 		"internal/api/builder.go",
 		"docs/scheduler.md",

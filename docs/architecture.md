@@ -139,7 +139,7 @@ which path each bot took, every run.
 
 ```
 cmd/nanobotd/       Go daemon — REST+SSE API, binds loopback only
-cmd/nanobots/       Go CLI — init, up, plan, run, conform, deploy, connect, schema
+cmd/nanobots/       Go CLI — one file per command; main.go is dispatch, help and version
 cmd/nanobot-agent/  the container entrypoint every harness image runs
 internal/schema/    Nanobot/Nanoswarm Go types, YAML loading, JSON Schema generation
 internal/planner/   resolves a swarm's bots, type-checks snaps, builds/cycle-checks the run DAG

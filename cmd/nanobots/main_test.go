@@ -7,9 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/redbotster/nanobots/internal/runner"
 	"os"
 	"path/filepath"
+
+	"github.com/redbotster/nanobots/internal/runner"
 )
 
 // askAndRecord requests one approval on a real Run (so the decision goes
