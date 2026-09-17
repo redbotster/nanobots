@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GettingStarted } from "./GettingStarted";
 import { api } from "../lib/api";
+import * as runsFeed from "../lib/runsFeed";
 import type { StatusResponse } from "../lib/types";
 
 const status = (llm: string): StatusResponse =>
@@ -19,7 +20,10 @@ const status = (llm: string): StatusResponse =>
   }) as StatusResponse;
 
 function stub(runs: number, anyConnected: boolean) {
-  vi.spyOn(api, "listRuns").mockResolvedValue(
+  // Through the shared feed, which is where this card reads the run list
+  // now — a fetch of its own cost the whole 81KB list on every mount to
+  // answer one boolean.
+  vi.spyOn(runsFeed, "useRuns").mockReturnValue(
     Array.from({ length: runs }, (_, i) => ({ id: String(i) })) as never,
   );
   vi.spyOn(api, "listConnections").mockResolvedValue([

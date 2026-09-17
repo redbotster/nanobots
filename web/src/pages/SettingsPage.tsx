@@ -1,6 +1,7 @@
 import { Children, useEffect, useState } from "react";
 import type React from "react";
 import { api } from "../lib/api";
+import { listBotsCached } from "../lib/botsCache";
 import type {
   BotSummary,
   PostureResponse,
@@ -34,8 +35,7 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
       .catch((e) => setConnectionsError(String(e)));
 
   useEffect(() => {
-    api
-      .listBots()
+    listBotsCached()
       .then(setBots)
       .catch(() => {});
     reloadConnections();

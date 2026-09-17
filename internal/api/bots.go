@@ -115,11 +115,19 @@ func outputFieldsOf(nb *schema.Nanobot) map[string][]string {
 	return out
 }
 
+// The bot catalog is 30KB and changes only when someone flips a service to
+// live or edits a bot's instructions — so almost every request for it is
+// for bytes the caller already has. Five surfaces fetch it on mount (the
+// bot library, Settings, the Team page, a swarm view, the builder), which
+// made it the largest consumer left once the run list was behind a
+// conditional GET: 61KB of a 336KB five-page browse, measured in a browser.
+// The client holds the tag — see web/src/lib/botsCache.ts for why that is
+// its job rather than the browser's.
 func (s *Server) handleListBots(w http.ResponseWriter, r *http.Request) {
 	bots, err := s.listBotSummaries()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, bots)
+	writeJSONCached(w, r, http.StatusOK, bots)
 }

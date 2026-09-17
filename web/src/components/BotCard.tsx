@@ -3,6 +3,7 @@ import type { BotSummary, ConnectableService, ConnectionStatus, Port, Service } 
 import { Switch } from "./Switch";
 import { Button } from "./Button";
 import { api } from "../lib/api";
+import { setBotInstructions, setBotServiceConnection } from "../lib/botsCache";
 import { isOAuthProvider, startOAuthConnect } from "../lib/connectProvider";
 
 const CONNECTABLE = new Set<string>([
@@ -47,7 +48,7 @@ function ServiceToggle({
       if (!connected) {
         await startOAuthConnect(provider);
       }
-      await api.setBotServiceConnection(botId, service.id, true);
+      await setBotServiceConnection(botId, service.id, true);
       onChanged();
     } catch (e) {
       setError(String(e));
@@ -62,7 +63,7 @@ function ServiceToggle({
     setError(null);
     try {
       await api.connectToken(provider, token.trim());
-      await api.setBotServiceConnection(botId, service.id, true);
+      await setBotServiceConnection(botId, service.id, true);
       setShowTokenInput(false);
       setToken("");
       onChanged();
@@ -77,7 +78,7 @@ function ServiceToggle({
     setBusy(true);
     setError(null);
     try {
-      await api.setBotServiceConnection(botId, service.id, false);
+      await setBotServiceConnection(botId, service.id, false);
       onChanged();
     } catch (e) {
       setError(String(e));
@@ -188,7 +189,7 @@ export function InstructionsEditor({
     setSaving(true);
     setError(null);
     try {
-      await api.setBotInstructions(botId, text);
+      await setBotInstructions(botId, text);
       setOpen(false);
       onChanged();
     } catch (e) {

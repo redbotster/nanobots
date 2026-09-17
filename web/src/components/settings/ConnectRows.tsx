@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../lib/api";
+import { setProviderConnection } from "../../lib/botsCache";
 import type { ConnectableService, ConnectionStatus } from "../../lib/types";
 import { StatusDot } from "../../components/StatusDot";
 import { Button } from "../../components/Button";
@@ -39,7 +40,7 @@ function UseInBots({ provider, connected }: { provider: string; connected: boole
     setError(null);
     setNote(null);
     try {
-      const r = await api.setProviderConnection(provider, live);
+      const r = await setProviderConnection(provider, live);
       const failed = Object.keys(r.failed ?? {}).length;
       setNote(
         `${r.changed.length} bot${r.changed.length === 1 ? "" : "s"} now ${live ? "use your account" : "back on demo data"}` +

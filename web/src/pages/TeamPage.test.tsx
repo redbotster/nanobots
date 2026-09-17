@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TuneAnother } from "./TeamPage";
-import { api } from "../lib/api";
+import * as bots from "../lib/botsCache";
 import type { BotSummary } from "../lib/types";
 
 function bot(id: string, instructions: string): BotSummary {
@@ -28,10 +28,10 @@ describe("adding a bot to the team", () => {
   // returned 200, the picker closed, and the page still said "Nothing tuned
   // yet". Picking a bot did nothing at all, silently.
   it("opens the bot's instructions instead of saving them unchanged", async () => {
-    vi.spyOn(api, "listBots").mockResolvedValue([
+    vi.spyOn(bots, "listBotsCached").mockResolvedValue([
       bot("inbox-triage", "Billing is urgent."),
     ] as never);
-    const save = vi.spyOn(api, "setBotInstructions").mockResolvedValue({} as never);
+    const save = vi.spyOn(bots, "setBotInstructions").mockResolvedValue({} as never);
 
     render(<TuneAnother tuned={new Set()} onChanged={vi.fn()} />);
     fireEvent.click(screen.getByText("+ Tune how a bot works"));
@@ -46,10 +46,10 @@ describe("adding a bot to the team", () => {
   });
 
   it("saves what you actually changed, which is what puts it in the team", async () => {
-    vi.spyOn(api, "listBots").mockResolvedValue([
+    vi.spyOn(bots, "listBotsCached").mockResolvedValue([
       bot("inbox-triage", "Billing is urgent."),
     ] as never);
-    const save = vi.spyOn(api, "setBotInstructions").mockResolvedValue({} as never);
+    const save = vi.spyOn(bots, "setBotInstructions").mockResolvedValue({} as never);
     const onChanged = vi.fn();
 
     render(<TuneAnother tuned={new Set()} onChanged={onChanged} />);
@@ -69,7 +69,7 @@ describe("adding a bot to the team", () => {
 
   it("lists only bots that take instructions, and not ones already tuned", async () => {
     const plain = { ...bot("drive-save", ""), inputs: [] } as unknown as BotSummary;
-    vi.spyOn(api, "listBots").mockResolvedValue([
+    vi.spyOn(bots, "listBotsCached").mockResolvedValue([
       bot("inbox-triage", "a"),
       bot("draft-replies", "b"),
       plain,

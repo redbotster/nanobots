@@ -97,6 +97,39 @@ Two details it depends on:
 `refreshRuns()` drops the tag first, so an action you just took shows its
 effect immediately instead of confirming nothing changed.
 
+### The same trick, for navigating rather than polling
+
+`GET /api/bots` is the other big one: 30KB, fetched on mount by the bot
+library, Settings, the Team page, a swarm view and the builder. Nothing
+polls it, so it cost nothing while you sat still and 30KB every time you
+moved between those pages.
+
+It carries an ETag now too, and `web/src/lib/botsCache.ts` holds the tag and
+the last copy for the whole tab. The invalidation is the part worth writing
+down: the three calls that change a bot — a service's demo/live switch,
+Settings' "use my account in all 24", and the instructions editor — are
+*exported from the cache module itself* rather than called on `api`
+directly. A cache whose invalidation is a rule call sites have to remember
+is a cache that serves a stale switch the first time someone adds a fourth
+one.
+
+Measured in a browser, the same five-page browse (Swarms → Team → Settings →
+Runs → Swarms → a swarm), before and after both changes on this page:
+
+| | before | after |
+|---|---|---|
+| `/api/bots` | 2 req, 61.0KB | 2 req, **30.5KB** (one 304) |
+| `/api/runs` | 9 req, 241.7KB | 7 req, **80.6KB** |
+| all of `/api` | 32 req, 335.9KB | 30 req, **144.3KB** |
+
+The `/api/runs` half of that is a second bug the measurement found:
+`GettingStarted` called `api.listRuns()` on every mount — a 91KB response —
+to compute one boolean, "has anything ever run here". It reads the shared
+`useRuns()` feed now, which was already fetching it.
+
+`/api/swarms` is the largest one left untouched at 30.8KB over four
+requests, for the same reason `/api/bots` was.
+
 ## The run log is live now
 
 The landing page said "every step streams to a run log in real time". It

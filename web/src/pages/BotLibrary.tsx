@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
+import { listBotsCached } from "../lib/botsCache";
 import type { BotSummary, ConnectionStatus } from "../lib/types";
 import { categoryOf, prettyProvider } from "../lib/botCategory";
 import { BotCard } from "../components/BotCard";
@@ -17,8 +18,7 @@ export function BotLibrary() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const reload = () => {
-    api
-      .listBots()
+    listBotsCached()
       .then(setBots)
       .catch((e) => setError(String(e)));
     api

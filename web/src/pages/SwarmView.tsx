@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { WebhookPanel } from "../components/WebhookPanel";
 import { api } from "../lib/api";
+import { listBotsCached } from "../lib/botsCache";
 import { useRun } from "../lib/useRun";
 import type { BotSummary, PlanResult, SwarmSummary } from "../lib/types";
 import { BotBrick } from "../components/BotBrick";
@@ -74,8 +75,7 @@ export function SwarmView({
       .plan(SWARM_PATH)
       .then(setPlan)
       .catch((e) => setLoadError(String(e)));
-    api
-      .listBots()
+    listBotsCached()
       .then((list) => setBots(Object.fromEntries(list.map((b) => [b.id, b]))))
       .catch((e) => setLoadError(String(e)));
   }, [SWARM_PATH, swarm.last_run_id, swarm.last_run_status]);

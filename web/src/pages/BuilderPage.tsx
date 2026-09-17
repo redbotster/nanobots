@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { SchedulePicker } from "../components/builder/SchedulePicker";
 import { api } from "../lib/api";
+import { listBotsCached } from "../lib/botsCache";
 import type {
   BotSummary,
   ConnectionStatus,
@@ -104,7 +105,7 @@ export function BuilderPage({
   // The catalog and the connection list do not depend on which swarm is
   // being edited, so they load once.
   useEffect(() => {
-    api.listBots().then((list) => {
+    listBotsCached().then((list) => {
       setBotDefs(Object.fromEntries(list.map((b) => [b.id, b])));
     });
     api

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./lib/api";
+import { listBotsCached } from "./lib/botsCache";
 import { SwarmsPage } from "./pages/SwarmsPage";
 import { BotLibrary } from "./pages/BotLibrary";
 import { RunsPage } from "./pages/RunsPage";
@@ -64,7 +65,7 @@ function Dashboard({ onLeave }: { onLeave: () => void }) {
   const visibleNav = uiMode === "basic" ? NAV.filter((item) => item.id !== "bots") : NAV;
 
   useEffect(() => {
-    Promise.all([api.listBots(), api.listSwarms()])
+    Promise.all([listBotsCached(), api.listSwarms()])
       .then(([bots, swarms]) => setCounts({ bots: bots.length, swarms: swarms.length }))
       .catch(() => {});
   }, []);

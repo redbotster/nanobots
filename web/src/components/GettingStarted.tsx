@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../lib/api";
+import { useRuns } from "../lib/runsFeed";
 import type { StatusResponse } from "../lib/types";
 
 /**
@@ -55,20 +56,30 @@ export function GettingStarted({
   // derived from progress below, so someone who has done nothing still gets
   // the full card without having to ask for it.
   const [expanded, setExpanded] = useState(false);
-  const [hasRun, setHasRun] = useState<boolean | null>(null);
   const [connected, setConnected] = useState<boolean | null>(null);
 
-  const load = useCallback(() => {
-    api
-      .listRuns()
-      .then((r) => setHasRun(r.length > 0))
-      .catch(() => setHasRun(null));
+  // Through the shared feed, not a fetch of its own. This asked
+  // `api.listRuns()` on every mount and used the answer for one boolean —
+  // has anything ever run — which cost the whole 81KB run list each time
+  // this card appeared, on a page it appears on every visit to Swarms.
+  //
+  // runsFeed exists for exactly this: one poller, ETag-aware, shared by
+  // everything that wants the list. The Runs page and the approval
+  // notifier were merged into it for the same reason and this was the one
+  // caller left outside.
+  //
+  // null until the first fetch lands, which `ran` below already treats as
+  // "assume it has" — a card that appears because a request has not
+  // answered yet is worse than one that appears a second late.
+  const runs = useRuns();
+  const hasRun = runs === null ? null : runs.length > 0;
+
+  useEffect(() => {
     api
       .listConnections()
       .then((c) => setConnected(c.some((x) => x.connected)))
       .catch(() => setConnected(null));
   }, []);
-  useEffect(load, [load]);
 
   // Anything unknown counts as done: a card that appears because a request
   // failed would be worse than one that never appears at all.
