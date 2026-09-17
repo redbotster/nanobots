@@ -105,3 +105,32 @@ func TestUpRefusesArgumentsItDoesNotUnderstand(t *testing.T) {
 		}
 	}
 }
+
+// The four blueprint verbs this build never grew.
+//
+// `--help` listed them for a long time as "not implemented in this build
+// yet" — four rows of the command list spent on nothing, and a help text
+// arguing with itself. They are out of the listing now, so what someone who
+// types one gets has to be worth more than the row was: the real answer,
+// which exists in every case.
+func TestTheUnbuiltVerbsPointAtWhatToDoInstead(t *testing.T) {
+	for _, verb := range []string{"add", "save", "publish", "compile"} {
+		answer, ok := insteadOf[verb]
+		if !ok {
+			t.Errorf("%q is refused with no answer — either answer it or stop special-casing it", verb)
+			continue
+		}
+		if !strings.Contains(answer, "nanobots ") && !strings.Contains(answer, "builder") {
+			t.Errorf("%q's answer names nothing you can actually do: %q", verb, answer)
+		}
+	}
+	// And they must not be advertised as commands.
+	if strings.Contains(usageText, "not implemented") {
+		t.Error("the usage text still lists commands that do not exist")
+	}
+	for _, verb := range []string{"add", "save", "publish", "compile"} {
+		if strings.Contains(usageText, "\n  "+verb+" ") {
+			t.Errorf("usage still lists %q as a command", verb)
+		}
+	}
+}

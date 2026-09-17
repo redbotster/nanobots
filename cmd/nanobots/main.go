@@ -88,7 +88,14 @@ func main() {
 	case "import":
 		err = runImport(args)
 	case "add", "save", "publish", "compile":
-		fmt.Fprintf(os.Stderr, "nanobots %s: not implemented in this build yet\n", cmd)
+		// Four verbs from the blueprint that this build never grew, listed
+		// in `--help` for a long time as "not implemented in this build
+		// yet" — a help text arguing with itself, and four rows of the
+		// command list spent on nothing.
+		//
+		// They keep an answer rather than a listing, because someone who
+		// types one is asking a real question and the real answer exists.
+		fmt.Fprintf(os.Stderr, "nanobots %s: there is no such command. %s\n", cmd, insteadOf[cmd])
 		os.Exit(1)
 	case "-v", "--version", "version":
 		printVersion()
@@ -162,10 +169,20 @@ commands:
   agents [--prune]                        the 1Claw agents this repo made, and which are unused
   export -f <swarm.yaml> [-o <file>]      bundle a swarm to hand to someone else
   import <bundle.yaml>                    add a shared swarm to examples/swarms/
-  version                                 print the build and Go toolchain
-  add, save, publish, compile             not implemented in this build yet`
+  version                                 print the build and Go toolchain`
 
 func usage() { fmt.Fprintln(os.Stderr, usageText) }
+
+// insteadOf answers the four blueprint verbs this build never grew. Each
+// one is a thing you can actually do, by another name — which is the only
+// reason removing them from the help is an improvement rather than a
+// deletion of information.
+var insteadOf = map[string]string{
+	"add":     "To put a bot in a swarm, open the swarm in the visual builder, or edit its `bots:` list directly.",
+	"save":    "The builder saves a swarm when you press Save; `nanobots export` bundles one to hand to someone else.",
+	"publish": "To share a swarm, `nanobots export` it and the other person runs `nanobots import`. See docs/sharing.md.",
+	"compile": "Nothing is compiled ahead of time: `nanobots plan` type-checks a swarm and `nanobots run` executes it.",
+}
 
 func runPlan(args []string) error {
 	var swarmPath, botsDir string
