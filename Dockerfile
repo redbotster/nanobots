@@ -59,4 +59,11 @@ EXPOSE 7474
 # that was never meant to leave the machine) becomes the deployer's problem
 # here: put it behind 1Claw's runtime auth, or a proxy, and never on an open
 # port. docs/hosting.md says so at greater length.
-ENTRYPOINT ["nanobots", "up", "--addr", "0.0.0.0:7474"]
+# Split so the image behaves like a CLI as well as a server. As one
+# ENTRYPOINT, `docker run <image> nanobots version` appended its arguments
+# to `nanobots up` — which started the daemon, bound a port and fired three
+# scheduled swarms instead of printing a version. Now the default is still
+# the server, and `docker run <image> version` or `... health --quiet` do
+# what they say.
+ENTRYPOINT ["nanobots"]
+CMD ["up", "--addr", "0.0.0.0:7474"]

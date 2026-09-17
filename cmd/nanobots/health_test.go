@@ -85,3 +85,23 @@ func TestHealthRejectsUnknownFlags(t *testing.T) {
 		t.Error("--addr with no value should be refused")
 	}
 }
+
+// `nanobots up` must refuse what it does not understand.
+//
+// It used to ignore it, and the way that surfaced is the reason this test
+// exists: the container image's entrypoint was the whole command
+// `nanobots up --addr 0.0.0.0:7474`, so `docker run <image> nanobots
+// version` appended "nanobots version" to it. Instead of printing a
+// version, the daemon started, bound a port, and fired three scheduled
+// swarms — against a real 1Claw account.
+func TestUpRefusesArgumentsItDoesNotUnderstand(t *testing.T) {
+	for _, args := range [][]string{
+		{"nanobots", "version"}, // what docker run appended
+		{"--addr"},              // a flag with its value missing
+		{"--port", "7474"},      // a plausible wrong flag name
+	} {
+		if err := runUp(args); err == nil {
+			t.Errorf("up %v was accepted; it should say what it does not understand", args)
+		}
+	}
+}

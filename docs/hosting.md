@@ -7,7 +7,7 @@ catalog; they differ in what has to be installed and what can reach them.
 |---|---|---|---|
 | `nanobots up` | the binary | only if Docker is running | no |
 | `docker compose up` | Docker | **no** — see below | only while the machine is on |
-| `nanobots deploy 1claw` | a 1Claw account and a pushed image | only if the runtime has Docker | yes |
+| `nanobots deploy 1claw` | a 1Claw account | only if the runtime has Docker | yes |
 
 34 of the 39 bots need none of this — they run in the daemon's own process
 (`docs/harnesses.md`). Docker and hosting are about the five that render
@@ -31,8 +31,12 @@ on a network you do not control.
 docker compose up
 ```
 
-The image is this repo's `Dockerfile`: a distroless, non-root image carrying
-the binary with the WebUI inside it plus the bot catalog. It sets
+The image is this repo's `Dockerfile`, published multi-arch as
+`ghcr.io/redbotster/nanobots` on every tag: distroless, non-root, carrying
+the binary with the WebUI inside it plus the bot catalog. `compose.yaml`
+builds it locally instead, so an edit to a bot takes effect without waiting
+for a release; `docker run -p 127.0.0.1:7474:7474 ghcr.io/redbotster/nanobots:latest`
+is the no-clone path. The image sets
 `--addr 0.0.0.0:7474`, because inside a container loopback means "this
 container" and nothing could reach it — which moves the "who can reach the
 callback surface" question to whoever deploys it. Publish the port to
@@ -89,7 +93,7 @@ process environment (`docs/setup.md`). Point it somewhere else with
 ## On a 1Claw Cloud Runtime
 
 ```
-nanobots deploy 1claw --image ghcr.io/you/nanobots:v1
+nanobots deploy 1claw
 ```
 
 Creates a runtime, exposes the UI at `{slug}.run.1claw.co` behind JWT
@@ -99,12 +103,12 @@ before creating anything, because a runtime bills.
 
 Three limits worth knowing before you reach for it:
 
-**You need your own image.** `GET /v1/runtimes/templates` returns nine —
-python, node, hermes, openclaw, openclaude, opencode, claude-code, codex,
-amp — all language runtimes or agent frameworks, none of which runs a Go
-binary. Build and push this repo's `Dockerfile` somewhere 1Claw can pull
-from. A `nanobots` template upstream would remove this step
-(`docs/1claw-feature-requests.md`).
+**It runs a container image, not a template.** `GET /v1/runtimes/templates`
+returns nine — python, node, hermes, openclaw, openclaude, opencode,
+claude-code, codex, amp — all language runtimes or agent frameworks, none of
+which runs a Go binary. So this deploys `ghcr.io/redbotster/nanobots`,
+published on every tag, and `--image` overrides it with your own build. That
+used to be a required flag and a build you had to do yourself.
 
 **Your local swarms do not travel.** The image carries the catalog and the
 example swarms it was built with. 1Claw has no file-transfer API for a

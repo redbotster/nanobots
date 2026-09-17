@@ -7,23 +7,45 @@ import (
 	"testing"
 )
 
-// A deploy bills. The command must refuse rather than guess when it has not
-// been told what to run, and must never reach the point of creating
-// anything on a bad flag.
+// A deploy with no flags runs the published image, and every default is
+// decided here rather than somewhere only a live deploy would reveal.
+//
+// --image used to be required, because nothing was published and a guessed
+// reference would have failed at pull time. v0.1.0 changed that.
+func TestDeployDefaultsToThePublishedImage(t *testing.T) {
+	got := withDeployDefaults(deployOptions{})
+	if got.Image != DefaultImage {
+		t.Errorf("image = %q, want the published one (%q)", got.Image, DefaultImage)
+	}
+	if !strings.HasPrefix(got.Image, "ghcr.io/redbotster/nanobots:v") {
+		t.Errorf("the default image %q is not a pinned tag of this repo's own image — a runtime "+
+			"that changes version under a running schedule is not a default", got.Image)
+	}
+	if got.Slug != "nanobots" || got.AgentName != "nanobots" || got.Environment != "production" {
+		t.Errorf("defaults = %+v", got)
+	}
+
+	// What the user asked for always wins.
+	asked := withDeployDefaults(deployOptions{Image: "ghcr.io/me/mine:v2", Slug: "s", AgentName: "a", Environment: "staging"})
+	if asked.Image != "ghcr.io/me/mine:v2" || asked.Slug != "s" || asked.AgentName != "a" || asked.Environment != "staging" {
+		t.Errorf("defaults overrode explicit flags: %+v", asked)
+	}
+}
+
+// A deploy bills, so it must not get as far as creating anything when the
+// machine has no credential at all.
 //
 // --env points at an empty temp file on purpose: without it this reads
 // whatever ~/.secrets/nanobots.env the machine happens to have, so it passed
 // on a laptop with a key and failed in CI without one. A test whose result
 // depends on the developer's home directory is testing the developer.
-func TestDeployRefusesWithoutAnImage(t *testing.T) {
+func TestDeployRefusesWithoutACredential(t *testing.T) {
 	err := runDeploy([]string{"1claw", "--env", emptyEnvFile(t)})
 	if err == nil {
-		t.Fatal("deploying with no image should not be possible")
+		t.Fatal("deploying with no 1Claw key should not be possible")
 	}
-	for _, want := range []string{"--image is required", "no `nanobots` runtime template"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("the refusal does not explain %q:\n%s", want, err)
-		}
+	if !strings.Contains(err.Error(), "nanobots init") {
+		t.Errorf("the refusal does not say what to do about it:\n%s", err)
 	}
 }
 

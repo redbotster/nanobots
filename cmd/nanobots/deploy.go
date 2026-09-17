@@ -23,14 +23,24 @@ import (
 // returns nine — python, node, hermes, openclaw, openclaude, opencode,
 // claude-code, codex, amp — and they are language runtimes and agent
 // frameworks, none of which runs a Go binary. So this deploys from a
-// container image instead, which POST /v1/runtimes accepts. Until an image
-// is published, --image is required.
+// container image instead, which POST /v1/runtimes accepts.
+//
+// --image used to be required, because there was no published image and
+// guessing one would have failed at pull time. There is one now, built by
+// .github/workflows/release.yml on every tag, so that is the default and
+// --image overrides it.
 //
 // It cannot push your local swarms. The image carries the catalog and the
 // example swarms it was built with, and 1Claw has no file-transfer API for
 // a runtime, so a swarm you wrote here does not travel. Filed in
 // docs/1claw-feature-requests.md; the workaround is to build your own image
 // from this repo with your swarms in it.
+
+// DefaultImage is what a deploy runs when told nothing else: the image this
+// repo publishes on every tag. Pinned to a tag rather than :latest, because
+// a runtime that silently changes version under a running schedule is the
+// kind of surprise a deploy should not sign you up for.
+const DefaultImage = "ghcr.io/redbotster/nanobots:v0.1.0"
 
 type deployOptions struct {
 	Image       string
@@ -80,21 +90,12 @@ func runDeploy(args []string) error {
 }
 
 func deployTo1Claw(opts deployOptions, in *os.File, out *os.File) error {
-	// Arguments before credentials. A missing --image is a usage error and
-	// does not depend on how the machine is configured, so checking the key
-	// first made the command answer "no 1Claw key configured" to someone who
-	// had also forgotten the one flag it cannot run without — and made
-	// TestDeployRefusesWithoutAnImage pass on a laptop with a key in
+	// Arguments before credentials, which is the order that reports the
+	// more useful problem first. Checking the key first made this answer
+	// "no 1Claw key configured" to someone whose real mistake was a flag —
+	// and made its test pass on a laptop with a key in
 	// ~/.secrets/nanobots.env while failing in CI, which has none.
-	if opts.Image == "" {
-		return fmt.Errorf(
-			"--image is required: there is no `nanobots` runtime template yet, so this deploys " +
-				"from a container image.\nBuild and push one from this repo's Dockerfile, then:\n" +
-				"    nanobots deploy 1claw --image ghcr.io/you/nanobots:v1")
-	}
-	if opts.Slug == "" {
-		opts.Slug = "nanobots"
-	}
+	opts = withDeployDefaults(opts)
 
 	key, err := oneclaw.LoadAPIKey(opts.EnvFilePath)
 	if err != nil {
@@ -177,15 +178,36 @@ func deployTo1Claw(opts deployOptions, in *os.File, out *os.File) error {
 // deployUsage is printed by `nanobots deploy` with no target.
 const deployUsage = `usage: nanobots deploy 1claw [flags]
 
-  --image <ref>        container image to run (required; see below)
+  --image <ref>        container image to run (default "ghcr.io/redbotster/nanobots:v0.1.0")
   --slug <name>        hostname under run.1claw.co (default "nanobots")
   --agent <name>       1Claw agent to run as (default "nanobots")
   --environment <env>  vault environment for env vars (default "production")
   --yes                skip the confirmation
 
-There is no published nanobots image yet and no 1Claw runtime template that
-runs a Go binary, so build one from this repo's Dockerfile and push it
-somewhere 1Claw can pull from.`
+No 1Claw runtime template runs a Go binary, so this deploys from a
+container image. The default is the one published on every tag; pass
+--image to run your own build, which is what you want if your swarms need
+to travel with it.`
+
+// withDeployDefaults fills in what the user did not say. Separate from the
+// command so the defaults can be checked without a 1Claw account: they are
+// what decides which image a runtime pulls, and that should not be
+// something only a live deploy can tell you.
+func withDeployDefaults(opts deployOptions) deployOptions {
+	if opts.Image == "" {
+		opts.Image = DefaultImage
+	}
+	if opts.Slug == "" {
+		opts.Slug = "nanobots"
+	}
+	if opts.AgentName == "" {
+		opts.AgentName = "nanobots"
+	}
+	if opts.Environment == "" {
+		opts.Environment = "production"
+	}
+	return opts
+}
 
 // findAgentID resolves an existing agent by name rather than creating one.
 //

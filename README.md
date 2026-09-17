@@ -26,7 +26,13 @@ catalog and nothing configured.
 | **From source** | Go 1.25+, Node 22+ | Everything, including the 5 browser bots if Docker is running |
 | **Dev container** | Docker, VS Code or any devcontainer client | Everything, plus the toolchain and the verification pass ready to run |
 
-**Container** — one command, nothing to install but Docker:
+**Container** — one command, nothing to install and nothing to clone:
+
+```sh
+docker run -p 127.0.0.1:7474:7474 ghcr.io/redbotster/nanobots:latest
+```
+
+Or from a clone, which is what you want if you will edit swarms:
 
 ```sh
 git clone https://github.com/redbotster/nanobots && cd nanobots
@@ -62,9 +68,12 @@ works while developing — it produces a binary with no UI inside it, which
 says so when you open it, and you run `cd web && npm run dev` alongside for
 hot reload.
 
-Once there is a tagged release this becomes `brew install
-redbotster/tap/nanobots` or `npx nanobots`. The packaging is in
-`.goreleaser.yaml` and `npm/`, and neither is published yet.
+**Released builds.** `v0.1.0` publishes binaries for macOS, Linux and
+Windows on both architectures, each with the WebUI compiled in, plus the
+`ghcr.io/redbotster/nanobots` image above. `brew install` and `npx nanobots`
+do **not** work yet: the Homebrew tap repository does not exist and the npm
+package is unpublished. The configuration for both is in `.goreleaser.yaml`
+and `npm/`, each one secret away.
 
 ```sh
 nanobots plan -f examples/swarms/daily-email-recap.yaml   # type-check a swarm, print its DAG
