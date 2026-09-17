@@ -1,8 +1,24 @@
 {
   "mentions": [
-    { "id": "1801", "text": "@you does this work with private repos?", "author": "@dana", "created_at": "2026-09-14T09:12:00Z" },
-    { "id": "1802", "text": "great thread @you", "author": "@marcus", "created_at": "2026-09-14T09:40:00Z" },
-    { "id": "1803", "text": "@you small correction, the flag landed in 2.3", "author": "@priya", "created_at": "2026-09-14T10:05:00Z" }
+    {
+      "id": "1801",
+      "text": "@you does this work with private repos?",
+      "author": "@dana",
+      "created_at": "2026-09-14T09:12:00Z"
+    },
+    {
+      "id": "1802",
+      "text": "great thread @you",
+      "author": "@marcus",
+      "created_at": "2026-09-14T09:40:00Z"
+    },
+    {
+      "id": "1803",
+      "text": "@you small correction, the flag landed in 2.3",
+      "author": "@priya",
+      "created_at": "2026-09-14T10:05:00Z"
+    }
   ],
-  "count": 3
+  "count": 3,
+  "newest_id": "1803"
 }

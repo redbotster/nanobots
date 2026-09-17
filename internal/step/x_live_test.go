@@ -14,11 +14,15 @@ type fakeXAPI struct {
 	gotSince string
 	gotMax   int
 	mentions []x.Mention
+	newestID string
 }
 
-func (f *fakeXAPI) Mentions(sinceID string, max int) ([]x.Mention, error) {
+func (f *fakeXAPI) Mentions(sinceID string, max int) (*x.MentionPage, error) {
 	f.gotSince, f.gotMax = sinceID, max
-	return f.mentions, f.err
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &x.MentionPage{Mentions: f.mentions, NewestID: f.newestID}, nil
 }
 
 func (f *fakeXAPI) PostTweet(text string) (string, error) {
@@ -98,5 +102,33 @@ func TestAtoiParamAcceptsBothShapesAndFallsBack(t *testing.T) {
 		if got := atoiParam(tc.in, 10); got != tc.want {
 			t.Errorf("atoiParam(%#v) = %d, want %d", tc.in, got, tc.want)
 		}
+	}
+}
+
+// The bookmark bots/x-mentions stores so the next run asks X only for what
+// came after it.
+//
+// Every read is billed — X removed the free tier in February 2026 — and
+// before this the dispatch returned only the posts and a count, so there
+// was nothing for a watch to carry forward. listen-and-reply re-read and
+// re-paid for the same twenty-five posts every weekday.
+func TestDispatchXMentionsReturnsTheBookmark(t *testing.T) {
+	f := &fakeXAPI{
+		mentions: []x.Mention{{ID: "1803", Text: "newest"}, {ID: "1801", Text: "older"}},
+		newestID: "1803",
+	}
+	out, err := dispatchX(f, "mentions.list", map[string]any{"since_id": "1799", "max_results": "25"})
+	if err != nil {
+		t.Fatalf("dispatchX: %v", err)
+	}
+	if f.gotSince != "1799" || f.gotMax != 25 {
+		t.Errorf("asked X for since=%q max=%d", f.gotSince, f.gotMax)
+	}
+	m := out.(map[string]any)
+	if m["newest_id"] != "1803" {
+		t.Errorf("newest_id = %v, so a watch has no bookmark to store", m["newest_id"])
+	}
+	if m["count"] != 2 {
+		t.Errorf("count = %v", m["count"])
 	}
 }

@@ -76,7 +76,7 @@ func (x2 *xTokenSource) Token() (string, error) {
 // dispatch is unit-testable with a fake instead of a real HTTP server.
 type xAPI interface {
 	PostTweet(text string) (string, error)
-	Mentions(sinceID string, max int) ([]x.Mention, error)
+	Mentions(sinceID string, max int) (*x.MentionPage, error)
 }
 
 func (l *LiveDeps) xClient() (xAPI, error) {
@@ -104,20 +104,22 @@ func dispatchX(c xAPI, op string, params map[string]any) (any, error) {
 		return map[string]any{"id": id}, nil
 	case "mentions.list":
 		since, _ := params["since_id"].(string)
-		ms, err := c.Mentions(since, atoiParam(params["max_results"], 10))
+		page, err := c.Mentions(since, atoiParam(params["max_results"], 10))
 		if err != nil {
 			return nil, err
 		}
 		// A plain []map, not the struct: a service.call result crosses into
 		// the interpreter as JSON and a bot's list<json> port has to be able
 		// to read the fields by name.
-		out := make([]any, 0, len(ms))
-		for _, m := range ms {
+		out := make([]any, 0, len(page.Mentions))
+		for _, m := range page.Mentions {
 			out = append(out, map[string]any{
 				"id": m.ID, "text": m.Text, "author": m.Author, "created_at": m.Created,
 			})
 		}
-		return map[string]any{"mentions": out, "count": len(out)}, nil
+		// newest_id is the bookmark bots/x-mentions stores, so the next run
+		// asks X only for what came after it. Every read is billed.
+		return map[string]any{"mentions": out, "count": len(out), "newest_id": page.NewestID}, nil
 	default:
 		return nil, fmt.Errorf("x: unsupported op %q", op)
 	}

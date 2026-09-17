@@ -29,22 +29,48 @@ spec:
         required: false
         default: "25"
         description: "How many mentions to pull, at most 100. Each one is a billed read."
-      - name: since_id
-        type: string
-        required: false
-        default: ""
-        description: "Only mentions newer than this post id. Carry the last run's newest id here to stop paying for the same posts twice."
+      # There was a since_id input here, described as "carry the last run's
+      # newest id here to stop paying for the same posts twice". Nothing
+      # carried it: listen-and-reply passes only max_results, so every
+      # weekday run re-read and re-paid for the same twenty-five posts, and
+      # comment-responder drafted replies to mentions it had already
+      # answered. A port whose description tells you to do something the
+      # system gives you no way to do is worse than no port. The bot
+      # remembers it itself now, below.
     outputs:
       - name: mentions
         type: list<json>
         schema: ./schemas/mentions.json
 
   steps:
+    # The id of the newest mention this bot has already handed on. Empty on
+    # the first ever run, which X reads as "no lower bound" — so a new
+    # install sees the recent mentions once and pays for them once.
+    - name: seen
+      type: memory.get
+      key: newest_mention_id
+      output: seen
     - name: fetch
       type: service.call
       service: x
       op: mentions.list
-      params: { max_results: "{{inputs.max_results}}", since_id: "{{inputs.since_id}}" }
+      params: { max_results: "{{inputs.max_results}}", since_id: "{{steps.seen.output}}" }
+    # Nothing new is the common case on a weekday cron, and it must not look
+    # like a failure or run the drafting behind it. See docs/bot-contract.md.
+    - name: anything
+      type: stop.if
+      value: "{{steps.fetch.output.count}}"
+      equals: "0"
+      summary: "no new mentions since the last run"
+    # After the gate: a run that stopped has handed nothing on, so it must
+    # not move the bookmark past posts nobody has read.
+    - name: remember
+      type: memory.put
+      key: newest_mention_id
+      value: "{{steps.fetch.output.newest_id}}"
+    - name: emit
+      type: transform.pick
+      data: "{{steps.fetch.output.mentions}}"
       outputs:
         mentions: "{{steps.fetch.output.mentions}}"
 

@@ -98,6 +98,19 @@ func (c *Client) Me() (string, error) {
 	return out.Data.ID, nil
 }
 
+// MentionPage is what one mentions read returned: the posts, and the
+// newest id X itself reports for them.
+//
+// NewestID is X's own `meta.newest_id`, not something computed here. A
+// watch has to hand the next run a bookmark, and deriving one by sorting
+// snowflake ids as strings breaks the day the id length changes — which is
+// the kind of thing that fails quietly, months later, by re-reading and
+// re-billing every post in the window.
+type MentionPage struct {
+	Mentions []Mention
+	NewestID string
+}
+
 // Mentions returns recent posts mentioning the connected account, newest
 // first. sinceID is exclusive and may be empty for "whatever the window
 // gives you".
@@ -106,7 +119,7 @@ func (c *Client) Me() (string, error) {
 // per post read — cheapest for an account reading its own mentions — so
 // max is a real cost control, not a page size. The caller passes what it
 // is willing to pay for.
-func (c *Client) Mentions(sinceID string, max int) ([]Mention, error) {
+func (c *Client) Mentions(sinceID string, max int) (*MentionPage, error) {
 	id, err := c.Me()
 	if err != nil {
 		return nil, err
@@ -134,6 +147,9 @@ func (c *Client) Mentions(sinceID string, max int) ([]Mention, error) {
 				Username string `json:"username"`
 			} `json:"users"`
 		} `json:"includes"`
+		Meta struct {
+			NewestID string `json:"newest_id"`
+		} `json:"meta"`
 	}
 	if err := c.get("/users/"+id+"/mentions", q, &out); err != nil {
 		return nil, err
@@ -148,7 +164,15 @@ func (c *Client) Mentions(sinceID string, max int) ([]Mention, error) {
 	for i := range out.Data {
 		out.Data[i].Author = handle[out.Data[i].AuthorID]
 	}
-	return out.Data, nil
+	newest := out.Meta.NewestID
+	if newest == "" && len(out.Data) > 0 {
+		// X documents meta.newest_id on this endpoint, but a response
+		// without it must not silently leave a watch's bookmark empty —
+		// that is how you go back to paying for the same posts every run.
+		// The list is newest first.
+		newest = out.Data[0].ID
+	}
+	return &MentionPage{Mentions: out.Data, NewestID: newest}, nil
 }
 
 // get performs an authenticated GET and decodes into v.
