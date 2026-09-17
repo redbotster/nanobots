@@ -80,9 +80,11 @@ would have meant four more agents for `approve`, `email-drive-file`,
 agent instead, which is cheaper and loses nothing: the question is addressed
 to you either way.
 
-**What we do instead.** Phase 2 item 15: one agent per user, with memory
-namespaces and bindings scoped per bot. Cheaper and sufficient; genuine
-per-bot isolation waits on this request.
+**What we do instead.** Agents are keyed by guardrail profile rather than by
+bot (`docs/oneclaw-bridge.md`), which is what an agent actually is from
+1Claw's side: `shroud_config` is set per agent and the chat body carries no
+per-call override. The whole catalog wants two, plus four fixed ones.
+Genuine per-bot isolation still waits on this request.
 
 ---
 
@@ -148,17 +150,24 @@ CLI-only or unshipped before building against them.
 
 ---
 
-## 9. A TTL / scratch memory tier
+## 9. ~~A TTL / scratch memory tier~~ — it exists, and this entry was wrong
 
-**What we need.** A documented short-lived tier. The spec has key/value per
-namespace and `POST /v1/agents/{id}/memory/search` with `top_k`; there is no
-TTL tier.
+**Withdrawn.** This said "there is no TTL tier". `PutMemoryRequest` carries
+`ttl_seconds`, and `MemoryEntry` carries `ttl_expires_at`. Probed live:
 
-**What it blocks.** Nothing hard — it is a cost and hygiene question. Run
-scratch that should expire currently persists.
+```
+PUT /v1/agents/{id}/memory/probe-ns/ttl-probe  {"value":"scratch","ttl_seconds":60}
+GET /v1/agents/{id}/memory/probe-ns
+  -> ttl-probe   tier=durable  ttl_expires_at=2026-09-17T12:28:04Z
+     obs-live-1  tier=durable  ttl_expires_at=null
+```
 
-**What we do instead.** Two tiers: durable KV and semantic search. The
-README will say two, not three.
+So a short-lived entry is one field on the write nanobots already makes.
+Nothing in this build uses it yet — no bot has scratch state that should
+expire — and it is recorded here rather than built for that reason.
+
+The wrong version of this entry came from reading the prose docs. Same
+mistake as the approvals endpoint, in the same week.
 
 ---
 
@@ -196,3 +205,38 @@ swarms; both are reported by the command rather than discovered later.
 
 **What we do instead.** Ship the `Dockerfile` and tell people to push it.
 `docs/hosting.md` says exactly what does and does not travel.
+
+---
+
+## 12. Memory search that matches something
+
+**What we need.** `POST /v1/agents/{id}/memory/search` to return the entries
+a query is about. It is in the spec, with a `top_k` and a score per result,
+and it answers every request successfully — with nothing in it.
+
+Probed against the live account, one entry in the namespace:
+
+```
+PUT    .../memory/probe-ns/obs-live-1  "refunds always get escalated"  -> stored
+GET    .../memory/probe-ns             -> the entry, tier "durable"
+search {"query":"refunds"}                          -> 0 results
+search {"query":"refunds always get escalated"}     -> 0 results   (exact text)
+search {"query":"escalated"}                        -> 0 results
+search {"query":""}                                 -> 1 result
+```
+
+An empty query returns everything; any non-empty query returns nothing, the
+stored text character for character included, and 60 seconds of waiting
+changes neither. Nothing among the 499 paths configures an embedding model,
+and the agent has `memory_enabled`.
+
+**What it blocks.** Recall on the 1Claw memory backend. `inbox-triage`,
+`support-triage` and `draft-replies` each ask a question in plain language
+about what they have seen before; on 1Claw they get `ErrNoRecall` and
+degrade, which is the honest outcome but not the useful one.
+
+**What we do instead.** The 1Claw backend stays key/value and says so, so a
+bot that needs recall fails loudly rather than being told "nothing known"
+forever. Recall comes from Honcho instead (`docs/memory.md`). The code that
+would wire this up was written and then removed rather than shipped dark:
+see the comment on `memory.OneClaw`.
