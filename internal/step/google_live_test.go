@@ -15,6 +15,8 @@ type fakeGoogleAPI struct {
 	messagesListErr                                    error
 	sentTo, sentSubj, sentBody                         string
 	modifiedUrgent, modifiedLater                      []string
+	labelled                                           []string
+	labelledWith                                       string
 	draftsCreated                                      []struct{ to, subject, body string }
 	draftSentID                                        string
 	filesGetResult                                     *google.DriveFile
@@ -41,6 +43,10 @@ func (f *fakeGoogleAPI) MessagesSend(to, subject, body string) (string, error) {
 }
 func (f *fakeGoogleAPI) MessagesModify(urgentIDs, laterIDs []string) error {
 	f.modifiedUrgent, f.modifiedLater = urgentIDs, laterIDs
+	return nil
+}
+func (f *fakeGoogleAPI) AddLabel(ids []string, label string) error {
+	f.labelled, f.labelledWith = ids, label
 	return nil
 }
 func (f *fakeGoogleAPI) DraftsCreate(to, subject, body string) (string, error) {
@@ -299,5 +305,56 @@ func TestParamIntFallsBackOnMissingOrWrongType(t *testing.T) {
 	}
 	if got := paramInt(float64(3), 7); got != 3 {
 		t.Errorf("paramInt(3.0, 7) = %d", got)
+	}
+}
+
+// messages.label is how follow-up-chaser records that it has nudged a
+// thread, so the next run's `-label:` query excludes it. Labelling nothing
+// and reporting success is the failure that matters: it turns a bot that
+// nudges someone once into one that nudges them every weekday for ever.
+func TestDispatchGoogleLabelsMessages(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		ids  any
+		want []string
+	}{
+		{
+			name: "a list<json> port, as stale_threads arrives",
+			ids:  []any{map[string]any{"id": "18f301", "subject": "Proposal"}},
+			want: []string{"18f301"},
+		},
+		{
+			// Silently dropped before, which is the quiet version of the bug.
+			name: "a list<string> port",
+			ids:  []any{"18f301", "18f302"},
+			want: []string{"18f301", "18f302"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fakeGoogleAPI{}
+			out, err := dispatchGoogle(f, "messages.label", map[string]any{
+				"ids": tc.ids, "label": "nanobots-nudged",
+			}, nil)
+			if err != nil {
+				t.Fatalf("dispatchGoogle: %v", err)
+			}
+			if !reflect.DeepEqual(f.labelled, tc.want) {
+				t.Errorf("labelled %v, want %v", f.labelled, tc.want)
+			}
+			if f.labelledWith != "nanobots-nudged" {
+				t.Errorf("label = %q", f.labelledWith)
+			}
+			if m := out.(map[string]any); m["labelled"] != len(tc.want) {
+				t.Errorf("reported %v labelled, did %d", m["labelled"], len(tc.want))
+			}
+		})
+	}
+}
+
+// An empty label would put nothing anywhere while reporting success.
+func TestDispatchGoogleLabelRefusesAnEmptyLabel(t *testing.T) {
+	if _, err := dispatchGoogle(&fakeGoogleAPI{}, "messages.label",
+		map[string]any{"ids": []any{"1"}, "label": "  "}, nil); err == nil {
+		t.Fatal("an empty label was accepted")
 	}
 }

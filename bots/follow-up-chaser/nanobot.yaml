@@ -34,6 +34,15 @@ spec:
       - name: exclude_labels
         type: list<string>
         required: false
+      # What this bot marks a thread with once it has nudged it, and the
+      # label the search below excludes. A nudge is a real email to a real
+      # person: sending one is right, sending one every weekday until they
+      # answer is harassment with a cron expression.
+      - name: nudged_label
+        type: string
+        required: false
+        default: "nanobots-nudged"
+        description: "Gmail label put on a thread once it has been nudged, and excluded from the next search. Change it to nudge a set again from scratch."
       - name: instructions
         type: string
         required: false
@@ -47,17 +56,30 @@ spec:
         type: list<string>
 
   steps:
+    # -label: is the whole dedupe. Gmail answers "which of these have I not
+    # nudged yet" out of its own index, so nothing here has to keep a set of
+    # thread ids, and what the bot has done is visible in the user's own
+    # mailbox rather than in a state file they cannot see.
     - name: fetch
       type: service.call
       service: gmail
       op: messages.list
-      params: { q: "in:sent older_than:{{inputs.days_silent}}d", max: 100 }
+      params:
+        q: "in:sent older_than:{{inputs.days_silent}}d -label:{{inputs.nudged_label}}"
+        max: 100
     - name: find_and_draft
       type: ai.generate
       prompt_file: ./prompts/nudge.md
       inputs: { sent: "{{steps.fetch.output}}", exclude_labels: "{{inputs.exclude_labels}}", instructions: "{{inputs.instructions}}" }
       outputs:
         stale_threads: "{{steps.find_and_draft.output.stale_threads}}"
+    # Nothing stale is the ordinary outcome once the backlog is cleared, and
+    # it must not run the sender behind it (docs/bot-contract.md).
+    - name: anything
+      type: stop.if
+      value: "{{steps.find_and_draft.output.stale_threads}}"
+      equals: "[]"
+      summary: "nothing sent has gone unanswered long enough to nudge"
     - name: create
       type: service.call
       service: gmail
@@ -65,6 +87,15 @@ spec:
       params: { drafts: "{{steps.find_and_draft.output.drafts}}" }
       outputs:
         draft_ids: "{{steps.create.output.draft_ids}}"
+    # Last, and only once the drafts exist: a thread marked nudged that was
+    # never actually nudged is silently dropped for good.
+    - name: mark
+      type: service.call
+      service: gmail
+      op: messages.label
+      params:
+        ids: "{{steps.find_and_draft.output.stale_threads}}"
+        label: "{{inputs.nudged_label}}"
 
   guardrails:
     pii: redact

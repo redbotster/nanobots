@@ -146,30 +146,39 @@ func (c *Client) ensureLabel(name string) (string, error) {
 	return created.ID, nil
 }
 
-// MessagesModify implements `messages.modify` as inbox-triage uses it:
-// label every message in urgentIDs "URGENT" and every message in
-// laterIDs "LATER". Label-only, per the catalog's design rule — this never
-// archives or deletes.
-func (c *Client) MessagesModify(urgentIDs, laterIDs []string) error {
-	urgentLabel, err := c.ensureLabel("URGENT")
-	if err != nil {
-		return err
-	}
-	laterLabel, err := c.ensureLabel("LATER")
-	if err != nil {
-		return err
-	}
-	apply := func(ids []string, labelID string) error {
-		for _, id := range ids {
-			url := fmt.Sprintf("%s/messages/%s/modify", gmailBase, id)
-			if err := c.postJSON(url, map[string]any{"addLabelIds": []string{labelID}}, nil); err != nil {
-				return fmt.Errorf("messages.modify %s: %w", id, err)
-			}
-		}
+// AddLabel puts one label on every message in ids, creating the label if
+// the account does not have it yet. Label-only, per the catalog's design
+// rule — nothing here archives or deletes.
+//
+// The general form of what MessagesModify does for inbox-triage, because a
+// label is also how a bot remembers what it has already acted on. A Gmail
+// query can exclude one (`-label:nanobots-nudged`), so "the threads I have
+// not nudged" is a question Gmail answers rather than a set this repo has
+// to keep — which is the difference between follow-up-chaser nudging
+// someone once and nudging them every weekday forever.
+func (c *Client) AddLabel(ids []string, label string) error {
+	if len(ids) == 0 {
 		return nil
 	}
-	if err := apply(urgentIDs, urgentLabel); err != nil {
+	labelID, err := c.ensureLabel(label)
+	if err != nil {
 		return err
 	}
-	return apply(laterIDs, laterLabel)
+	for _, id := range ids {
+		url := fmt.Sprintf("%s/messages/%s/modify", gmailBase, id)
+		if err := c.postJSON(url, map[string]any{"addLabelIds": []string{labelID}}, nil); err != nil {
+			return fmt.Errorf("label %q on %s: %w", label, id, err)
+		}
+	}
+	return nil
+}
+
+// MessagesModify implements `messages.modify` as inbox-triage uses it:
+// label every message in urgentIDs "URGENT" and every message in
+// laterIDs "LATER".
+func (c *Client) MessagesModify(urgentIDs, laterIDs []string) error {
+	if err := c.AddLabel(urgentIDs, "URGENT"); err != nil {
+		return err
+	}
+	return c.AddLabel(laterIDs, "LATER")
 }

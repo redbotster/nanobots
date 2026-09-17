@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -83,6 +84,7 @@ type googleAPI interface {
 	MessagesList(q string, max int) ([]google.Message, error)
 	MessagesSend(to, subject, body string) (string, error)
 	MessagesModify(urgentIDs, laterIDs []string) error
+	AddLabel(ids []string, label string) error
 	DraftsCreate(to, subject, body string) (string, error)
 	DraftsSend(draftID string) (string, error)
 	FilesGet(id string) (*google.DriveFile, error)
@@ -134,6 +136,21 @@ func dispatchGoogle(c googleAPI, op string, params map[string]any, blobs BlobSto
 			return nil, err
 		}
 		return map[string]any{"modified": len(urgentIDs) + len(laterIDs)}, nil
+
+	case "messages.label":
+		// How a bot remembers what it has already acted on, in the one
+		// place that can answer "which ones have I not done yet" without
+		// this repo keeping a set: Gmail itself, through a query like
+		// `-label:nanobots-nudged`. See bots/follow-up-chaser.
+		label, _ := params["label"].(string)
+		if strings.TrimSpace(label) == "" {
+			return nil, fmt.Errorf("messages.label: no label given")
+		}
+		ids := paramIDs(params["ids"])
+		if err := c.AddLabel(ids, label); err != nil {
+			return nil, err
+		}
+		return map[string]any{"labelled": len(ids), "label": label}, nil
 
 	case "drafts.create":
 		items, _ := params["drafts"].([]any)
@@ -271,12 +288,22 @@ func paramIDs(v any) []string {
 	items, _ := v.([]any)
 	ids := make([]string, 0, len(items))
 	for _, it := range items {
-		m, ok := it.(map[string]any)
-		if !ok {
-			continue
-		}
-		if id, ok := m["id"].(string); ok {
-			ids = append(ids, id)
+		switch item := it.(type) {
+		case map[string]any:
+			// A list<json> port, e.g. inbox-triage's `urgent` or
+			// follow-up-chaser's `stale_threads`.
+			if id, ok := item["id"].(string); ok {
+				ids = append(ids, id)
+			}
+		case string:
+			// A list<string> port, or a fanned-out id. This used to be
+			// skipped in silence, which for messages.label means labelling
+			// nothing and reporting success — and a follow-up-chaser whose
+			// "already nudged" label never lands nudges the same person
+			// every weekday for ever.
+			if item != "" {
+				ids = append(ids, item)
+			}
 		}
 	}
 	return ids

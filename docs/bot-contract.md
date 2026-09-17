@@ -59,6 +59,8 @@ When `value` and `equals` resolve to the same text, the bot ends there: no furth
 
 Put the `memory.put` that moves the watermark **after** the `stop.if`, so a run that stops does not record having handled something it did not.
 
+Memory is not the only place to keep a watermark, and often not the best one. `follow-up-chaser` marks each thread it has nudged with a Gmail label and searches `-label:nanobots-nudged`, so the provider answers "which have I not done yet" out of its own index: no set to keep here, no state file to lose, and what the bot has done is visible in the user's own mailbox. Reach for memory when the provider cannot answer the question, not before.
+
 Deliberately not a general `if`. A branch needs a second list of steps, somewhere to put it in the YAML, and a planner that can type-check both arms; one early exit covers the case that exists and adds no nesting.
 
 In a container, the agent signals this by writing `outputs/.nothing-to-do` holding the reason — exit 0 with no outputs is otherwise indistinguishable from a bot that forgot to write any. Any container honouring this contract may write that file.
