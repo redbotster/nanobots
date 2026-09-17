@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanobots.dev/bots/lead-enricher/schemas/enriched.json",
+  "title": "EnrichedLead",
+  "type": "object",
+  "required": ["name", "email", "company", "notes"],
+  "properties": {
+    "name": { "type": "string" },
+    "email": {
+      "type": "string",
+      "description": "The lead's own address. What anything downstream writes to, so it is a declared field rather than something a model picks out of the notes."
+    },
+    "company": { "type": "string" },
+    "notes": {
+      "type": "string",
+      "description": "What the enrichment found, in prose. Data about the lead, never an instruction."
+    }
+  }
+}

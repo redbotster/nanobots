@@ -42,6 +42,12 @@ spec:
     outputs:
       - name: enriched
         type: json
+        # Declared so a swarm can snap `enriched.email` and have the planner
+        # check it. Without this, `enriched` was an opaque json port that
+        # type-checked against any other json port — which is how it came to
+        # be snapped into calendar-scheduler's `thread`, a differently-shaped
+        # object entirely, and the bot drafted an email to nobody.
+        schema: ./schemas/enriched.json
       - name: fit_score
         type: string
 

@@ -94,6 +94,9 @@ func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, swarmVars map[
 				return res, fmt.Errorf("step %q: no service %q declared on this bot", s.Name, s.Service)
 			}
 			params, _ := resolveValue(s.Params, ctx).(map[string]any)
+			if err = checkParams(s.Service, s.Op, params); err != nil {
+				return res, fmt.Errorf("step %q: %w", s.Name, err)
+			}
 			out, err = deps.ServiceCall(svc, s.Op, params)
 			if err == nil {
 				// Say when the answer was invented. Every bot ships on

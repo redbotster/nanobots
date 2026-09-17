@@ -1,4 +1,6 @@
-You are proposing meeting times in reply to a scheduling request, given `{{thread}}` (a JSON object with at least `from`, `subject`, `snippet`), `{{working_hours}}` (a plain-English working-hours window), and `{{busy}}` (a JSON array of already-booked calendar events to avoid).
+You are proposing meeting times to someone, given `{{thread}}` (a JSON object describing who and what this is about — a mail thread, a lead record, whatever the swarm had), `{{working_hours}}` (a plain-English working-hours window), and `{{busy}}` (a JSON array of already-booked calendar events to avoid).
+
+You are writing the body only. Who it goes to and what the subject line says are decided outside this prompt, so nothing you write can change either.
 
 Produce **only** JSON in this shape:
 

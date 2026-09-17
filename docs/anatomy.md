@@ -121,6 +121,28 @@ already on a weekday-morning cron ([going-live.md](going-live.md)).
 | `trigger` | `manual`, `cron` with a timezone ([scheduler.md](scheduler.md)), `webhook` ([webhooks.md](webhooks.md)), or `event` |
 | `defaults.guardrails` | budget, PII policy and injection threshold, applied per bot |
 
+### `json` to `json` is not a shape check
+
+A snap between two `json` ports type-checks on the word `json` alone. A
+`.field` drill is checked against the upstream port's `schema:` file, so
+`enricher.enriched.email` is real; the whole-port form is not, and cannot
+be until both sides declare a schema.
+
+This is not theoretical. `lead-to-meeting` snapped a lead record
+(`{name, email, company, notes}`) into `calendar-scheduler.thread`, whose
+prompt says it needs "at least `from`, `subject`, `snippet`". The planner
+passed it, neither field existed, and the bot drafted an email to `""` with
+the subject `"Re: "` — then asked a human to approve sending it. It ran on
+a webhook trigger for weeks that way.
+
+Two things changed because of it. `internal/step/checkparams.go` refuses a
+draft with no recipient before the call is dispatched, in the interpreter
+rather than in either backend — demo mode returns the fixture whatever the
+params are, so a check inside the service client would never have seen it.
+And where a swarm needs one field out of a json port, it snaps that field
+and the upstream port declares a `schema:` for it, which is a shape the
+planner *can* check.
+
 ## Running it for real
 
 ```sh

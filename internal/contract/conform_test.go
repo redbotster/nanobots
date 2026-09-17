@@ -1,6 +1,7 @@
 package contract
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -128,6 +129,55 @@ func TestRunConformanceMissingInputsFixtureErrors(t *testing.T) {
 	_, err := RunConformance(filepath.Join(root, "bots", "email-drive-file"), filepath.Join(root, "bots"))
 	if err == nil {
 		t.Fatal("expected an error when fixtures/inputs.json is missing from the given dir")
+	}
+}
+
+// Conformance has to hand a bot the inputs a real run would.
+//
+// The bot contract says /run/inputs.json arrives "already-defaulted", and
+// the runner does that (internal/runner/wiring.go). Conformance did not, so
+// every optional input a fixture left out reached the bot as nothing —
+// which meant a green conform run was exercising a different bot from the
+// one the scheduler runs.
+//
+// Found by newsletter-drafter: it declares `to` with a default of
+// me@example.com, its fixture omits it, and it drafted an email with no
+// recipient for as long as nothing looked at what went into the call.
+func TestConformanceAppliesADeclaredDefault(t *testing.T) {
+	root := repoRoot(t)
+	dir := filepath.Join(root, "bots", "newsletter-drafter")
+
+	var declared string
+	nb, err := schema.LoadNanobot(filepath.Join(dir, "nanobot.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range nb.Spec.Ports.Inputs {
+		if p.Name == "to" {
+			declared = p.Default
+		}
+	}
+	if declared == "" {
+		t.Skip("newsletter-drafter no longer declares a default for `to`")
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "fixtures", "inputs.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture map[string]any
+	if err := json.Unmarshal(raw, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := fixture["to"]; ok {
+		t.Skip("the fixture now supplies `to`, so there is no default left to apply")
+	}
+
+	rep, err := RunConformance(dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rep.OK() {
+		t.Fatalf("a bot whose only missing input has a default did not conform: %v", rep.Errors)
 	}
 }
 

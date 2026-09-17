@@ -63,6 +63,11 @@ spec:
         owner_rules: "route by industry fit"
     - id: scheduler
       use: calendar-scheduler@0.1.0
+      inputs:
+        # A new lead is not a reply to anything, so there is no "Re:" to
+        # inherit. Stated here rather than left to the bot's default, because
+        # this is the subject line a human sees on the approval.
+        subject: "Times for a quick call"
     - id: sender
       use: email-send-approved@0.1.0
 
@@ -73,9 +78,21 @@ spec:
       to: router.enriched
     - from: enricher.enriched
       to: scheduler.thread
+    # The lead's own address, snapped as a field so the planner checks it
+    # against lead-enricher's schema. This swarm used to hand the whole lead
+    # record to a bot that reads `thread.from`, which a lead record does not
+    # have — so it drafted an email to "" with the subject "Re: " and
+    # reported success.
+    - from: enricher.enriched.email
+      to: scheduler.to
     - from: scheduler.draft_id
       to: sender.draft_id
-    - from: enricher.fit_score
+    # The question a human is actually asked before a real email goes out.
+    # This used to be enricher.fit_score, so the approval read "medium" —
+    # the lead's fit score, which says nothing about what is being sent or
+    # to whom. Seen on a real run: `nobody answered the approval "medium"
+    # within 29m59s`. Every other swarm here snaps the draft's subject.
+    - from: scheduler.subject
       to: sender.summary
 
   deploy:

@@ -33,6 +33,20 @@ spec:
 
   ports:
     inputs:
+      # Who the reply goes to, as a field rather than something read out of
+      # `thread`. It used to be `{{inputs.thread.from}}`, which is correct
+      # for a mail thread and resolved to nothing for lead-to-meeting's lead
+      # record — so the bot drafted an email with no recipient and the swarm
+      # called it a success. A model could have picked the address out of
+      # whatever it was given, and deliberately does not: an address that
+      # comes from a declared field cannot be moved by a line of prose
+      # inside the data.
+      - name: to
+        type: string
+        required: true
+      - name: subject
+        type: string
+        default: "Finding a time to talk"
       - name: thread
         type: json
         required: true
@@ -48,6 +62,13 @@ spec:
       - name: slots
         type: list<datetime>
       - name: draft_id
+        type: string
+      # What the draft is about, so whatever sends it can say so.
+      # email-send-approved asks a human to authorise a real send and shows
+      # them this; every other swarm in the catalog snaps a `.subject` into
+      # it, and lead-to-meeting had nothing to snap, so it sent the
+      # enricher's fit_score instead and the question read "medium".
+      - name: subject
         type: string
 
   steps:
@@ -68,11 +89,12 @@ spec:
       op: drafts.create
       params:
         drafts:
-          - to: "{{inputs.thread.from}}"
-            subject: "Re: {{inputs.thread.subject}}"
+          - to: "{{inputs.to}}"
+            subject: "{{inputs.subject}}"
             body: "{{steps.propose.output.reply_body}}"
       outputs:
         draft_id: "{{steps.draft.output.draft_ids.0}}"
+        subject: "{{inputs.subject}}"
 
   guardrails:
     pii: redact

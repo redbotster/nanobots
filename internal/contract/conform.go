@@ -95,11 +95,27 @@ func RunConformance(botDir, fixturesDir string) (*Report, error) {
 	if err := json.Unmarshal(raw, &inputs); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", inputsPath, err)
 	}
+	// The bot contract says /run/inputs.json arrives "already-defaulted,
+	// already-validated", and the runner does exactly that
+	// (internal/runner/wiring.go). Conformance did not, so every optional
+	// input a fixture left out reached the bot as nothing at all, and
+	// conformance was proving the bot honours its contract under inputs no
+	// real run would ever hand it.
+	//
+	// Found by a bot that passed: newsletter-drafter declares `to` with a
+	// default of me@example.com and its fixture omits it, so `{{inputs.to}}`
+	// resolved empty and it drafted an email with no recipient — green, for
+	// as long as nothing looked at what went into the call.
 	for _, p := range nb.Spec.Ports.Inputs {
+		if _, ok := inputs[p.Name]; ok {
+			continue
+		}
+		if p.Default != "" {
+			inputs[p.Name] = step.ResolveTemplateValue(p.Default, map[string]any{})
+			continue
+		}
 		if p.Required {
-			if _, ok := inputs[p.Name]; !ok {
-				return nil, fmt.Errorf("%s: required input %q is missing from %s", nb.Metadata.Name, p.Name, inputsPath)
-			}
+			return nil, fmt.Errorf("%s: required input %q is missing from %s", nb.Metadata.Name, p.Name, inputsPath)
 		}
 	}
 

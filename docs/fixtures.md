@@ -107,3 +107,24 @@ the same evidence a reader would use.
 It cannot catch an op only one bot uses. For those, the check is the one
 that found `newest_id`: read what the live dispatch returns and make the
 fixture say the same thing.
+
+## A fixture is not the whole input
+
+`fixtures/inputs.json` is what conformance hands the bot, and for a long
+time it was *all* it handed the bot. A real run does more: the runner
+resolves every declared input port, and an optional one nothing supplies
+falls back to the port's own `default:` (`internal/runner/wiring.go`). The
+bot contract says so — `/run/inputs.json` arrives "already-defaulted,
+already-validated" — and conformance did not do it.
+
+So a fixture that omitted an optional input was exercising a different bot
+from the one the scheduler runs. `newsletter-drafter` declares `to` with a
+default of `me@example.com` and its fixture omits it, so under conformance
+`{{inputs.to}}` resolved to nothing and the bot drafted an email with no
+recipient. Green, for as long as nothing looked at what went into the call.
+
+`RunConformance` applies declared defaults now, and
+`TestConformanceAppliesADeclaredDefault` holds it there. The practical
+consequence for writing fixtures: leave an optional input out when you want
+the default exercised, and put it in when you want a specific value — both
+now mean what they look like.
