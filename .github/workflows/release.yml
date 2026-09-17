@@ -1,0 +1,105 @@
+# What a tag publishes.
+#
+# Two artifacts, both usable by a stranger with no accounts and no tokens:
+# the binaries with the WebUI compiled in, and a container image. The image
+# is the one that matters most — `nanobots deploy 1claw` needed an image the
+# user had built and pushed themselves, and a published one removes that
+# step entirely.
+#
+# What this deliberately does not publish: the Homebrew cask (the tap repo
+# does not exist yet and uploading needs a token this repo does not hold —
+# see .goreleaser.yaml) and the npm package (needs an NPM_TOKEN). Both are
+# one secret away, and until they exist the README says so rather than
+# promising an install that fails.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  # So a release can be re-cut without moving a tag, which is the thing you
+  # want at 2am when an upload half-failed.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The existing tag to build
+        required: true
+
+permissions:
+  contents: write # create the GitHub Release
+  packages: write # push to ghcr.io
+
+jobs:
+  binaries:
+    name: Binaries and GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # GoReleaser's changelog is built from the commits since the last
+          # tag, and a shallow clone has none of them.
+          fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The UI is compiled into every published binary by .goreleaser.yaml's
+      # `before` hooks, which need npm on the runner.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # Pinned, not "latest": this config uses `formats` and
+      # `homebrew_casks`, which older versions reject outright — the local
+      # check against v2.5.1 failed on exactly that.
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: v2.18.2
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  image:
+    name: Container image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      # Both architectures: a 1Claw Cloud Runtime and an Apple laptop do not
+      # agree about which one they are, and an image that runs on only one
+      # of them is an image that fails at `docker compose up` for half the
+      # people who try it.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

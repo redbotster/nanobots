@@ -10,7 +10,7 @@ go build ./... && go vet ./... && go test ./... -race
 cd web && npx tsc -b && npm run test
 ```
 
-691 table-driven Go tests across every package
+692 table-driven Go tests across every package
 (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`,
 so the number stays checkable), including:
 
@@ -45,6 +45,7 @@ every claim in prose is a claim that rots. Today it checks:
 | `TestTheDocsNameEveryBot` / `…EverySwarm` | a bot or swarm nobody wrote a row for |
 | `TestEveryDocIsReachableFromTheReadme` | a page written, linked from nowhere, and invisible |
 | `TestEveryRelativeDocLinkResolves` | a link left pointing at a page that moved or was renamed |
+| `TestTheNpxShimAsksForAnAssetTheReleaseActuallyBuilds` | the npx shim and GoReleaser disagreeing about an asset name |
 | `TestTheDocsQuoteTheRealFiles` | the YAML quoted in [anatomy.md](anatomy.md) drifting from the real files |
 | `TestTheClaimedCronSwarmCountIsAccurate` | "twelve of the sixteen carry a cron trigger", repeated in four files |
 | `TestTheClaimedWideSwarmCountIsAccurate` | [parallelism.md](parallelism.md)'s table and the count above it |

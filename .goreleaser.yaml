@@ -22,7 +22,19 @@ builds:
       - -s -w -X main.Version={{.Version}}
 
 archives:
-  - formats: [tar.gz]
+    # Explicit, because npm/bin/nanobots.js looks a release asset up by
+    # name. GoReleaser's default is nanobots_0.1.0_darwin_amd64.tar.gz; the
+    # shim asks for nanobots_0.1.0_Darwin_x86_64.tar.gz, which is the
+    # convention it was written against. They disagreed, so the first `npx
+    # nanobots` would have failed with "release v0.1.0 has no ...". Both
+    # halves are now asserted against each other by
+    # TestTheNpxShimAsksForAnAssetTheReleaseActuallyBuilds.
+  - name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    formats: [tar.gz]
     format_overrides:
       - goos: windows
         formats: [zip]
@@ -39,8 +51,18 @@ changelog:
     # the generated notes are readable as-is. Only the housekeeping is cut.
     exclude: ["^test:", "^chore:", "^ci:"]
 
+# Generated but not uploaded: the tap repository redbotster/homebrew-tap
+# does not exist yet, and uploading needs a token with write access to it
+# that this repo does not hold. GoReleaser still builds the cask file into
+# dist/, so the formula is reviewable before any of that is set up.
+#
+# To turn it on: create the tap repo, add a HOMEBREW_TAP_GITHUB_TOKEN secret
+# with contents:write on it, set skip_upload to false, and pass the token
+# through in .github/workflows/release.yml. Until then the README must not
+# say `brew install` works.
 homebrew_casks:
   - name: nanobots
+    skip_upload: true
     repository:
       owner: redbotster
       name: homebrew-tap
