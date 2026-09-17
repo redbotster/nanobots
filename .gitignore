@@ -36,3 +36,7 @@ npm-debug.log*
 
 # gstack browse/QA reports — screenshots from a local verification pass
 .gstack/
+
+# Screenshots and page dumps from scripts/e2e — evidence for the run that
+# produced them, never for the next one.
+scripts/e2e/artifacts/

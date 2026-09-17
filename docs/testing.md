@@ -70,7 +70,46 @@ and — for `content-engine` — two independent live `ai.generate` calls chaine
 across separate containers followed by a real publish. Both finished
 `succeeded`.
 
-## 3. A live browser pass
+## 3. The first run, in a real browser, on a schedule
+
+`scripts/e2e/first-run.ts` is the one automated test that checks the claim
+the README opens with: clone it, start it, and a swarm runs to success with
+nothing configured.
+
+```sh
+docker compose up -d --wait
+cd scripts/e2e && npm install
+npx tsx first-run.ts                    # or: npx tsx first-run.ts http://host:port
+```
+
+It walks the landing page, opens the app, finds `supervisor-review` in the
+gallery, runs it, and requires the run to finish `succeeded` — then requires
+the page to say plainly that nothing is configured, because a run that
+quietly looked real would be worse than a failure.
+
+A separate npm project from `web/` on purpose: Puppeteer downloads a
+Chromium, and nobody typechecking a component should pay for that. It runs
+daily in `.github/workflows/first-run.yml`, on dispatch, and on any push
+touching the Dockerfile, the compose file or the script — not on every push,
+because it costs about four minutes against the main pass's forty seconds,
+and a first run usually breaks from a base image moving rather than from a
+commit. Screenshots and a page dump land in `scripts/e2e/artifacts/` on
+failure and upload as a job artifact.
+
+Two false passes it had before it was believable, both worth knowing if you
+write another one:
+
+- **Asserting a word that was already on the page.** "The run succeeded" was
+  checked by looking for `succeeded` in the body text, which the *previous*
+  run's status already put there — it went green in 559ms against a run
+  taking twenty seconds. It now records the newest run id before the click
+  and requires a different one to reach a terminal state.
+- **Waiting for a label that never renders.** The obvious fix, watching for
+  `Running…` first, is also wrong: with no model configured every
+  `ai.generate` returns its fixture, so the whole swarm can finish between
+  two polls.
+
+## 4. A live browser pass by hand
 
 Unit tests pass on things that are visibly broken. A browser pass has caught
 what green tests did not: a nested `<button>`, a token masked in one place

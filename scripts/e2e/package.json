@@ -1,0 +1,15 @@
+{
+  "name": "nanobots-e2e",
+  "private": true,
+  "type": "module",
+  "description": "The first-run browser pass. Separate from web/ so Puppeteer's Chromium is not a dependency of typechecking a component.",
+  "scripts": {
+    "first-run": "tsx first-run.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "puppeteer": "^24.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

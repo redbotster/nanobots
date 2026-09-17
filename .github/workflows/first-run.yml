@@ -1,0 +1,82 @@
+# The claim the README opens with, checked in a real browser.
+#
+# Clone it, start it, and a swarm runs to success with nothing configured.
+# Every other job in CI proves a piece; this one proves the promise, through
+# the container path, which is the one with no toolchain to get wrong.
+#
+# On a schedule rather than on every push because it builds an image and
+# downloads a Chromium — about four minutes against forty seconds for the
+# main pass. A first run breaking is also not usually a code change: it is
+# a base image moving, an npm dependency resolving differently, or a
+# Dockerfile assumption going stale. Those arrive with time, not with
+# commits.
+name: First run
+
+on:
+  schedule:
+    # 06:00 UTC daily. Nothing depends on the hour; it just should not be
+    # the top of an hour, where every scheduled workflow on GitHub queues.
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+  # Changes to the things this actually exercises still get checked on push.
+  push:
+    branches: [main]
+    paths:
+      - "Dockerfile"
+      - "compose.yaml"
+      - ".dockerignore"
+      - "scripts/e2e/**"
+      - ".github/workflows/first-run.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  first-run:
+    name: A fresh machine reaches a successful run
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # No NANOBOTS_ENV_FILE, no secrets, no credentials of any kind. The
+      # point is the path a new person walks, and this job proves it stays
+      # walkable by never having a way to cheat.
+      - name: docker compose up
+        run: docker compose up -d --wait --wait-timeout 600
+        env:
+          # A path that cannot exist, so the optional env_file in
+          # compose.yaml finds nothing even if a runner ever has a home
+          # dotenv. Belt and braces on "nothing configured".
+          NANOBOTS_ENV_FILE: /nonexistent/nanobots.env
+
+      # --wait above already blocks on compose.yaml's healthcheck, which is
+      # `nanobots health` asking the daemon for real. This line is the
+      # evidence in the log.
+      - name: What it came up as
+        run: docker compose exec -T nanobots nanobots health
+
+      - name: Install the browser pass
+        working-directory: scripts/e2e
+        run: npm install --no-audit --no-fund
+
+      - name: First run
+        working-directory: scripts/e2e
+        run: npx tsx first-run.ts
+
+      - name: Logs
+        if: always()
+        run: docker compose logs --no-color --tail 200
+
+      - name: Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: first-run-screenshots
+          path: scripts/e2e/artifacts/
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,6 +1,7 @@
 # Nanobots
 
 [![CI](https://github.com/redbotster/nanobots/actions/workflows/ci.yml/badge.svg)](https://github.com/redbotster/nanobots/actions/workflows/ci.yml)
+[![First run](https://github.com/redbotster/nanobots/actions/workflows/first-run.yml/badge.svg)](https://github.com/redbotster/nanobots/actions/workflows/first-run.yml)
 
 *Legos for AI. Snap micro-agents together, run them anywhere, keep the keys in 1Claw.*
 
@@ -232,8 +233,13 @@ verification pass:
 
 ```sh
 go build ./... && go vet ./... && go test ./... -race
-cd web && npx tsc -b && npm run test
+cd web && npx tsc -b && npm run lint && npm run format:check && npm run test
 ```
+
+The second badge above is `scripts/e2e/first-run.ts`: a real browser, a real
+`docker compose up` with nothing configured, running a swarm to success —
+the claim this README opens with, checked daily rather than asserted
+([docs/testing.md](docs/testing.md)).
 
 ## License
 
