@@ -209,6 +209,27 @@ func (o *Orchestrator) runLevels(run *Run, rs *planner.ResolvedSwarm, levels [][
 				run.Log(botID, "", "skipped — %s", why)
 				continue
 			}
+			expr, skip, err := o.whenGate(run, rs, botID)
+			if err != nil {
+				// The planner already proved when: only references this
+				// bot's own declared inputs, so a live failure here means
+				// something upstream of when: broke, not the condition
+				// itself — treated exactly like the bot itself failing,
+				// on_error: continue included.
+				if onErrorContinue(rs, botID) {
+					run.Log(botID, "", "FAILED, but this swarm continues without it: %v", err)
+					run.AddTolerated(botID, err.Error())
+					gone[botID] = fmt.Sprintf("%s failed, and this swarm was told to continue without it", botID)
+					continue
+				}
+				run.Log(botID, "", "FAILED: %v", err)
+				return err
+			}
+			if skip {
+				gone[botID] = fmt.Sprintf("%s: when: %s was false", botID, expr)
+				run.Log(botID, "", "skipped — when: %s is false", expr)
+				continue
+			}
 			toRun = append(toRun, botID)
 		}
 		if len(toRun) == 0 {
@@ -425,6 +446,44 @@ func upstreamMissing(deps []string, gone map[string]string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// whenGate evaluates a bot instance's when: condition, if it has one.
+// Reports the raw expression (for the skip log) and whether it was false.
+//
+// Resolves this bot's inputs the same way runBot is about to — the
+// planner's CheckWhen already proved when: can only reference a port this
+// bot declares, so the condition sees exactly the same {{inputs.<port>}}
+// values the bot's own steps would. Resolving twice (once here, once
+// inside runBot) is the cost of that: simpler than threading the already-
+// resolved map through the retry loop for a call that, per the planner's
+// own guarantee, essentially never errors.
+func (o *Orchestrator) whenGate(run *Run, rs *planner.ResolvedSwarm, botID string) (expr string, skip bool, err error) {
+	if rs.Swarm == nil {
+		return "", false, nil
+	}
+	for _, b := range rs.Swarm.Spec.Bots {
+		if b.ID != botID {
+			continue
+		}
+		if b.When == "" {
+			return "", false, nil
+		}
+		rb, ok := rs.Bots[botID]
+		if !ok {
+			return b.When, false, nil
+		}
+		inputs, err := o.resolveInputsAt(run, rs, botID, rb, noFan)
+		if err != nil {
+			return b.When, false, fmt.Errorf("when: %q: %w", b.When, err)
+		}
+		pass, err := step.EvalCondition(b.When, map[string]any{"inputs": inputs})
+		if err != nil {
+			return b.When, false, fmt.Errorf("when: %w", err)
+		}
+		return b.When, !pass, nil
+	}
+	return "", false, nil
 }
 
 // onErrorContinue reports whether the swarm marked this bot instance as

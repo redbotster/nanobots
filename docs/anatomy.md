@@ -117,6 +117,7 @@ already on a weekday-morning cron ([going-live.md](going-live.md)).
 | `bots[].use` | which `bots/<id>` at which version, resolved by the planner |
 | `bots[].inputs` | literal values and `{{vars.*}}` for ports nothing snaps into |
 | `bots[].on_error` | `fail` (the default) or `continue`, which skips everything downstream ([error-policy.md](error-policy.md)) |
+| `bots[].when` | a condition on this bot's own resolved input; false skips it and everything downstream ([when.md](when.md)) |
 | `snaps` | `from: <bot>.<port>` to `to: <bot>.<port>`, type-checked; `.field` drills into a `json` port, `.*` fans out over a list ([fan-out.md](fan-out.md)) |
 | `trigger` | `manual`, `cron` with a timezone ([scheduler.md](scheduler.md)), `webhook` ([webhooks.md](webhooks.md)), or `event` |
 | `defaults.guardrails` | budget, PII policy and injection threshold, applied per bot |

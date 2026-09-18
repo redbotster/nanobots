@@ -66,6 +66,9 @@
               },
               "use": {
                 "type": "string"
+              },
+              "when": {
+                "type": "string"
               }
             },
             "required": [

@@ -39,6 +39,7 @@ it.
 | [parallelism.md](parallelism.md) | which swarms branch, and why waves are safe |
 | [fan-out.md](fan-out.md) | `.*` over a list, and joining the results back |
 | [error-policy.md](error-policy.md) | `on_error: continue`, and what gets skipped |
+| [when.md](when.md) | `when:`, and the one thing it's allowed to look at |
 | [hosting.md](hosting.md) | running it somewhere that is not your laptop |
 
 ## Connecting things

@@ -230,6 +230,24 @@ type BotRef struct {
 	// immediate retry is what a human hitting Run again would do anyway.
 	// Only meaningful alongside Retry > 0; see CheckRetry.
 	RetryBackoff string `json:"retry_backoff,omitempty" yaml:"retry_backoff,omitempty"`
+	// When gates this bot instance on one of its own resolved inputs — the
+	// swarm-level equivalent of 1Claw Automations' condition step, so a
+	// swarm and an automation read alike. Empty (the default) always runs.
+	//
+	// Only "{{inputs.<port>}}" is legal on the left, comparing to a literal
+	// or another template: "{{inputs.amount}} > 500". No operator at all is
+	// a bare truthy check. False skips this bot exactly the way
+	// on_error: continue does — everything downstream that depends on it is
+	// skipped too, and it is not a failure.
+	//
+	// A condition on an *upstream* bot's output reaches here only once it is
+	// wired to a port with a snap — this can't reach into a bot it has no
+	// input from, on purpose: a condition on data that never flowed into
+	// this bot is a condition on nothing, however the human reading the
+	// swarm meant it.
+	//
+	// See docs/when.md and internal/planner.CheckWhen.
+	When string `json:"when,omitempty" yaml:"when,omitempty"`
 }
 
 // OnError values.

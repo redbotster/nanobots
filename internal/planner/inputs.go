@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/redbotster/nanobots/internal/schema"
+	"github.com/redbotster/nanobots/internal/step"
 )
 
 // UnfedInput is a required input port with nothing to fill it.
@@ -233,4 +234,77 @@ func CheckRetryBackoff(rs *ResolvedSwarm) []error {
 		}
 	}
 	return out
+}
+
+// CheckWhen rejects a when: condition that cannot mean anything: a
+// reference to something other than this bot's own inputs, a reference to
+// an input port the bot doesn't declare, or a comparison between two
+// literals that aren't both numbers. Everything else — whether the
+// condition is actually true — can only be known once the run has real
+// data, so this is the plan-time half of the same typo-catching the other
+// checks in this file do.
+func CheckWhen(rs *ResolvedSwarm) []error {
+	var out []error
+	for _, b := range rs.Swarm.Spec.Bots {
+		if b.When == "" {
+			continue
+		}
+		parsed, err := step.ParseCondition(b.When)
+		if err != nil {
+			out = append(out, fmt.Errorf("bot %q has when: %q — %w", b.ID, b.When, err))
+			continue
+		}
+		rb, ok := rs.Bots[b.ID]
+		if !ok || rb.Nanobot == nil {
+			continue // an unresolved bot is reported elsewhere
+		}
+		ports := map[string]bool{}
+		for _, p := range rb.Nanobot.Spec.Ports.Inputs {
+			ports[p.Name] = true
+		}
+		var badPath string
+		for _, path := range step.TemplatePaths(parsed.Left) {
+			if !validWhenPath(path, ports) {
+				badPath = path
+				break
+			}
+		}
+		if badPath == "" {
+			for _, path := range step.TemplatePaths(parsed.Right) {
+				if !validWhenPath(path, ports) {
+					badPath = path
+					break
+				}
+			}
+		}
+		if badPath != "" {
+			out = append(out, fmt.Errorf(
+				"bot %q has when: %q — %q is not one of this bot's own inputs; when: can only"+
+					" test a port this bot already has, as {{inputs.<port>}}", b.ID, b.When, badPath))
+			continue
+		}
+		// A comparison between two literals (no {{...}} on either side) is
+		// knowable right now, not just at run time — and if it isn't both
+		// numbers, the run would refuse it every single time.
+		if parsed.Op != "" && parsed.Op != "==" && parsed.Op != "!=" &&
+			len(step.TemplatePaths(parsed.Left)) == 0 && len(step.TemplatePaths(parsed.Right)) == 0 {
+			if _, err := step.EvalCondition(b.When, nil); err != nil {
+				out = append(out, fmt.Errorf("bot %q has when: %q — %w", b.ID, b.When, err))
+			}
+		}
+	}
+	return out
+}
+
+// validWhenPath is the one thing a when: condition may reference: this
+// bot's own resolved input, by the exact name it declared. Nothing else —
+// vars, trigger, another bot's id — is available at the point when: is
+// evaluated (see internal/runner.whenGate), so allowing the syntax here
+// would parse a condition that can never do anything at run time.
+func validWhenPath(path string, ports map[string]bool) bool {
+	port, ok := strings.CutPrefix(path, "inputs.")
+	if !ok {
+		return false
+	}
+	return ports[port]
 }

@@ -338,3 +338,78 @@ func TestRetryBackoffWithinLimitsIsFine(t *testing.T) {
 		t.Errorf("a sane retry_backoff was refused: %v", e)
 	}
 }
+
+func TestWhenOnAnActualInputIsFine(t *testing.T) {
+	res := planYAML(t, unfedHeader+`  bots:
+    - id: mailer
+      use: email-drive-file@1.1.0
+      when: '{{inputs.to}} == me@example.com'
+      inputs:
+        to: me@example.com
+        file_id: "hardcoded"
+  snaps: []
+`)
+	for _, e := range res.Invalid {
+		t.Errorf("a when: on a real input was refused: %v", e)
+	}
+}
+
+// A condition can only test what actually reached this bot. Reaching into
+// vars, another bot's id, or a port this bot never declared would type-check
+// nothing and mean whatever the human hoped, which is exactly the kind of
+// silent misread this file exists to catch before a run.
+func TestWhenOnSomethingOtherThanThisBotsInputsIsRefused(t *testing.T) {
+	res := planYAML(t, unfedHeader+`  bots:
+    - id: mailer
+      use: email-drive-file@1.1.0
+      when: '{{vars.threshold}} == 5'
+      inputs:
+        to: me@example.com
+        file_id: "hardcoded"
+  snaps: []
+`)
+	if res.OK() {
+		t.Fatal("when: on vars.* planned OK")
+	}
+	var found bool
+	for _, e := range res.Invalid {
+		if strings.Contains(e.Error(), "mailer") && strings.Contains(e.Error(), "vars.threshold") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("not refused for the right reason: %v", res.Invalid)
+	}
+}
+
+func TestWhenOnAnUndeclaredPortIsRefused(t *testing.T) {
+	res := planYAML(t, unfedHeader+`  bots:
+    - id: mailer
+      use: email-drive-file@1.1.0
+      when: '{{inputs.nope}} == 5'
+      inputs:
+        to: me@example.com
+        file_id: "hardcoded"
+  snaps: []
+`)
+	if res.OK() {
+		t.Fatal("when: on an undeclared port planned OK")
+	}
+}
+
+// Two literals that aren't both numbers can never be true, on this run or
+// any other — knowable right now, same as an absurd retry count.
+func TestWhenComparingTwoNonNumericLiteralsIsRefused(t *testing.T) {
+	res := planYAML(t, unfedHeader+`  bots:
+    - id: mailer
+      use: email-drive-file@1.1.0
+      when: 'true > false'
+      inputs:
+        to: me@example.com
+        file_id: "hardcoded"
+  snaps: []
+`)
+	if res.OK() {
+		t.Fatal("when: 'true > false' planned OK")
+	}
+}

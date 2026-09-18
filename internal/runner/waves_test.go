@@ -379,6 +379,97 @@ func TestSkippingIsTransitive(t *testing.T) {
 	}
 }
 
+// whenSwarm builds a two-bot swarm for testing when: gating directly,
+// rather than through swarmWith — it needs a declared input port and a real
+// Ref, which swarmWith's bare-bones ResolvedBot doesn't carry.
+func whenSwarm(gateWhen string, gateAmount any) *planner.ResolvedSwarm {
+	gate := schema.BotRef{ID: "gate", When: gateWhen, Inputs: map[string]any{"amount": gateAmount}}
+	notify := schema.BotRef{ID: "notify"}
+	return &planner.ResolvedSwarm{
+		Swarm: &schema.Nanoswarm{Spec: schema.NanoswarmSpec{
+			Bots:  []schema.BotRef{gate, notify},
+			Snaps: []schema.Snap{{From: "gate.ok", To: "notify.ok"}},
+		}},
+		Bots: map[string]*planner.ResolvedBot{
+			"gate": {Ref: gate, Nanobot: &schema.Nanobot{
+				Metadata: schema.Metadata{Name: "gate", Version: "0.1.0"},
+				Spec: schema.NanobotSpec{Ports: schema.Ports{
+					Inputs:  []schema.InputPort{{Name: "amount", Type: "string", Required: true}},
+					Outputs: []schema.OutputPort{{Name: "ok", Type: "string"}},
+				}},
+			}},
+			"notify": {Ref: notify, Nanobot: &schema.Nanobot{
+				Metadata: schema.Metadata{Name: "notify", Version: "0.1.0"},
+				Spec: schema.NanobotSpec{Ports: schema.Ports{
+					Inputs: []schema.InputPort{{Name: "ok", Type: "string", Required: true}},
+				}},
+			}},
+		},
+	}
+}
+
+// A when: this bot's own input resolves false skips exactly the way
+// on_error: continue does — the bot never runs, and neither does anything
+// downstream of it, because its output never arrived.
+func TestWhenFalseSkipsTheBotAndDownstream(t *testing.T) {
+	var ran []string
+	o := &Orchestrator{runBotFn: func(_ *Run, _ *planner.ResolvedSwarm, id string, _ *planner.ResolvedBot) error {
+		ran = append(ran, id)
+		return nil
+	}}
+	rs := whenSwarm("{{inputs.amount}} > 500", 100)
+
+	run := NewRun("probe")
+	if err := o.runLevels(run, rs, [][]string{{"gate"}, {"notify"}}); err != nil {
+		t.Fatalf("when: false failed the run: %v", err)
+	}
+	if len(ran) != 0 {
+		t.Errorf("ran %v, want nothing — when: was false", ran)
+	}
+	var said bool
+	for _, l := range run.LogEntries() {
+		if l.Bot == "gate" && strings.Contains(l.Msg, "when:") && strings.Contains(l.Msg, "false") {
+			said = true
+		}
+	}
+	if !said {
+		t.Errorf("nothing in the log says when: was false: %+v", run.LogEntries())
+	}
+}
+
+func TestWhenTrueRunsTheBot(t *testing.T) {
+	var ran []string
+	o := &Orchestrator{runBotFn: func(_ *Run, _ *planner.ResolvedSwarm, id string, _ *planner.ResolvedBot) error {
+		ran = append(ran, id)
+		return nil
+	}}
+	rs := whenSwarm("{{inputs.amount}} > 500", 750)
+
+	run := NewRun("probe")
+	if err := o.runLevels(run, rs, [][]string{{"gate"}, {"notify"}}); err != nil {
+		t.Fatalf("the run failed: %v", err)
+	}
+	if len(ran) != 2 {
+		t.Errorf("ran %v, want both gate and notify", ran)
+	}
+}
+
+func TestNoWhenAlwaysRuns(t *testing.T) {
+	var ran []string
+	o := &Orchestrator{runBotFn: func(_ *Run, _ *planner.ResolvedSwarm, id string, _ *planner.ResolvedBot) error {
+		ran = append(ran, id)
+		return nil
+	}}
+	rs := whenSwarm("", 100)
+
+	if err := o.runLevels(NewRun("probe"), rs, [][]string{{"gate"}, {"notify"}}); err != nil {
+		t.Fatalf("the run failed: %v", err)
+	}
+	if len(ran) != 2 {
+		t.Errorf("ran %v, want both — no when: means always run", ran)
+	}
+}
+
 // A fatal failure alongside a tolerated one in the same wave still fails
 // the run — "continue" is per bot, not a mood the whole wave catches.
 func TestOneToleratedFailureDoesNotExcuseAFatalOne(t *testing.T) {
