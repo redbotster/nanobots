@@ -111,6 +111,28 @@ underneath the bot — there is nothing left to run into.
 Every retry is logged. A bot quietly succeeding on its third attempt every
 night is worth knowing about the service behind it.
 
+### Waiting between retries
+
+```yaml
+bots:
+  - id: watch
+    use: competitor-watch@0.1.0
+    retry: 2
+    retry_backoff: 5s   # empty (default) retries immediately; 60s is the ceiling
+```
+
+Empty by default, which retries immediately — most of this catalog's
+transient failures are a container race, not a rate limit, and an immediate
+retry is what a human hitting Run again would do anyway. Set it for a
+service that actually wants space between attempts.
+
+Refused at plan time, same as an absurd retry count: `retry_backoff` with no
+`retry` has nothing to wait between, anything that isn't a Go duration
+string (`5s`, `1m`) is refused rather than silently ignored, and anything
+over 60s is refused too — past that, the honest answer is `on_error:
+continue` plus a notification, not a longer sleep. A run stopped mid-wait
+does not sit out the rest of it.
+
 ## When to use it
 
 Use `continue` for work at the edge of a swarm that nothing else reads —

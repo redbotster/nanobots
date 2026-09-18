@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -640,6 +641,33 @@ func TestABotCanBeRetried(t *testing.T) {
 	}
 	if said != 2 {
 		t.Errorf("%d retry lines, want 2", said)
+	}
+}
+
+// The wait is real work, not a log line: this asserts the orchestrator
+// actually asked to sleep the declared duration, through the same seam a
+// real deploy sleeps through, without the test itself taking any time.
+func TestARetryWaitsItsDeclaredBackoff(t *testing.T) {
+	var attempts int
+	o := &Orchestrator{
+		runBotFn: func(_ *Run, _ *planner.ResolvedSwarm, _ string, _ *planner.ResolvedBot) error {
+			attempts++
+			if attempts < 2 {
+				return fmt.Errorf("connection reset")
+			}
+			return nil
+		},
+	}
+	var waited []time.Duration
+	o.retryWaitFn = func(_ context.Context, d time.Duration) { waited = append(waited, d) }
+	rs := swarmWith([]schema.BotRef{{ID: "flaky", Retry: 2, RetryBackoff: "5s"}}, nil)
+
+	run := NewRun("probe")
+	if err := o.runLevels(run, rs, [][]string{{"flaky"}}); err != nil {
+		t.Fatalf("gave up on a retryable failure: %v", err)
+	}
+	if len(waited) != 1 || waited[0] != 5*time.Second {
+		t.Errorf("waited %v, want one 5s wait", waited)
 	}
 }
 

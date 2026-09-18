@@ -223,6 +223,13 @@ type BotRef struct {
 	// An approval decline is never retried — that is a decision, not a
 	// fault, and asking again until someone says yes is not a retry.
 	Retry int `json:"retry,omitempty" yaml:"retry,omitempty"`
+	// RetryBackoff is how long to wait before each retry, as a Go duration
+	// string ("5s", "1m"). Empty means retry immediately, which is the
+	// existing behaviour and stays the default: most of this catalog's
+	// transient failures are a container race, not rate limiting, and an
+	// immediate retry is what a human hitting Run again would do anyway.
+	// Only meaningful alongside Retry > 0; see CheckRetry.
+	RetryBackoff string `json:"retry_backoff,omitempty" yaml:"retry_backoff,omitempty"`
 }
 
 // OnError values.

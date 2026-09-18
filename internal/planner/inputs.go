@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/redbotster/nanobots/internal/schema"
 )
@@ -159,6 +160,12 @@ func CheckSnapAndValueCollision(rs *ResolvedSwarm) []error {
 // spinner.
 const maxRetry = 3
 
+// maxRetryBackoff caps the wait between retries. A minute is already long
+// enough that a human staring at a spinner has gone to do something else;
+// past that, the honest answer is on_error: continue plus a notification,
+// not a longer sleep.
+const maxRetryBackoff = 60 * time.Second
+
 // CheckRetry rejects a retry count that isn't sane, and refuses one on a
 // bot that writes somewhere.
 //
@@ -188,6 +195,41 @@ func CheckRetry(rs *ResolvedSwarm) []error {
 					" failure after the write sends it again. Remove the retry, or split the write"+
 					" into its own bot that isn't retried",
 				b.ID, b.Retry, strings.Join(w, ", ")))
+		}
+	}
+	return out
+}
+
+// CheckRetryBackoff rejects a retry_backoff that cannot mean anything: set
+// with no retry to space out, not a duration at all, negative, or long
+// enough that it stops looking like "wait out a blip" and starts looking
+// like a second scheduler.
+func CheckRetryBackoff(rs *ResolvedSwarm) []error {
+	var out []error
+	for _, b := range rs.Swarm.Spec.Bots {
+		if b.RetryBackoff == "" {
+			continue
+		}
+		if b.Retry <= 0 {
+			out = append(out, fmt.Errorf(
+				"bot %q has retry_backoff: %q but retry: %d — nothing to wait between, set retry"+
+					" first or remove retry_backoff", b.ID, b.RetryBackoff, b.Retry))
+			continue
+		}
+		d, err := time.ParseDuration(b.RetryBackoff)
+		if err != nil {
+			out = append(out, fmt.Errorf("bot %q has retry_backoff: %q — not a duration (try %q): %w",
+				b.ID, b.RetryBackoff, "5s", err))
+			continue
+		}
+		if d <= 0 {
+			out = append(out, fmt.Errorf("bot %q has retry_backoff: %q — must be positive",
+				b.ID, b.RetryBackoff))
+			continue
+		}
+		if d > maxRetryBackoff {
+			out = append(out, fmt.Errorf("bot %q has retry_backoff: %q — must be %s or less",
+				b.ID, b.RetryBackoff, maxRetryBackoff))
 		}
 	}
 	return out

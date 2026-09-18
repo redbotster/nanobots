@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -56,6 +57,12 @@ type Orchestrator struct {
 	// and failure aggregation can be tested without Docker. nil means the
 	// real thing; only tests set it.
 	runBotFn func(*Run, *planner.ResolvedSwarm, string, *planner.ResolvedBot) error
+
+	// retryWaitFn is the seam a retry backoff sleeps through, so a test can
+	// see that the wait was requested without a real test taking up to a
+	// minute to run. nil means the real thing: sleep, cancellable by the
+	// run's own context.
+	retryWaitFn func(context.Context, time.Duration)
 
 	// The one agent every approval is opened by. See approvalagent.go.
 	approvalAgentState
@@ -304,10 +311,16 @@ func (o *Orchestrator) runOneBot(run *Run, rs *planner.ResolvedSwarm, botID stri
 	}
 
 	tries := retriesFor(rs, botID)
+	backoff := retryBackoffFor(rs, botID)
 	var err error
 	for i := 0; i <= tries; i++ {
 		if i > 0 {
-			run.Log(botID, "", "retrying (%d of %d) after: %v", i, tries, err)
+			if backoff > 0 {
+				run.Log(botID, "", "waiting %s before retrying (%d of %d) after: %v", backoff, i, tries, err)
+				o.waitRetryBackoff(run, backoff)
+			} else {
+				run.Log(botID, "", "retrying (%d of %d) after: %v", i, tries, err)
+			}
 		}
 		err = attempt()
 		if err == nil || !worthRetrying(err) {
@@ -315,6 +328,19 @@ func (o *Orchestrator) runOneBot(run *Run, rs *planner.ResolvedSwarm, botID stri
 		}
 	}
 	return err
+}
+
+// waitRetryBackoff sleeps out a retry's backoff, cut short if the run is
+// cancelled — a stopped run should stop, not sit out the wait first.
+func (o *Orchestrator) waitRetryBackoff(run *Run, d time.Duration) {
+	if o.retryWaitFn != nil {
+		o.retryWaitFn(run.Context(), d)
+		return
+	}
+	select {
+	case <-time.After(d):
+	case <-run.Context().Done():
+	}
 }
 
 // worthRetrying keeps a retry from turning a decision into a loop.
@@ -354,6 +380,30 @@ func retriesFor(rs *planner.ResolvedSwarm, botID string) int {
 			}
 			return b.Retry
 		}
+	}
+	return 0
+}
+
+// retryBackoffFor reads the bot instance's declared retry_backoff. An
+// invalid value is the planner's job to have already refused — this parses
+// defensively and treats anything it can't read as no backoff rather than
+// failing a run over a wait, which is never the part someone cares about.
+func retryBackoffFor(rs *planner.ResolvedSwarm, botID string) time.Duration {
+	if rs.Swarm == nil {
+		return 0
+	}
+	for _, b := range rs.Swarm.Spec.Bots {
+		if b.ID != botID {
+			continue
+		}
+		if b.RetryBackoff == "" {
+			return 0
+		}
+		d, err := time.ParseDuration(b.RetryBackoff)
+		if err != nil {
+			return 0
+		}
+		return d
 	}
 	return 0
 }

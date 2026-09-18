@@ -270,3 +270,71 @@ func TestAnAbsurdRetryCountIsRefused(t *testing.T) {
 		t.Fatal("retry: 30 planned OK")
 	}
 }
+
+func TestRetryBackoffWithNoRetryIsRefused(t *testing.T) {
+	res := planYAML(t, unfedHeader+`  bots:
+    - id: watch
+      use: competitor-watch@0.1.0
+      retry_backoff: 5s
+      inputs:
+        urls: ["https://example.com"]
+  snaps: []
+`)
+	if res.OK() {
+		t.Fatal("retry_backoff with no retry planned OK")
+	}
+	var found bool
+	for _, e := range res.Invalid {
+		if strings.Contains(e.Error(), "nothing to wait between") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("not refused for the right reason: %v", res.Invalid)
+	}
+}
+
+func TestRetryBackoffThatIsNotADurationIsRefused(t *testing.T) {
+	res := planYAML(t, unfedHeader+`  bots:
+    - id: watch
+      use: competitor-watch@0.1.0
+      retry: 1
+      retry_backoff: soon
+      inputs:
+        urls: ["https://example.com"]
+  snaps: []
+`)
+	if res.OK() {
+		t.Fatal("retry_backoff: soon planned OK")
+	}
+}
+
+func TestRetryBackoffOverTheCeilingIsRefused(t *testing.T) {
+	res := planYAML(t, unfedHeader+`  bots:
+    - id: watch
+      use: competitor-watch@0.1.0
+      retry: 1
+      retry_backoff: 5m
+      inputs:
+        urls: ["https://example.com"]
+  snaps: []
+`)
+	if res.OK() {
+		t.Fatal("retry_backoff: 5m planned OK")
+	}
+}
+
+func TestRetryBackoffWithinLimitsIsFine(t *testing.T) {
+	res := planYAML(t, unfedHeader+`  bots:
+    - id: watch
+      use: competitor-watch@0.1.0
+      retry: 2
+      retry_backoff: 5s
+      inputs:
+        urls: ["https://example.com"]
+  snaps: []
+`)
+	for _, e := range res.Invalid {
+		t.Errorf("a sane retry_backoff was refused: %v", e)
+	}
+}
