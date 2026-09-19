@@ -13,9 +13,12 @@ The spec is not proof either — or wasn't, for memory search: #12 was in the
 spec and answered every request while matching nothing, until 1Claw fixed
 the matching itself. Before building on an endpoint, call it with real
 data and check the answer, not the status code. And a "does not exist yet"
-entry here is not permanent — several already went stale (#1, #3, #9, #11,
-#12) as 1Claw shipped the feature, so this file gets re-checked against
-the live API rather than trusted as a fixed backlog.
+entry here is not permanent, for two different reasons: #1, #3, #9, #11 and
+#12 went stale because 1Claw shipped the feature after this was written;
+#13 was wrong from the start — it inferred an API limit from what
+nanobots' own client happened to send, and a live production check found
+the real capability was there the whole time. Either way, this file gets
+re-checked against the live API rather than trusted as a fixed backlog.
 
 Format: **what we need** / **what it blocks** / **what we do instead**. A
 resolved entry keeps its number and switches to **resolved** / **what this
@@ -252,47 +255,50 @@ who wants synthesized answers over lexical retrieval.
 
 ---
 
-## 13. Tool-calling through Shroud
+## 13. ~~Tool-calling through Shroud~~ — it already works, this entry was wrong
 
-**What we need.** `internal/oneclaw.ShroudClient.Chat` calls
-`POST https://shroud.1claw.co/v1/chat/completions` — an OpenAI-completions-
-shaped endpoint, but that host carries no OpenAPI spec of its own (it isn't
-part of `api.1claw.co`'s 526 paths), so this is checked against what the
-client actually sends and receives, not a schema. Today it sends exactly
-one message, no `tools` field, no history. We need that endpoint to accept
-an OpenAI-style `tools`/`tool_choice` request and return `tool_calls`, so a
-funded key gets real multi-turn tool use through Shroud's existing billing
-and guardrails rather than nanobots needing a second, parallel LLM
-integration just for this.
+**Withdrawn.** This said `POST https://shroud.1claw.co/v1/chat/completions`
+had no way to declare tools, based on `internal/oneclaw.ShroudClient.Chat`
+only ever sending one message with no `tools` field — which is a true
+description of nanobots' own client and a wrong inference about the
+endpoint behind it, the same mistake this file's own header now warns
+about making twice in one week.
 
-We could not verify live whether the endpoint would honour `tools` if sent
-— a probe against it with a placeholder agent key got a plain 404, which
-is not evidence either way (`X-Shroud-Agent-Key` needs a real agent's own
-key, which this account's api-key token doesn't stand in for). Recorded as
-unverified rather than assumed.
+Verified against production with a real funded key: `tools` +
+`tool_choice: auto` on `/v1/chat/completions` returns `finish_reason:
+"tool_calls"` with real `tool_calls[0].function` populated; a
+`role: "tool"` message with `tool_call_id` round-trips and the model
+answers from the tool's own output; `stream: true` forwards `tool_calls`
+delta chunks correctly. Shroud forwards the request body unmodified (the
+only field it ever strips is Anthropic's `context_management`) and already
+parses `tool_calls` in both directions for its own inspection —
+`shroud_config.tool_call_inspection`'s `allowed_tool_names` /
+`denied_tool_names` / argument scanning govern it per agent. Billing and
+guardrails apply to the whole request either way, funded or BYOK.
 
-**What it blocks.** v3 Phase 3's `agent.loop` step — the model deciding at
-run time which of a bot's declared tools to call, seeing the result, and
-deciding the next one — same wall `docs/team.md`/`docs/lab.md` already
-named for a different feature: "a single-shot, one-message-in/one-message-
-out proxy, not a multi-turn, tool-using session an external CLI agent
-could sit behind."
+**The one real requirement, found the hard way**: `X-Shroud-Provider` is
+required — a funded probe without it 400s, which is almost certainly what
+this entry's own probe hit before concluding the feature was missing.
+`internal/oneclaw/shroud.go` already sends this header for `Generate`'s
+existing single-shot call, so a tool-calling call built the same way
+should carry it forward without a new mistake to make here.
 
-**A second, different API that looked promising and wasn't quite.**
-`api.1claw.co` does have `POST /v1/agents/{id}/chat`, with a real
-`conversation_id` (multi-turn state, server-side) and `tool_calls`/
-`tool_results` fields on its response. Two things stopped it being the
-answer: `SendChatMessageRequest` has no `tools` field at all — nothing in
-the request schema lets a caller declare what's callable, so whatever
-populates those response fields must be configured per-agent, out of band,
-not handed in ad hoc per call — and the endpoint is locked behind
-`POST /v1/agents/{id}/chat/unlock`, which needs `X-Auth-Confirm` (a
-password or reauth token). Probed live and confirmed: a plain chat POST
-with no prior unlock returns `403 Agent chat is locked`. That's a
-reasonable gate for a human clicking through a dashboard and a hard stop
-for an unattended swarm.
+**What this means for v3 Phase 3's `agent.loop`.** It is not blocked.
+`internal/llm.Generator`'s single-prompt-in/single-completion-out shape is
+still real and still needs extending — `ShroudClient.Chat` itself has to
+grow a `messages`+`tools` request and a `tool_calls`-aware response, and
+`internal/llm.Shroud.Generate`'s one-string signature has to grow into
+whatever shape a tool-calling caller needs — but the platform side of this
+gap is closed. `docs/team.md`/`docs/lab.md`'s "single-shot" language about
+Shroud describes nanobots' own client code today, not a limit of the API
+underneath it, and should not be read as a reason a future change here is
+blocked on 1Claw.
 
-**What we do instead.** `agent.loop` is not built. Recorded here rather
-than shipped against a backend that can't do the one thing the feature
-needs, or built as a second bespoke integration against a different
-provider's native tool-calling API while Shroud sits unused for it.
+**On the second API this entry considered (`api.1claw.co`'s
+`/v1/agents/{id}/chat`) and ruled out**: also not quite the finding it
+looked like. An API-key (agent) caller already skips `/chat/unlock` —
+that gate is for human principals only — so the 403 this entry hit was
+this account's own token type, not evidence the endpoint is unusable for
+an unattended caller in general. Moot either way: that endpoint's tools
+come from a runtime's own tool registry rather than ad hoc request tools,
+and `/v1/chat/completions` is the right surface for `ai.generate` regardless.

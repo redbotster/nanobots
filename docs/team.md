@@ -79,14 +79,16 @@ key or any live credential — only its own separate `ANTHROPIC_API_KEY`.
 
 A Team member needs its engine's own key in `~/.secrets/nanobots.env` —
 `ANTHROPIC_API_KEY` for Claude, `GEMINI_API_KEY` for Gemini — the same
-prerequisite the foundry's coding agent already has, and the same reason:
-`internal/oneclaw.ShroudClient.Chat` is a single-shot,
-one-message-in/one-message-out proxy, not a multi-turn, tool-using session
-an external CLI agent could sit behind. There is no way to route either
-engine through 1Claw/Shroud today, so token spend is metered by wall-clock
-and tool restrictions on the sandbox itself, not a Shroud daily budget. See
-`internal/foundry/job.go`'s package doc for the same trade-off, made once
-and pointed to rather than re-argued here.
+prerequisite the foundry's coding agent already has. Not because Shroud
+lacks tool-calling — verified live, it doesn't
+(`docs/1claw-feature-requests.md` #13) — but because a Team engine is a
+real external CLI binary (`claude`, `gemini`) that speaks its vendor's own
+API protocol directly, not a request `internal/oneclaw.ShroudClient` ever
+builds; there's no proxy-shaped seam in either CLI to route through Shroud
+even where Shroud itself could carry the traffic. So token spend is
+metered by wall-clock and tool restrictions on the sandbox itself, not a
+Shroud daily budget. See `internal/foundry/job.go`'s package doc for the
+same trade-off, made once and pointed to rather than re-argued here.
 
 ## What's verified, and what isn't yet
 
