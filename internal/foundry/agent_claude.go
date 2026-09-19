@@ -33,15 +33,16 @@ type ClaudeCLIAgent struct {
 	APIKey   string
 }
 
-// disallowedTools strips out everything this agent has no legitimate use
-// for while authoring one bot's files — confirmed (unlike --allowedTools'
-// scoped-command patterns, which turned out not to restrict anything) that
+// DisallowedTools strips out everything a sandboxed coding agent has no
+// legitimate use for — confirmed (unlike --allowedTools' scoped-command
+// patterns, which turned out not to restrict anything) that
 // --disallowedTools genuinely blocks a tool outright. This is defense in
 // depth on top of the container boundary, not the primary safety
 // mechanism, and isn't claimed to be an exhaustive list forever — just
 // everything observed in this build's own tool surface beyond
-// Read/Write/Edit/Bash.
-var disallowedTools = []string{
+// Read/Write/Edit/Bash. Shared with internal/team rather than copied, so
+// the two can't quietly drift apart on what a sandboxed agent may not do.
+var DisallowedTools = []string{
 	"Task", "CronCreate", "CronDelete", "CronList", "DesignSync",
 	"EnterWorktree", "ExitWorktree", "ListAgents", "NotebookEdit",
 	"ReportFindings", "ScheduleWakeup", "SendMessage", "Skill",
@@ -54,14 +55,14 @@ func (a *ClaudeCLIAgent) Run(ctx context.Context, workDir string, in BriefInput,
 	}
 	apiKey := a.APIKey
 
-	image, err := ensureFoundryAgentImage(a.RepoRoot)
+	image, err := EnsureClaudeCodeImage(a.RepoRoot)
 	if err != nil {
 		return fmt.Errorf("prepare the foundry's sandbox image: %w", err)
 	}
 
 	jobDir := filepath.Dir(workDir) // workDir is <jobDir>/worktree
 	hostBinPath := filepath.Join(jobDir, "bin", "nanobots")
-	if err := buildScopedBinary(workDir, hostBinPath); err != nil {
+	if err := BuildScopedBinary(workDir, hostBinPath); err != nil {
 		return fmt.Errorf("build a job-scoped nanobots binary: %w", err)
 	}
 	const containerBinPath = "/usr/local/bin/nanobots"
@@ -71,27 +72,28 @@ func (a *ClaudeCLIAgent) Run(ctx context.Context, workDir string, in BriefInput,
 		return fmt.Errorf("build the agent's brief: %w", err)
 	}
 
-	spec := dockerAgentSpec{
+	spec := DockerAgentSpec{
 		Image: image,
 		Args: []string{
 			"-p", "--output-format", "stream-json", "--verbose",
 			"--permission-mode", "acceptEdits", "--permission-prompts", "none",
-			"--disallowedTools", strings.Join(disallowedTools, ","),
+			"--disallowedTools", strings.Join(DisallowedTools, ","),
 		},
 		Env: map[string]string{"ANTHROPIC_API_KEY": apiKey},
-		Mounts: []dockerMount{
+		Mounts: []DockerMount{
 			{HostPath: workDir, ContainerPath: "/workspace"},
 			{HostPath: hostBinPath, ContainerPath: containerBinPath, ReadOnly: true},
 		},
 	}
-	return runDockerAgent(ctx, spec, brief, events, parseStreamJSONLine)
+	return RunDockerAgent(ctx, spec, brief, events, ParseStreamJSONLine)
 }
 
-// buildScopedBinary builds a `nanobots` binary from workDir's own source
-// (the sandboxed worktree, not the host's possibly-stale bin/nanobots) into
-// a location outside the worktree, so it never shows up in
-// verifySandbox's git-status check of the worktree itself.
-func buildScopedBinary(worktreeDir, outPath string) error {
+// BuildScopedBinary builds a `nanobots` binary from worktreeDir's own
+// source (a sandboxed worktree, not the host's possibly-stale bin/nanobots)
+// into a location outside the worktree, so it never shows up in a
+// git-status check of the worktree itself — foundry's own verifySandbox is
+// one such check; internal/team's is another.
+func BuildScopedBinary(worktreeDir, outPath string) error {
 	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 		return err
 	}
@@ -104,15 +106,17 @@ func buildScopedBinary(worktreeDir, outPath string) error {
 	return nil
 }
 
-// parseStreamJSONLine turns one line of `claude --output-format
+// ParseStreamJSONLine turns one line of `claude --output-format
 // stream-json --verbose` output into zero or more Events — a single line
 // can carry several content blocks (e.g. thinking + tool_use together),
 // so this returns a slice rather than assuming one event per line. Shapes
 // confirmed against a real invocation, not guessed: assistant
 // text/tool_use blocks, user tool_result blocks, and the final result
 // line are surfaced; thinking blocks and system/rate_limit_event noise
-// are dropped.
-func parseStreamJSONLine(line []byte) []Event {
+// are dropped. Exported for internal/team, which runs the identical CLI
+// invocation shape against a persistent workspace instead of a job's
+// worktree.
+func ParseStreamJSONLine(line []byte) []Event {
 	var envelope struct {
 		Type    string `json:"type"`
 		IsError bool   `json:"is_error"`

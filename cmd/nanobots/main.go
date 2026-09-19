@@ -67,6 +67,8 @@ func main() {
 		err = runHealth(args)
 	case "agents":
 		err = runAgents(args)
+	case "team":
+		err = runTeam(args)
 	case "export":
 		err = runExport(args)
 	case "import":
@@ -151,6 +153,7 @@ commands:
   webhook <swarm> [--addr host:port]      print where to post to fire a webhook swarm
   health [--addr host:port] [--quiet]     ask a running daemon whether it is answering
   agents [--prune]                        the 1Claw agents this repo made, and which are unused
+  team run <role> "<task>"                give a persistent Team agent one task; team list shows existing roles
   export -f <swarm.yaml> [-o <file>]      bundle a swarm to hand to someone else
   import <bundle.yaml>                    add a shared swarm to examples/swarms/
   version                                 print the build and Go toolchain`

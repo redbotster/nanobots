@@ -190,17 +190,36 @@ before any UI or harness work —
 1. Verify question 1 live (sub-org creation, whether it actually isolates
    vaults and agent quota per company), and confirm a single self-hosted
    Honcho instance holds multiple workspaces cleanly, one per company.
+   **Not done.**
 2. Build exactly one Team harness (Claude Code, since it's the one this
    session already knows how to drive) against exactly one role, with no
    Lab tab yet — prove a Team agent can propose a swarm change and have it
    go through the ordinary approval gate before anything else is built on
    top of it.
+   **Built** (`internal/team`, `nanobots team run <role> "<task>"`,
+   `docs/team.md`) **by reusing the foundry's sandbox wholesale** rather
+   than building a second one — a Team member turned out to be the same
+   kind of thing a foundry job already is (a coding-agent CLI confined by
+   a container boundary, given a git worktree), differing only in whether
+   that worktree is persistent. The finding that changes this section: the
+   "ordinary approval gate" doesn't need a new mechanism to reach. A Team
+   agent edits files in a worktree of this repo; nothing runs because a
+   file changed, so it's already indistinguishable from a human's edit
+   until someone (or something) triggers a run, at which point the
+   existing `approval_request` gate is the same one either way.
+   **Not yet run for real** — this machine has no `ANTHROPIC_API_KEY`
+   configured, so the mechanics (workspace persistence, isolation between
+   roles, the missing-credential path failing before touching git) are
+   verified and the actual agent session is not. `docs/team.md` says this
+   plainly; treat step 3 as blocked on it, not on more design.
 3. Add a second Team agent in the same role's workspace and prove the
    recall-before-work / remember-after-work pattern actually stops the
    second one from redoing the first one's task, before trusting it at
    any real scale.
+   **Not done** — needs step 2's live run first.
 4. Only then design Lab's chat surface, informed by what steps 2 and 3
    actually required.
+   **Not done.**
 
 This keeps the large, genuinely uncertain pieces (multi-tenancy, the
 harness-per-CLI matrix, 1,000-agent scale) as named risks with a first real

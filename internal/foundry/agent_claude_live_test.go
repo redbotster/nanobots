@@ -71,9 +71,9 @@ func TestEnsureFoundryAgentImageBuilds(t *testing.T) {
 		t.Skip("set NANOBOTS_LIVE_TEST=1 to build the real foundry-agent image")
 	}
 	root := repoRootForTest(t)
-	image, err := ensureFoundryAgentImage(root)
+	image, err := EnsureClaudeCodeImage(root)
 	if err != nil {
-		t.Fatalf("ensureFoundryAgentImage: %v", err)
+		t.Fatalf("EnsureClaudeCodeImage: %v", err)
 	}
 
 	events := make(chan Event, 16)
@@ -83,7 +83,7 @@ func TestEnsureFoundryAgentImageBuilds(t *testing.T) {
 	}()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	err = runDockerAgent(ctx, dockerAgentSpec{Image: image, Args: []string{"--version"}}, "", events, func([]byte) []Event { return nil })
+	err = RunDockerAgent(ctx, DockerAgentSpec{Image: image, Args: []string{"--version"}}, "", events, func([]byte) []Event { return nil })
 	close(events)
 	if err != nil {
 		t.Fatalf("run --version in the foundry-agent image: %v", err)

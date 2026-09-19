@@ -23,6 +23,7 @@ it.
 | [bot-contract.md](bot-contract.md) | the whole interface a bot has to honor, and every step type |
 | [builder.md](builder.md) | the visual canvas, zoom, and how a layout stays honest |
 | [foundry.md](foundry.md) | what happens when the catalog genuinely cannot do it |
+| [team.md](team.md) | a persistent, role-scoped coding agent, and why it needs no new approval gate |
 | [fixtures.md](fixtures.md) | turning a real run into a bot's test data |
 | [supervisors.md](supervisors.md) | a review board that picks its own reviewers |
 | [sharing.md](sharing.md) | exporting a swarm and importing someone else's |
