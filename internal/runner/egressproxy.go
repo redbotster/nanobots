@@ -31,6 +31,22 @@ import (
 type EgressProxy struct {
 	policy step.EgressPolicy
 	ln     net.Listener
+	// checkFn is policy.Check by default (see the check method). Tests that
+	// need to prove the tunnel/dial mechanics — not the allowlist logic,
+	// which step.EgressPolicy's own tests already cover — override it,
+	// because policy.Check refuses loopback outright regardless of what a
+	// bot declares (step.EgressPolicy's doc comment on that), and every
+	// destination a Go test can actually reach is loopback by construction.
+	checkFn func(rawURL string) error
+}
+
+// check is what serveConnect/serveHTTP actually call, so a test override
+// takes effect without either of them needing to know one exists.
+func (p *EgressProxy) check(rawURL string) error {
+	if p.checkFn != nil {
+		return p.checkFn(rawURL)
+	}
+	return p.policy.Check(rawURL)
 }
 
 // StartEgressProxyIfNeeded starts a proxy scoped to nb's declared
@@ -91,7 +107,7 @@ func (p *EgressProxy) serveConnect(w http.ResponseWriter, r *http.Request) {
 	if host == "" {
 		host, _, _ = net.SplitHostPort(r.Host)
 	}
-	if err := p.policy.Check("https://" + host + "/"); err != nil {
+	if err := p.check("https://" + host + "/"); err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
@@ -125,7 +141,7 @@ func (p *EgressProxy) serveConnect(w http.ResponseWriter, r *http.Request) {
 // serveHTTP handles a plain (unencrypted) proxied request — the same check,
 // for the http:// case CONNECT doesn't cover.
 func (p *EgressProxy) serveHTTP(w http.ResponseWriter, r *http.Request) {
-	if err := p.policy.Check(r.URL.String()); err != nil {
+	if err := p.check(r.URL.String()); err != nil {
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
