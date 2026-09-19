@@ -138,8 +138,7 @@ which path each bot took, every run.
 ## Repo layout
 
 ```
-cmd/nanobotd/       Go daemon — REST+SSE API, binds loopback only
-cmd/nanobots/       Go CLI — one file per command; main.go is dispatch, help and version
+cmd/nanobots/       Go CLI — one file per command; main.go is dispatch, help and version; `up` runs the daemon in-process
 cmd/nanobot-agent/  the container entrypoint every harness image runs
 internal/schema/    Nanobot/Nanoswarm Go types, YAML loading, JSON Schema generation
 internal/planner/   resolves a swarm's bots, type-checks snaps, builds/cycle-checks the run DAG
@@ -160,8 +159,8 @@ internal/runner/    Docker-backed orchestrator: builds harness images, runs bots
 internal/remedy/    one place per known failure, and what to do about it
 internal/api/       REST+SSE handlers, the builder/Connect/composer/foundry endpoints, the callbacks
 internal/webui/     the built React app, embedded into the binary
-internal/wiring/    shared startup wiring, so nanobotd and the CLI build it once
-internal/daemon/    wires the above together; shared by cmd/nanobotd and `nanobots up`
+internal/wiring/    shared startup wiring, so `nanobots up` and `nanobots run` build it the same way
+internal/daemon/    wires the above together and serves HTTP; called from `nanobots up` (no separate daemon binary)
 harness/            Dockerfiles for the bot runtime images (bare, openclaw) and the foundry sandbox
 schemas/            generated JSON Schema for Nanobot / Nanoswarm
 bots/               one directory per nanobot (nanobot.yaml + instructions + fixtures)

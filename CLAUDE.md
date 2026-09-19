@@ -192,8 +192,9 @@ and the commit says that.
 
 ## Repo shape
 
-- `cmd/` — three binaries: `nanobots` (CLI), `nanobotd` (daemon),
-  `nanobot-agent` (runs inside each container). Nothing else belongs here.
+- `cmd/` — two binaries: `nanobots` (CLI; `up` runs the daemon in-process,
+  so there's no separate daemon binary) and `nanobot-agent` (runs inside
+  each container). Nothing else belongs here.
   One command per file in `cmd/nanobots` (`plan.go`, `run.go`, `share.go`,
   …); `main.go` is dispatch, help and version only. It was one 1203-line
   file, and the commands inside it were the untested ones.
