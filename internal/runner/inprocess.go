@@ -49,7 +49,22 @@ import (
 
 // runsInProcess reports whether this bot can skip its container, and says
 // why not when it cannot, so the run log can explain itself.
-func runsInProcess(nb *schema.Nanobot) (bool, string) {
+//
+// instanceOverride is this swarm's own execution: on the bot instance
+// (schema.BotRef.Execution), which wins over the bot's own catalog default
+// (schema.Harness.Execution) when both are set — the swarm author's call
+// on a bot they know is fine in-process everywhere else beats the bot
+// author's blanket default. A caller with no swarm context (warmimages.go
+// scanning the whole catalog) passes "". CheckExecution has already
+// rejected any value here other than "" or "container" by the time a run
+// reaches this far, so those are the only two this checks for.
+func runsInProcess(nb *schema.Nanobot, instanceOverride string) (bool, string) {
+	switch {
+	case instanceOverride == "container":
+		return false, "execution: container (forced by this swarm)"
+	case nb.Spec.Harness.Execution == "container":
+		return false, "execution: container (forced by the bot)"
+	}
 	if needsBrowser(nb) {
 		return false, "it renders with a real headless browser"
 	}

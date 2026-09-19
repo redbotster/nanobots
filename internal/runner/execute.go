@@ -831,7 +831,7 @@ func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID str
 		return o.runBotOnceFn(run, rs, botID, rb, at, total, batch)
 	}
 	nb := rb.Nanobot
-	inProcess, whyContainer := runsInProcess(nb)
+	inProcess, whyContainer := runsInProcess(nb, rb.Ref.Execution)
 
 	// One "starting" line, saying where it ran as well as which harness.
 	// "Which of my bots skipped the sandbox" is a fair question to answer

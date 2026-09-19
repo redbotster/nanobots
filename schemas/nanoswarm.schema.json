@@ -45,6 +45,9 @@
         "bots": {
           "items": {
             "properties": {
+              "execution": {
+                "type": "string"
+              },
               "fallback": {
                 "type": "string"
               },

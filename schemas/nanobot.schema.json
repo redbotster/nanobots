@@ -82,6 +82,9 @@
             "entrypoint": {
               "type": "string"
             },
+            "execution": {
+              "type": "string"
+            },
             "type": {
               "type": "string"
             },

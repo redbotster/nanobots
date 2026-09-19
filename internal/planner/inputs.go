@@ -455,6 +455,29 @@ func CheckLoop(rs *ResolvedSwarm) []error {
 	return out
 }
 
+// CheckExecution validates schema.Harness.Execution and schema.BotRef.Execution
+// (v3 Phase 1). Both fields are one-directional on purpose — see
+// Harness.Execution's doc comment — so the only two legal values anywhere
+// are "" and "container"; anything else, including "inprocess", is rejected
+// here rather than silently ignored or silently honoured.
+func CheckExecution(rs *ResolvedSwarm) []error {
+	var out []error
+	validate := func(where, value string) {
+		if value != "" && value != "container" {
+			out = append(out, fmt.Errorf(
+				"%s has execution: %q — the only legal values are \"container\" or omitting it entirely "+
+					"(there is no way to force a bot out of a container it otherwise needs)", where, value))
+		}
+	}
+	for _, b := range rs.Swarm.Spec.Bots {
+		validate(fmt.Sprintf("bot %q", b.ID), b.Execution)
+		if rb, ok := rs.Bots[b.ID]; ok && rb.Nanobot != nil {
+			validate(fmt.Sprintf("bot %q's catalog definition (%s)", b.ID, rb.Nanobot.Metadata.Name), rb.Nanobot.Spec.Harness.Execution)
+		}
+	}
+	return out
+}
+
 // validLoopUntilPath is the one thing a loop.until condition may reference:
 // this bot's own most recent output, by the exact name it declared.
 func validLoopUntilPath(path string, outputs map[string]bool) bool {

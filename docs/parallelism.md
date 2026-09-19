@@ -125,8 +125,13 @@ roughly in order — but not that item `i`'s first instruction runs before
 item `i+1`'s. Once two goroutines are live the scheduler decides, and a test
 claiming otherwise failed on its first run.
 
-The cap is about the machine, not the model: each bot is a container plus a
-model call, four Chromium-bearing containers already want a couple of
-gigabytes, and a laptop that starts swapping finishes slower than it would
-have sequentially. Set it to 1 on a small machine, or when reading an
-interleaved run log is harder than waiting.
+The cap was written when every bot was a container plus a model call; most
+of the catalog runs in-process now (`docs/harnesses.md`), so four bots
+running at once usually means four goroutines and four model calls, not
+four container starts. The concern that motivated it hasn't disappeared,
+just narrowed: a wave or a fan-out that happens to include several of the
+few bots that still open a real Chromium (`meeting-prep`, `quote-builder`,
+`recap-emails-to-pdf`, `render-pdf`, `sheet-reporter`) can still want a
+couple of gigabytes at once, and a laptop that starts swapping finishes
+slower than it would have sequentially. Set it to 1 on a small machine, or
+when reading an interleaved run log is harder than waiting.
