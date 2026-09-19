@@ -38,7 +38,7 @@ func TestAWatchWithNothingToDoSkipsWhatIsBehindItAndSucceeds(t *testing.T) {
 		return nil
 	}}
 
-	err := o.runLevels(run, rs, [][]string{{"watcher"}, {"notes"}, {"followups"}})
+	err := o.runDAG(run, rs)
 	if err != nil {
 		t.Fatalf("a watch with nothing to do failed the run: %v", err)
 	}

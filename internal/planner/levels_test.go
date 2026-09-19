@@ -13,9 +13,13 @@ func dagOf(nodes []string, edges map[string][]string) *DAG {
 	return &DAG{Nodes: nodes, Edges: edges}
 }
 
-// Levels is the whole basis for running a swarm's independent branches at
-// the same time, so the grouping has to be exactly right: a bot placed one
-// wave too early would run before the bot it reads from.
+// Levels groups a DAG into stages where every bot in a stage has all its
+// dependencies satisfied by an earlier one — used to be the runner's whole
+// scheduling mechanism, and is still the way `nanobots plan` and this page
+// answer "does this swarm branch at all" (docs/parallelism.md). The
+// grouping has to be exactly right regardless of who reads it: a bot
+// placed one stage too early would misdescribe a swarm as safe to
+// parallelize a step sooner than its real dependency allows.
 func TestLevelsGroupIndependentBotsTogether(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -79,9 +83,11 @@ func TestLevelsGroupIndependentBotsTogether(t *testing.T) {
 	}
 }
 
-// Levels and TopoSort are two readings of the same graph, and the runner
-// now trusts the first where it used to trust the second. If they ever
-// disagree, a swarm runs in an order its own plan never showed.
+// Levels and TopoSort are two readings of the same graph. The runner no
+// longer schedules off either — it waits on each bot's own dependency
+// edges directly (internal/runner.runDAG) — but `nanobots plan`'s report
+// prints both, and they have to agree: if they ever disagreed, a swarm's
+// own plan output would show a run order its Levels grouping contradicts.
 //
 // Checked against every swarm in the repo rather than a fixture, so a new
 // swarm shape is covered the day someone adds it.

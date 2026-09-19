@@ -8,7 +8,7 @@ API key, or a redirect URI to connect a service.**
 flowchart TB
     swarm["<b>nanoswarm.yaml</b><br/>which bots, wired how"]
     planner["<b>planner</b><br/>type-checks every snap, builds the DAG"]
-    runner["<b>runner</b><br/>one container per bot, in wave order"]
+    runner["<b>runner</b><br/>one container per bot, each starting the instant its own inputs arrive"]
     swarm --> planner --> runner
 
     subgraph sandbox["Docker: non-root, read-only filesystem, no credentials inside"]
@@ -182,5 +182,6 @@ nanobots plan -f examples/swarms/morning-brief.yaml   # the DAG, type-checked
 nanobots run  -f examples/swarms/morning-brief.yaml   # the runner, live
 ```
 
-`plan` prints the wave order the runner will use, so the architecture above
-is observable rather than only described ([parallelism.md](parallelism.md)).
+`plan` prints the run order and every snap's type-check, so the architecture
+above is observable rather than only described
+([parallelism.md](parallelism.md)).

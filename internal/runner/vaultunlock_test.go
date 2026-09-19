@@ -14,7 +14,7 @@ import (
 // v3 Phase 4 item 4: a passkey-locked 1Claw vault pauses the run in a
 // distinct, visible state and retries automatically once unlocked — not a
 // failure, and not counted against the bot's own retry budget, which
-// TestNoRetryByDefault (waves_test.go) proves is otherwise 0 by default.
+// TestNoRetryByDefault (concurrency_test.go) proves is otherwise 0 by default.
 func TestAVaultLockRetriesWithoutCountingAgainstTheRetryBudget(t *testing.T) {
 	var attempts int
 	var sawStatuses []RunStatus
@@ -40,7 +40,7 @@ func TestAVaultLockRetriesWithoutCountingAgainstTheRetryBudget(t *testing.T) {
 	rs := swarmWith([]schema.BotRef{{ID: "locked"}}, nil)
 
 	run := NewRun("probe")
-	if err := o.runLevels(run, rs, [][]string{{"locked"}}); err != nil {
+	if err := o.runDAG(run, rs); err != nil {
 		t.Fatalf("gave up on a vault lock that later cleared: %v", err)
 	}
 	if attempts != 3 {
@@ -50,9 +50,9 @@ func TestAVaultLockRetriesWithoutCountingAgainstTheRetryBudget(t *testing.T) {
 		t.Errorf("waited %d times, want 2 (once between each locked attempt)", waited)
 	}
 	// sawStatuses[0] is the very first attempt: whatever NewRun starts as
-	// (this test calls runLevels directly, the same level the rest of this
+	// (this test calls runDAG directly, the same level the rest of this
 	// package's retry tests use — executeSwarm is what sets StatusRunning
-	// before a real run's first wave). Every attempt after a lock was hit
+	// before a real run starts). Every attempt after a lock was hit
 	// sees StatusAwaitingUnlock, set before the retry.
 	if sawStatuses[0] != StatusPending {
 		t.Errorf("first attempt saw status %q, want pending", sawStatuses[0])
@@ -62,9 +62,9 @@ func TestAVaultLockRetriesWithoutCountingAgainstTheRetryBudget(t *testing.T) {
 			t.Errorf("attempt %d saw status %q, want awaiting_unlock", i+2, s)
 		}
 	}
-	// runLevels alone (this test's level, matching how the other retry
+	// runDAG alone (this test's level, matching how the other retry
 	// tests in this package call it) never reaches StatusSucceeded — only
-	// executeSwarm does, once every wave finishes. What this proves at this
+	// executeSwarm does, once the whole run finishes. What this proves at this
 	// level is that attemptThroughVaultUnlock restores StatusRunning once
 	// the lock clears, rather than leaving the run stuck reporting
 	// "awaiting_unlock" forever after it's no longer true.
@@ -89,7 +89,7 @@ func TestAVaultLockLogsWhatItIsWaitingFor(t *testing.T) {
 	}
 	rs := swarmWith([]schema.BotRef{{ID: "locked"}}, nil)
 	run := NewRun("probe")
-	if err := o.runLevels(run, rs, [][]string{{"locked"}}); err != nil {
+	if err := o.runDAG(run, rs); err != nil {
 		t.Fatal(err)
 	}
 	found := false
@@ -123,7 +123,7 @@ func TestStoppingARunEndsAVaultUnlockWaitEarly(t *testing.T) {
 	}
 	rs := swarmWith([]schema.BotRef{{ID: "locked"}}, nil)
 	run = NewRun("probe")
-	err := o.runLevels(run, rs, [][]string{{"locked"}})
+	err := o.runDAG(run, rs)
 	if err == nil {
 		t.Fatal("expected the stopped run to surface an error rather than succeed")
 	}
@@ -164,7 +164,7 @@ func TestAVaultLockOnAWritingBotIsNotRetried(t *testing.T) {
 	}
 
 	run := NewRun("probe")
-	err := o.runLevels(run, rs, [][]string{{"sender"}})
+	err := o.runDAG(run, rs)
 	if err == nil {
 		t.Fatal("expected the vault lock to fail the run, not succeed silently")
 	}

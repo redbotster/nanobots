@@ -60,8 +60,8 @@ type Orchestrator struct {
 	// fall back to their fixtures. See internal/llm.
 	LLM llm.Generator
 
-	// runBotFn is the seam runLevels calls through, so its wave scheduling
-	// and failure aggregation can be tested without Docker. nil means the
+	// runBotFn is the seam runDAG calls through, so its scheduling and
+	// failure aggregation can be tested without Docker. nil means the
 	// real thing; only tests set it.
 	runBotFn func(*Run, *planner.ResolvedSwarm, string, *planner.ResolvedBot) error
 
@@ -109,10 +109,10 @@ func (o *Orchestrator) executeSwarm(swarmPath string, triggerPayload any) (*Run,
 	if !result.OK() {
 		return nil, fmt.Errorf("swarm does not type-check:\n%s", result.Report())
 	}
-	levels, err := result.DAG.Levels()
-	if err != nil {
-		return nil, err
-	}
+	// result.OK() already proved result.DAG has no cycle (DAGErr is part of
+	// that check) — runDAG needs the bots and their dependency edges, not
+	// a precomputed wave grouping, so there's nothing further to compute
+	// from the DAG here.
 
 	run := NewRun(result.Resolved.Swarm.Metadata.Name)
 	run.SwarmPath = swarmPath
@@ -120,11 +120,11 @@ func (o *Orchestrator) executeSwarm(swarmPath string, triggerPayload any) (*Run,
 	run.SetStatus(StatusRunning)
 
 	go func() {
-		if err := o.runLevels(run, result.Resolved, levels); err != nil {
+		if err := o.runDAG(run, result.Resolved); err != nil {
 			// A run someone stopped reports that, not the wreckage of the
-			// stopping. "2 bots in the same wave failed — meetings:
-			// stopped; triage: stopped" is accurate and reads like
-			// something went wrong; it did not, you asked.
+			// stopping. "2 bots failed — meetings: stopped; triage:
+			// stopped" is accurate and reads like something went wrong; it
+			// did not, you asked.
 			if run.WasStoppedByUser() {
 				err = ErrStopped
 			}
@@ -143,21 +143,21 @@ func (o *Orchestrator) executeSwarm(swarmPath string, triggerPayload any) (*Run,
 	return run, nil
 }
 
-// maxParallelBots is the default cap on how many bots run at once within a
-// wave.
+// maxParallelBots is the default cap on how many bots run at once,
+// regardless of how many currently have their inputs ready.
 //
 // Each one is a container plus a model call, so the limit is about the
 // machine rather than the model: four Chromium-bearing containers already
 // want a couple of gigabytes, and a laptop that starts swapping finishes
 // slower than it would have sequentially.
 //
-// Override with NANOBOTS_MAX_PARALLEL_BOTS. 1 restores the old strictly
-// sequential behaviour, which is the honest way to compare — and the thing
-// to reach for on a small machine, or when reading an interleaved run log
-// is harder than waiting.
+// Override with NANOBOTS_MAX_PARALLEL_BOTS. 1 restores strictly sequential
+// behaviour, which is the honest way to compare — and the thing to reach
+// for on a small machine, or when reading an interleaved run log is harder
+// than waiting.
 const maxParallelBots = 4
 
-// parallelBots resolves the cap once per wave, so changing the environment
+// parallelBots resolves the cap once per run, so changing the environment
 // takes effect on the next run rather than needing a restart.
 func parallelBots() int {
 	if v := os.Getenv("NANOBOTS_MAX_PARALLEL_BOTS"); v != "" {
@@ -168,32 +168,50 @@ func parallelBots() int {
 	return maxParallelBots
 }
 
-// runLevels runs the swarm wave by wave, with the bots inside a wave
-// running concurrently.
+// runDAG starts each bot the moment its own upstream bots have finished,
+// not when a precomputed wave boundary says to. Replaces the wave-by-wave
+// scheduler this used to be (see git history for runLevels) — measured
+// on a swarm with an uneven branch (docs/parallelism.md): a fast,
+// independent bot no longer waits out a slow, unrelated one just because a
+// topological sort happened to put them in the same numbered stage.
 //
-// A wave's bots have no path between them in the DAG, so nothing one
-// produces can be read by another — which is what makes this safe rather
-// than merely faster. Everything they do share is already synchronised: the
-// run's log and outputs behind its mutex, the memory store behind its own,
-// the callback registry behind its.
+// Every bot gets its own goroutine immediately; each one's first act is to
+// wait on the done-channels of the bots it actually reads from (dependsOn,
+// below) — nothing else. Two bots with no path between them in the DAG can
+// therefore start, run, and finish in either order or at the same time,
+// which is what makes this safe rather than merely faster: nothing one
+// produces can be read by another unless a snap says so, and everything
+// they do share is already synchronised — the run's log and outputs behind
+// its mutex, the memory store behind its own, the callback registry behind
+// its.
 //
-// On failure the wave is allowed to finish rather than being cancelled
-// half-way. Two reasons. A bot that is mid-container would leave that
-// container orphaned, which is the leak this runner already had once. And
-// when two bots in a wave both fail, seeing both errors is more useful than
-// seeing whichever lost the race — a swarm's two independent branches
-// failing for one shared reason (an expired credential, say) is a common
-// case, and reporting one of them sends you looking for two bugs.
-func (o *Orchestrator) runLevels(run *Run, rs *planner.ResolvedSwarm, levels [][]string) error {
+// A fatal failure never cancels a bot that's already running, or one that
+// hasn't started because it's still waiting on its own (unrelated)
+// upstream — two reasons, both true before this rewrite and still true
+// now. A bot mid-container would leave that container orphaned, which is
+// the leak this runner already had once. And when two independent bots
+// both fail, seeing both errors is more useful than seeing whichever lost
+// the race — two branches failing for one shared reason (an expired
+// credential, say) is a common case, and reporting one of them sends you
+// looking for two bugs. A bot genuinely downstream of a fatal failure is
+// still skipped, exactly as it always was: a fatal failure marks its own
+// bot "gone" in the same map a tolerated failure or a quiet watch already
+// used, so upstreamMissing catches it the same way — there is no separate
+// "stop the run" flag to keep in sync with that map.
+func (o *Orchestrator) runDAG(run *Run, rs *planner.ResolvedSwarm) error {
 	limit := parallelBots()
+	var botIDs []string
+	if rs.Swarm != nil {
+		for _, b := range rs.Swarm.Spec.Bots {
+			botIDs = append(botIDs, b.ID)
+		}
+	}
+
 	// dependsOn is who feeds whom, so a bot whose upstream never produced
-	// anything is skipped rather than run against missing inputs. Without
-	// this, one tolerated failure cascades into a confusing run of
-	// "upstream bot has no recorded outputs yet" from every bot behind it.
+	// anything is skipped rather than run against missing inputs, and so
+	// each bot's goroutine knows exactly which other bots to wait for —
+	// nothing else.
 	dependsOn := map[string][]string{}
-	// A ResolvedSwarm always carries its Swarm in production; guarding is
-	// for the malformed case, where a segfault is a much worse answer than
-	// "no dependency edges and no error policy".
 	snaps := []schema.Snap{}
 	if rs.Swarm != nil {
 		snaps = rs.Swarm.Spec.Snaps
@@ -205,141 +223,155 @@ func (o *Orchestrator) runLevels(run *Run, rs *planner.ResolvedSwarm, levels [][
 			dependsOn[to.BotID] = append(dependsOn[to.BotID], from.BotID)
 		}
 	}
-	// Skipping is transitive for free: a skipped bot joins the set, so
-	// anything behind it is skipped on the next wave too.
-	gone := map[string]string{} // botID -> why its outputs never arrived
-	// Whether anything in this run actually did work, and the first reason
-	// it did not. A watch that finds nothing leaves a run where every bot
-	// either stopped or was skipped behind one — true, successful, and
-	// worth saying out loud rather than filing as another "succeeded".
+
+	// done[id] closes the moment that bot has finished, however it
+	// finished — success, skip, tolerated failure, or fatal failure.
+	// Waiting on a set of these is the entire scheduling mechanism: no
+	// wave, no level, no precomputed stage.
+	done := make(map[string]chan struct{}, len(botIDs))
+	for _, id := range botIDs {
+		done[id] = make(chan struct{})
+	}
+
+	var mu sync.Mutex // guards everything below
+	gone := map[string]string{}
+	fatal := map[string]error{}
 	didWork := false
 	quietReason := ""
 
-	for _, wave := range levels {
-		var toRun []string
-		for _, botID := range wave {
-			if why, ok := upstreamMissing(dependsOn[botID], gone); ok {
+	if len(botIDs) > 1 {
+		run.Log("", "", "running %d bots, each starting as soon as its own inputs are ready", len(botIDs))
+	}
+
+	slots := make(chan struct{}, limit)
+	var wg sync.WaitGroup
+	for _, id := range botIDs {
+		id := id
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer close(done[id])
+			for _, dep := range dependsOn[id] {
+				<-done[dep]
+			}
+
+			mu.Lock()
+			why, missing := upstreamMissing(dependsOn[id], gone)
+			mu.Unlock()
+			if missing {
 				// Inherited verbatim, not re-wrapped. Each hop used to add
 				// its own prefix, so the third bot in a chain read
-				// "skipped — notes: skipped: watcher: nothing to do: no new
-				// file…". What everyone behind a stopped watch needs to
-				// know is the same single fact, said once.
-				gone[botID] = why
-				run.Log(botID, "", "skipped — %s", why)
-				continue
+				// "skipped — notes: skipped: watcher: nothing to do: no
+				// new file…". What everyone behind a stopped watch needs
+				// to know is the same single fact, said once.
+				mu.Lock()
+				gone[id] = why
+				mu.Unlock()
+				run.Log(id, "", "skipped — %s", why)
+				return
 			}
-			expr, skip, err := o.whenGate(run, rs, botID)
+
+			expr, skip, err := o.whenGate(run, rs, id)
 			if err != nil {
 				// The planner already proved when: only references this
 				// bot's own declared inputs, so a live failure here means
 				// something upstream of when: broke, not the condition
 				// itself — treated exactly like the bot itself failing,
 				// on_error: continue included.
-				if onErrorContinue(rs, botID) {
-					run.Log(botID, "", "FAILED, but this swarm continues without it: %v", err)
-					run.AddTolerated(botID, err.Error())
-					gone[botID] = fmt.Sprintf("%s failed, and this swarm was told to continue without it", botID)
-					continue
-				}
-				run.Log(botID, "", "FAILED: %v", err)
-				return err
+				o.recordBotFailure(run, rs, id, err, &mu, gone, fatal)
+				return
 			}
 			if skip {
-				gone[botID] = fmt.Sprintf("%s: when: %s was false", botID, expr)
-				run.Log(botID, "", "skipped — when: %s is false", expr)
-				continue
+				mu.Lock()
+				gone[id] = fmt.Sprintf("%s: when: %s was false", id, expr)
+				mu.Unlock()
+				run.Log(id, "", "skipped — when: %s is false", expr)
+				return
 			}
-			toRun = append(toRun, botID)
-		}
-		if len(toRun) == 0 {
-			continue
-		}
 
-		results := make(map[string]error, len(toRun))
-		if len(toRun) == 1 || limit == 1 {
-			// One at a time: either the wave has one bot (nine of the
-			// fifteen catalog swarms are a straight chain), or the cap
-			// says so.
-			for _, botID := range toRun {
-				results[botID] = o.runOneBot(run, rs, botID)
-			}
-		} else {
-			run.Log("", "", "running %d bots at once: %s", len(toRun), strings.Join(toRun, ", "))
-			var wg sync.WaitGroup
-			var mu sync.Mutex
-			slots := make(chan struct{}, limit)
-			for _, botID := range toRun {
-				botID := botID
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
-					slots <- struct{}{}
-					defer func() { <-slots }()
-					err := o.runOneBot(run, rs, botID)
-					mu.Lock()
-					results[botID] = err
-					mu.Unlock()
-				}()
-			}
-			wg.Wait()
-		}
+			slots <- struct{}{}
+			runErr := o.runOneBot(run, rs, id)
+			<-slots
 
-		fatal := map[string]error{}
-		for _, botID := range toRun {
-			err := results[botID]
-			if err == nil {
+			if runErr == nil {
+				mu.Lock()
 				didWork = true
-				continue
+				mu.Unlock()
+				return
 			}
 			var nothing *NothingToDoError
-			if errors.As(err, &nothing) {
+			if errors.As(runErr, &nothing) {
 				// A watch that looked and found nothing new. Everything
 				// downstream is skipped because its inputs genuinely never
-				// arrived, and the run still succeeds — this is the correct
-				// outcome of a watch, not a tolerated failure, and an
-				// hourly one should read as quiet rather than as
+				// arrived, and the run still succeeds — this is the
+				// correct outcome of a watch, not a tolerated failure, and
+				// an hourly one should read as quiet rather than as
 				// twenty-four warnings.
-				run.Log(botID, "", "nothing to do — %s", nothing.Reason)
-				gone[botID] = fmt.Sprintf("%s had nothing to do: %s", botID, nothing.Reason)
+				run.Log(id, "", "nothing to do — %s", nothing.Reason)
+				mu.Lock()
+				gone[id] = fmt.Sprintf("%s had nothing to do: %s", id, nothing.Reason)
 				if quietReason == "" {
 					quietReason = nothing.Reason
 				}
-				continue
+				mu.Unlock()
+				return
 			}
-			if onErrorContinue(rs, botID) {
-				// The swarm said this bot's failure doesn't end the run.
-				// Recorded rather than swallowed: a run that quietly stops
-				// notifying anyone every night is the thing to avoid.
-				run.Log(botID, "", "FAILED, but this swarm continues without it: %v", err)
-				run.AddTolerated(botID, err.Error())
-				gone[botID] = fmt.Sprintf("%s failed, and this swarm was told to continue without it", botID)
-				continue
-			}
-			switch {
-			case errors.Is(err, ErrStopped):
-				// "FAILED: stopped from the app" contradicts itself. This
-				// bot did not fail; it was cut short on purpose.
-				run.Log(botID, "", "stopped")
-			case run.WasDeclinedByUser():
-				// The same sentence one door along. The run page above this
-				// log now says "declined" with a muted dot and explains
-				// that it wasn't a fault — and the last line of the log
-				// underneath still read `FAILED: ... not approved
-				// (decided_by=you)`, in red, about the person's own answer.
-				run.Log(botID, "", "declined: %v", err)
-			default:
-				run.Log(botID, "", "FAILED: %v", err)
-			}
-			fatal[botID] = err
-		}
-		if len(fatal) > 0 {
-			return waveError(toRun, fatal)
-		}
+			o.recordBotFailure(run, rs, id, runErr, &mu, gone, fatal)
+		}()
+	}
+	wg.Wait()
+
+	if len(fatal) > 0 {
+		return dagError(botIDs, fatal)
 	}
 	if !didWork && quietReason != "" {
 		run.SetNothingToDo(quietReason)
 	}
 	return nil
+}
+
+// recordBotFailure classifies one bot's failure — a swarm-declared
+// on_error: continue, a stop, a decline, or a genuine fatal error — and
+// records it under mu exactly once. Shared between runDAG's two failure
+// sites (a when: evaluation error and the bot's own execution failing) so
+// the classification can't drift between them.
+func (o *Orchestrator) recordBotFailure(run *Run, rs *planner.ResolvedSwarm, botID string, err error, mu *sync.Mutex, gone map[string]string, fatal map[string]error) {
+	if onErrorContinue(rs, botID) {
+		// The swarm said this bot's failure doesn't end the run. Recorded
+		// rather than swallowed: a run that quietly stops notifying anyone
+		// every night is the thing to avoid.
+		run.Log(botID, "", "FAILED, but this swarm continues without it: %v", err)
+		run.AddTolerated(botID, err.Error())
+		mu.Lock()
+		gone[botID] = fmt.Sprintf("%s failed, and this swarm was told to continue without it", botID)
+		mu.Unlock()
+		return
+	}
+	switch {
+	case errors.Is(err, ErrStopped):
+		// "FAILED: stopped from the app" contradicts itself. This bot did
+		// not fail; it was cut short on purpose.
+		run.Log(botID, "", "stopped")
+	case run.WasDeclinedByUser():
+		// The same sentence one door along. The run page above this log
+		// now says "declined" with a muted dot and explains that it
+		// wasn't a fault — and the last line of the log underneath still
+		// read `FAILED: ... not approved (decided_by=you)`, in red, about
+		// the person's own answer.
+		run.Log(botID, "", "declined: %v", err)
+	default:
+		run.Log(botID, "", "FAILED: %v", err)
+	}
+	mu.Lock()
+	// A fatal failure marks itself "gone" too, same as a tolerated one or
+	// a quiet watch — the wave-based version got this for free, because a
+	// fatal failure always stopped the next wave from starting at all.
+	// Without a wave boundary, a real downstream dependent needs this to
+	// still see its upstream as missing and skip, rather than running
+	// against outputs that were never produced.
+	gone[botID] = fmt.Sprintf("%s failed", botID)
+	fatal[botID] = err
+	mu.Unlock()
 }
 
 func (o *Orchestrator) runOneBot(run *Run, rs *planner.ResolvedSwarm, botID string) error {
@@ -638,12 +670,13 @@ func onErrorContinue(rs *planner.ResolvedSwarm, botID string) bool {
 	return false
 }
 
-// waveError reports a wave's failures as one error, naming every bot that
-// failed rather than only the first — in swarm order, so the message is the
-// same whichever goroutine finished first.
-func waveError(wave []string, failures map[string]error) error {
+// dagError reports a whole run's fatal failures as one error, naming every
+// bot that failed rather than only the first — in swarm order, so the
+// message is the same whichever goroutine finished first, however far
+// apart they actually finished in wall-clock time.
+func dagError(botIDs []string, failures map[string]error) error {
 	var failed []string
-	for _, botID := range wave {
+	for _, botID := range botIDs {
 		if err, ok := failures[botID]; ok {
 			failed = append(failed, fmt.Sprintf("%s: %v", botID, err))
 		}
@@ -653,7 +686,7 @@ func waveError(wave []string, failures map[string]error) error {
 		// every existing message and test looks like.
 		return errors.New(failed[0][strings.Index(failed[0], ": ")+2:])
 	}
-	return fmt.Errorf("%d bots in the same wave failed — %s", len(failed), strings.Join(failed, "; "))
+	return fmt.Errorf("%d bots failed — %s", len(failed), strings.Join(failed, "; "))
 }
 
 // runItems runs a fanned-out bot's n items, at most limit at a time.

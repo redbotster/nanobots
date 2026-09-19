@@ -54,7 +54,7 @@ func TestABotFallsBackAfterRetriesExhausted(t *testing.T) {
 	rs.Bots["fetch"].Nanobot.Metadata.Name = "live-fetch"
 
 	run := NewRun("probe")
-	if err := o.runLevels(run, rs, [][]string{{"fetch"}}); err != nil {
+	if err := o.runDAG(run, rs); err != nil {
 		t.Fatalf("a working fallback still failed the run: %v", err)
 	}
 	if want := []string{"live-fetch", "live-fetch", "fixture-fetch"}; !equalStrings(ran, want) {
@@ -86,7 +86,7 @@ func TestAFallbackThatAlsoFailsStillFailsTheRun(t *testing.T) {
 	}, "fetch", "fixture-fetch")
 	rs.Bots["fetch"].Nanobot.Metadata.Name = "live-fetch"
 
-	err := o.runLevels(NewRun("probe"), rs, [][]string{{"fetch"}})
+	err := o.runDAG(NewRun("probe"), rs)
 	if err == nil {
 		t.Fatal("expected a failure")
 	}
@@ -110,7 +110,7 @@ func TestADeclinedApprovalIsNeverFedToFallback(t *testing.T) {
 		{ID: "fetch", Fallback: "fixture-fetch@0.1.0"},
 	}, "fetch", "fixture-fetch")
 
-	if err := o.runLevels(NewRun("probe"), rs, [][]string{{"fetch"}}); err == nil {
+	if err := o.runDAG(NewRun("probe"), rs); err == nil {
 		t.Fatal("expected a failure")
 	}
 	if fallbackRan {
@@ -134,7 +134,7 @@ func TestAStoppedRunIsNeverFedToFallback(t *testing.T) {
 		{ID: "fetch", Fallback: "fixture-fetch@0.1.0"},
 	}, "fetch", "fixture-fetch")
 
-	_ = o.runLevels(run, rs, [][]string{{"fetch"}})
+	_ = o.runDAG(run, rs)
 	if fallbackRan {
 		t.Error("a stopped run ran the fallback bot instead of respecting the stop")
 	}
