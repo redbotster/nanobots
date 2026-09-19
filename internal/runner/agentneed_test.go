@@ -42,6 +42,17 @@ func TestNeedsOneClawAgent(t *testing.T) {
 			want: true,
 		},
 		{
+			// Found running lead-enricher@0.2.0 for real: a bot whose only
+			// model-calling step is agent.loop (no ai.generate at all)
+			// silently got no agent, GenerateWithTools fell back to a
+			// direct provider key with no tool-calling, and the step failed
+			// immediately with llm.ErrNoToolCalling. DemoDeps never
+			// reaches this function, so no unit test had caught it.
+			name: "agent.loop needs Shroud exactly like ai.generate does",
+			spec: schema.NanobotSpec{Steps: []schema.Step{{Type: "agent.loop"}}},
+			want: true,
+		},
+		{
 			name: "a purely deterministic pipeline needs nothing",
 			spec: schema.NanobotSpec{Steps: []schema.Step{
 				{Type: "transform.render"}, {Type: "transform.pick"}, {Type: "notify"},

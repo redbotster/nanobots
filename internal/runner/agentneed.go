@@ -31,8 +31,14 @@ var nativeProviders = map[string]bool{
 // made a fourteen-bot workspace impossible on a pro tier, and it also cost
 // every such bot an agent-creation round-trip on its first run.
 //
-// A bot needs an agent for exactly three reasons:
+// A bot needs an agent for exactly four reasons:
 //   - ai.generate, which is proxied through that agent's Shroud credentials;
+//   - agent.loop, for the same reason — GenerateWithTools is Shroud too,
+//     and a bot whose only model-calling step is a loop otherwise never got
+//     an agent at all, so its ai.generate-shaped call silently fell back to
+//     a direct provider key with no tool-calling and failed immediately
+//     with llm.ErrNoToolCalling. Found running lead-enricher@0.2.0 for
+//     real, not by a unit test — DemoDeps never reaches this function;
 //   - memory.*, which is namespaced per agent;
 //   - a live (non-demo) service with no native client here, which reaches the
 //     provider through 1Claw's generic binding, addressed by agent id.
@@ -50,7 +56,7 @@ var nativeProviders = map[string]bool{
 // missed.
 func needsOneClawAgent(nb *schema.Nanobot) bool {
 	for _, s := range nb.Spec.Steps {
-		if s.Type == "ai.generate" || strings.HasPrefix(s.Type, "memory.") {
+		if s.Type == "ai.generate" || s.Type == "agent.loop" || strings.HasPrefix(s.Type, "memory.") {
 			return true
 		}
 	}

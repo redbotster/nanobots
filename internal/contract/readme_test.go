@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -301,6 +302,42 @@ func TestClaudeMdsTriggerBreakdownIsAccurate(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), claim) {
 		t.Errorf("CLAUDE.md's repo-shape section does not say %q — real trigger counts: %v", claim, counts)
+	}
+}
+
+// README.md names which bots have "moved on" from 0.1.0 and says
+// "everything else is still at 0.1.0" — a claim nobody was checking until
+// lead-enricher@0.2.0 (v3 Phase 3's agent.loop conversion) became the third
+// one to move, which is exactly the kind of edit this test exists to catch
+// if the README sentence is forgotten next time.
+func TestTheReadmesVersionMovedOnListIsAccurate(t *testing.T) {
+	root := repoRoot(t)
+	const baseline = "0.1.0"
+	var movedOn []string
+	for _, id := range allBotIDs(t, root) {
+		nb, err := schema.LoadNanobot(filepath.Join(root, "bots", id, "nanobot.yaml"))
+		if err != nil {
+			t.Fatalf("%s: %v", id, err)
+		}
+		if nb.Metadata.Version != baseline {
+			movedOn = append(movedOn, fmt.Sprintf("%s@%s", id, nb.Metadata.Version))
+		}
+	}
+	sort.Strings(movedOn)
+
+	readme, err := os.ReadFile(filepath.Join(root, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	corpus := string(readme)
+	for _, want := range movedOn {
+		if !strings.Contains(corpus, "`"+want+"`") {
+			t.Errorf("README.md's catalog section does not name %q among the bots that moved on from %s", want, baseline)
+		}
+	}
+	if !strings.Contains(corpus, "everything else is still at `"+baseline+"`") {
+		t.Errorf("README.md no longer states the %s baseline in the expected wording — "+
+			"update TestTheReadmesVersionMovedOnListIsAccurate if the wording changed on purpose", baseline)
 	}
 }
 

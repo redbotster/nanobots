@@ -52,7 +52,7 @@ func runAgentLoop(nb *schema.Nanobot, s schema.Step, ctx map[string]any, deps De
 		}
 		if result.Done {
 			log(s.Name, "agent.loop finished after %d of %d max iteration(s)", iter, s.MaxIterations)
-			return result.Content, nil
+			return finalAgentLoopOutput(result.Content), nil
 		}
 		if len(result.ToolCalls) == 0 {
 			return nil, fmt.Errorf("agent.loop: iteration %d: the model returned neither a final answer nor a"+
@@ -72,6 +72,31 @@ func runAgentLoop(nb *schema.Nanobot, s schema.Step, ctx map[string]any, deps De
 	}
 	return nil, fmt.Errorf("agent.loop: hit its cap of %d iteration(s) without a final answer\ntranscript:\n%s",
 		s.MaxIterations, strings.Join(transcript, "\n"))
+}
+
+// finalAgentLoopOutput is a best-effort version of runAIGenerate's JSON
+// parse — best-effort, not required, because unlike ai.generate (a prompt
+// this repo wrote, telling the model exactly what shape to answer in), a
+// loop's goal is free text an author writes, and there's no guarantee its
+// final answer is JSON at all. A step whose goal does ask for one (and
+// binds several output ports with outputs:, the same way ai.generate
+// steps do) gets a real object here; a step that just wants prose in one
+// output: port gets the string back unparsed, exactly as it asked.
+//
+// Only an object or array is treated as structured — a bare JSON scalar
+// ("4", "true", "null") is indistinguishable from an ordinary text answer
+// that happens to look like one, and a bot answering "how many?" with "4"
+// found that out the hard way: this used to return the number 4, and a
+// `type: string` output port rejected it.
+func finalAgentLoopOutput(content string) any {
+	var parsed any
+	if err := json.Unmarshal([]byte(extractJSON(content)), &parsed); err == nil {
+		switch parsed.(type) {
+		case map[string]any, []any:
+			return parsed
+		}
+	}
+	return content
 }
 
 // runOneAgentToolCall dispatches one model-chosen tool call and returns a
@@ -139,6 +164,13 @@ func dispatchAgentTool(nb *schema.Nanobot, tool schema.AgentTool, args map[strin
 		svc, ok := findService(nb, tool.Service)
 		if !ok {
 			return nil, fmt.Errorf("tool %q names service %q, which this bot does not declare", tool.Name, tool.Service)
+		}
+		// The same pre-flight a fixed service.call step gets — checkParams
+		// exists because drafts.create/messages.send compose a message from
+		// fields that can resolve to nothing, and a model choosing its own
+		// arguments is no less able to leave `to` empty than a template is.
+		if err := checkParams(tool.Service, tool.Op, args); err != nil {
+			return nil, fmt.Errorf("tool %q: %w", tool.Name, err)
 		}
 		return deps.ServiceCall(svc, tool.Op, args)
 	}
