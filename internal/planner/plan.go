@@ -89,6 +89,7 @@ func planSwarm(sw *schema.Nanoswarm, botsDir string, chain []string) (*PlanResul
 	result.Invalid = append(result.Invalid, CheckFallback(resolved)...)
 	result.Invalid = append(result.Invalid, CheckLoop(resolved)...)
 	result.Invalid = append(result.Invalid, CheckExecution(resolved)...)
+	result.Invalid = append(result.Invalid, CheckAgentLoop(resolved)...)
 	dag, err := BuildDAG(resolved)
 	result.DAG = dag
 	result.DAGErr = err

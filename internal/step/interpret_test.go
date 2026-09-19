@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/redbotster/nanobots/internal/llm"
 	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/schema"
 )
@@ -35,6 +36,28 @@ type fakeDeps struct {
 	renderMime      string
 	blobs           BlobStore
 	gotPrompt       string
+	// agentLoopTurns is consumed in order by GenerateWithTools, one per
+	// call — the same shape a real conversation produces, scripted rather
+	// than fixture-backed so agent.loop's own control flow can be tested
+	// directly.
+	agentLoopTurns  []*llm.ToolCallResult
+	agentLoopCalls  int
+	agentLoopErr    error
+	gotToolMessages [][]llm.Message
+}
+
+func (f *fakeDeps) GenerateWithTools(messages []llm.Message, tools []llm.ToolDef, model schema.Model) (*llm.ToolCallResult, error) {
+	f.gotToolMessages = append(f.gotToolMessages, messages)
+	if f.agentLoopErr != nil {
+		return nil, f.agentLoopErr
+	}
+	if f.agentLoopCalls >= len(f.agentLoopTurns) {
+		return nil, fmt.Errorf("fakeDeps: GenerateWithTools called %d times, only %d turn(s) scripted",
+			f.agentLoopCalls+1, len(f.agentLoopTurns))
+	}
+	turn := f.agentLoopTurns[f.agentLoopCalls]
+	f.agentLoopCalls++
+	return turn, nil
 }
 
 func (f *fakeDeps) ServiceCall(svc schema.Service, op string, params map[string]any) (any, error) {

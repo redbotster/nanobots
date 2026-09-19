@@ -21,6 +21,7 @@ it.
 | Page | What it answers |
 |---|---|
 | [bot-contract.md](bot-contract.md) | the whole interface a bot has to honor, and every step type |
+| [agent-loop.md](agent-loop.md) | `agent.loop`, tool-calling, and the one gate a write-capable tool goes through |
 | [builder.md](builder.md) | the visual canvas, zoom, and how a layout stays honest |
 | [foundry.md](foundry.md) | what happens when the catalog genuinely cannot do it |
 | [team.md](team.md) | a persistent, role-scoped coding agent, and why it needs no new approval gate |

@@ -3,12 +3,14 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/schema"
 )
 
@@ -80,6 +82,105 @@ func TestAnthropicJoinsOnlyTheTextBlocks(t *testing.T) {
 	if out != "part one part two" {
 		t.Errorf("out = %q", out)
 	}
+}
+
+// v3 Phase 3: Anthropic's own tool-calling shape — content blocks, not
+// OpenAI's flat "tool" role, and stop_reason "tool_use" rather than
+// finish_reason "tool_calls". Verified against Anthropic's documented
+// Messages API shape (nothing in CI can reach the real one).
+func TestAnthropicToolCallingSendsInputSchemaAndParsesToolUse(t *testing.T) {
+	srv, got := serve(t, `{"content":[{"type":"text","text":"checking..."},`+
+		`{"type":"tool_use","id":"toolu_1","name":"get_weather","input":{"city":"Paris"}}],"stop_reason":"tool_use"}`)
+	a := NewAnthropic("secret-key", "")
+	a.BaseURL = srv.URL
+
+	out, err := a.GenerateWithTools(context.Background(),
+		[]Message{{Role: "user", Content: "weather in Paris?"}},
+		[]ToolDef{{Name: "get_weather", Description: "current weather", Parameters: map[string]any{
+			"type": "object", "properties": map[string]any{"city": map[string]any{"type": "string"}},
+		}}},
+		schema.Model{Provider: "anthropic", Name: "claude-sonnet-4-6"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Done {
+		t.Error("Done = true, want false — stop_reason was tool_use")
+	}
+	if out.Content != "checking..." {
+		t.Errorf("Content = %q", out.Content)
+	}
+	if len(out.ToolCalls) != 1 || out.ToolCalls[0].Name != "get_weather" || out.ToolCalls[0].Arguments != `{"city":"Paris"}` {
+		t.Errorf("ToolCalls = %+v", out.ToolCalls)
+	}
+	tools, _ := got.body["tools"].([]any)
+	if len(tools) != 1 {
+		t.Fatalf("sent %d tools, want 1", len(tools))
+	}
+	tool, _ := tools[0].(map[string]any)
+	if tool["name"] != "get_weather" {
+		t.Errorf("tool = %+v", tool)
+	}
+	if _, ok := tool["input_schema"]; !ok {
+		t.Error("tool has no input_schema — Anthropic's own field name for a tool's JSON Schema")
+	}
+}
+
+// A tool result goes back as a "user" turn with a tool_result block —
+// Anthropic has no "tool" role at all.
+func TestAnthropicToolCallingSendsToolResultAsAUserTurn(t *testing.T) {
+	srv, got := serve(t, `{"content":[{"type":"text","text":"18C in Paris"}],"stop_reason":"end_turn"}`)
+	a := NewAnthropic("k", "")
+	a.BaseURL = srv.URL
+
+	out, err := a.GenerateWithTools(context.Background(), []Message{
+		{Role: "user", Content: "weather in Paris?"},
+		{Role: "assistant", ToolCalls: []ToolCall{{ID: "toolu_1", Name: "get_weather", Arguments: `{"city":"Paris"}`}}},
+		{Role: "tool", ToolCallID: "toolu_1", Content: `{"tempC":18}`},
+	}, nil, schema.Model{Provider: "anthropic", Name: "claude-sonnet-4-6"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !out.Done || out.Content != "18C in Paris" {
+		t.Errorf("out = %+v", out)
+	}
+	msgs, _ := got.body["messages"].([]any)
+	if len(msgs) != 3 {
+		t.Fatalf("sent %d messages, want 3", len(msgs))
+	}
+	toolResultMsg, _ := msgs[2].(map[string]any)
+	if toolResultMsg["role"] != "user" {
+		t.Errorf("tool result message role = %v, want user (Anthropic has no tool role)", toolResultMsg["role"])
+	}
+	blocks, _ := toolResultMsg["content"].([]any)
+	if len(blocks) != 1 {
+		t.Fatalf("content blocks = %v", blocks)
+	}
+	block, _ := blocks[0].(map[string]any)
+	if block["type"] != "tool_result" || block["tool_use_id"] != "toolu_1" {
+		t.Errorf("block = %+v", block)
+	}
+}
+
+// ToolCallerOf/GenerateWithTools is the seam agent.loop actually calls
+// through — a backend that only implements Generator (Gemini, OpenAI as
+// they stand today) must give a clear error, not a panic from a failed
+// type assertion.
+func TestToolCallerOfFalseForABackendThatDoesNotImplementIt(t *testing.T) {
+	plain := &fakeGeneratorOnly{}
+	if _, ok := ToolCallerOf(plain); ok {
+		t.Fatal("a plain Generator was reported as a ToolCaller")
+	}
+	_, err := GenerateWithTools(context.Background(), plain, nil, nil, schema.Model{})
+	if !errors.Is(err, ErrNoToolCalling) {
+		t.Errorf("err = %v, want ErrNoToolCalling", err)
+	}
+}
+
+type fakeGeneratorOnly struct{}
+
+func (f *fakeGeneratorOnly) Describe() string { return "fake" }
+func (f *fakeGeneratorOnly) Generate(context.Context, string, schema.Model) (string, error) {
+	return "", nil
 }
 
 func TestOpenAISendsTheChatCompletionsShape(t *testing.T) {
@@ -396,6 +497,39 @@ func TestRetryAfterIsHonouredButNotIndefinitely(t *testing.T) {
 	// Nonsense from the provider falls back to backoff rather than panicking.
 	if got := retryAfter(http.Header{"Retry-After": []string{"Wed, 21 Oct 2026 07:28:00 GMT"}}, 0); got != time.Second {
 		t.Errorf("http-date Retry-After -> %v, want the backoff default", got)
+	}
+}
+
+// Shroud.GenerateWithTools's own conversion layer (toShroudMessages,
+// toShroudTools, fromShroudResponse) is what makes internal/oneclaw's
+// already-tested wire shape reachable through the abstract llm.Message/
+// llm.ToolDef types agent.loop actually uses — worth its own test since
+// nothing else exercises that translation.
+func TestShroudGenerateWithToolsTranslatesToTheOneclawWireShape(t *testing.T) {
+	srv, got := serve(t, `{"choices":[{"message":{"role":"assistant","tool_calls":[`+
+		`{"id":"call_1","type":"function","function":{"name":"get_weather","arguments":"{\"city\":\"Paris\"}"}}]},"finish_reason":"tool_calls"}]}`)
+	c := oneclaw.NewShroudClient("agent-1", "ocv_key")
+	c.BaseURL = srv.URL
+	s := NewShroud(c)
+
+	out, err := s.GenerateWithTools(context.Background(),
+		[]Message{{Role: "user", Content: "weather in Paris?"}},
+		[]ToolDef{{Name: "get_weather", Description: "current weather"}},
+		schema.Model{Provider: "anthropic", Name: "claude-sonnet-4-6"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Done {
+		t.Error("Done = true, want false — finish_reason was tool_calls")
+	}
+	if len(out.ToolCalls) != 1 || out.ToolCalls[0].Name != "get_weather" {
+		t.Errorf("ToolCalls = %+v", out.ToolCalls)
+	}
+	if got.headers.Get("X-Shroud-Provider") != "anthropic" {
+		t.Errorf("X-Shroud-Provider = %q", got.headers.Get("X-Shroud-Provider"))
+	}
+	if got.body["tool_choice"] != "auto" {
+		t.Errorf("tool_choice = %v", got.body["tool_choice"])
 	}
 }
 

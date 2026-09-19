@@ -32,7 +32,69 @@ func (s *Shroud) Generate(_ context.Context, prompt string, model schema.Model) 
 	return s.Client.Chat(model.Provider, model.Name, prompt, maxTokensFor(model))
 }
 
-var _ Generator = (*Shroud)(nil)
+// GenerateWithTools is agent.loop's own path through Shroud — real,
+// verified against production (docs/1claw-feature-requests.md #13): tools
+// + tool_choice: auto returns finish_reason "tool_calls" with a real
+// function name/arguments, and a "tool" role reply round-trips back to a
+// final answer.
+func (s *Shroud) GenerateWithTools(_ context.Context, messages []Message, tools []ToolDef, model schema.Model) (*ToolCallResult, error) {
+	resp, err := s.Client.ChatWithTools(model.Provider, model.Name, toShroudMessages(messages), toShroudTools(tools), maxTokensFor(model))
+	if err != nil {
+		return nil, err
+	}
+	return fromShroudResponse(resp), nil
+}
+
+func toShroudMessages(in []Message) []oneclaw.ChatMessage {
+	out := make([]oneclaw.ChatMessage, len(in))
+	for i, m := range in {
+		out[i] = oneclaw.ChatMessage{
+			Role: m.Role, Content: m.Content, ToolCallID: m.ToolCallID,
+			ToolCalls: toShroudToolCalls(m.ToolCalls),
+		}
+	}
+	return out
+}
+
+func toShroudToolCalls(in []ToolCall) []oneclaw.ChatToolCall {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]oneclaw.ChatToolCall, len(in))
+	for i, c := range in {
+		out[i] = oneclaw.ChatToolCall{
+			ID: c.ID, Type: "function",
+			Function: oneclaw.ChatToolCallFunc{Name: c.Name, Arguments: c.Arguments},
+		}
+	}
+	return out
+}
+
+func toShroudTools(in []ToolDef) []oneclaw.ChatTool {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]oneclaw.ChatTool, len(in))
+	for i, t := range in {
+		out[i] = oneclaw.ChatTool{Type: "function", Function: oneclaw.ChatToolSpec{
+			Name: t.Name, Description: t.Description, Parameters: t.Parameters,
+		}}
+	}
+	return out
+}
+
+func fromShroudResponse(resp *oneclaw.ChatToolResponse) *ToolCallResult {
+	out := &ToolCallResult{Content: resp.Message.Content, Done: resp.FinishReason != "tool_calls"}
+	for _, c := range resp.Message.ToolCalls {
+		out.ToolCalls = append(out.ToolCalls, ToolCall{ID: c.ID, Name: c.Function.Name, Arguments: c.Function.Arguments})
+	}
+	return out
+}
+
+var (
+	_ Generator  = (*Shroud)(nil)
+	_ ToolCaller = (*Shroud)(nil)
+)
 
 // DeferredShroud means "use 1Claw Shroud, once this bot's agent exists".
 //
