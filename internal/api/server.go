@@ -395,7 +395,13 @@ func (s *Server) memoryStatus() (kind string, recall bool) {
 		}
 		return "local", false
 	case *memory.DeferredOneClaw:
-		return "1claw", false
+		// The marker itself never implements Recaller — it's a stand-in
+		// until a bot's agent id is known — so the RecallerOf(store) check
+		// above always says false here regardless of the real backend.
+		// memory.OneClaw does implement Recaller (real, lexical search —
+		// see docs/1claw-feature-requests.md #12), so this used to be an
+		// honest "no" and would now be a false one if left alone.
+		return "1claw", true
 	case *memory.Local:
 		return "local", false
 	}

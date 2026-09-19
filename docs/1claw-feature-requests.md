@@ -3,37 +3,44 @@
 Things nanobots needs from 1Claw that do not exist yet, what each one
 blocks, and the honest workaround shipped in the meantime.
 
-Every entry was checked against `https://api.1claw.co/openapi.json` (499
-paths) or a live call, not against the prose docs — the prose doc set
-currently reports several shipped features as absent, so it is not a safe
-source for "does this exist".
+Every entry was checked against `https://api.1claw.co/openapi.json` (526
+paths as of the most recent re-check, up from 499) or a live call, not
+against the prose docs — the prose doc set currently reports several
+shipped features as absent, so it is not a safe source for "does this
+exist".
 
-The spec is not proof either. A route that answers is not a route that
-works: memory search is in the spec, accepts every request, and returns
-nothing for any non-empty query (#12). Before building on an endpoint,
-call it with real data and check the answer, not the status code.
+The spec is not proof either — or wasn't, for memory search: #12 was in the
+spec and answered every request while matching nothing, until 1Claw fixed
+the matching itself. Before building on an endpoint, call it with real
+data and check the answer, not the status code. And a "does not exist yet"
+entry here is not permanent — several already went stale (#1, #3, #9, #11,
+#12) as 1Claw shipped the feature, so this file gets re-checked against
+the live API rather than trusted as a fixed backlog.
 
-Format: **what we need** / **what it blocks** / **what we do instead**.
+Format: **what we need** / **what it blocks** / **what we do instead**. A
+resolved entry keeps its number and switches to **resolved** / **what this
+still blocks** so the history of what changed stays visible instead of
+disappearing when the gap closes.
 
 ---
 
-## 1. Connector presets for Stripe, HubSpot, LinkedIn, Drive, Google Business Profile
+## 1. ~~Connector presets for Stripe, HubSpot, LinkedIn, Drive, Google Business Profile~~ — shipped
 
-**What we need.** `GET /v1/connectors/presets` returns nine: `gmail`,
-`google-sheets`, `google-calendar`, `github`, `slack`, `x`, `discord`,
-`notion`, `honcho`. We need presets for Stripe, HubSpot, LinkedIn and Google
-Drive, and for Google Business Profile we have no path at all.
+**Resolved.** `GET /v1/connectors/presets` returned nine when this was
+written. Re-probed live: it now returns fifteen, and all five named here are
+among the new ones — `stripe`, `hubspot`, `linkedin`, `google-drive`,
+`google-business` — plus a generic `api-token` preset (any bearer-token
+HTTPS API, bound to one host) that wasn't asked for but covers the same
+shape of gap. Full detail (scopes, `base_url`, `allowed_hosts`) checked for
+each, not just the slug's presence.
 
-**What it blocks.** `internal/stripe`, `internal/hubspot` and
-`internal/linkedin` (608 lines) stay hand-rolled, each holding a credential
-this repo would rather never see. Drive is the sharpest one: six bots use
-it, so `internal/google` (1109 lines) cannot be retired even though Gmail,
-Sheets and Calendar all have presets. `review-responder` declares Google
-Business Profile and cannot run against a real account at all.
-
-**What we do instead.** Keep the direct clients, with credentials in the
-1Claw vault and read at call time by `nanobotd`, never inside a container.
-Documented in the README's real/simulated table.
+**What this still blocks.** Nothing at the API level. Migrating
+`internal/stripe`, `internal/hubspot`, `internal/linkedin` (608 lines) and
+the Drive portion of `internal/google` (1109 lines) onto these presets is
+real, separate work — swapping a hand-rolled client for a binding changes
+where the credential lives and how a bot calls it — and hasn't happened
+yet. Recorded here as done at the platform level; the migration is tracked
+as ordinary backlog, not as a 1Claw gap.
 
 ---
 
@@ -52,20 +59,17 @@ services that have them, which is the argument for request #1.
 
 ---
 
-## 3. Cancelling or withdrawing an approval request
+## 3. ~~Cancelling or withdrawing an approval request~~ — shipped
 
-**What we need.** A way for the requester to withdraw a pending approval on
-`/v1/approvals/*`. `POST /v1/pending-approvals/{id}/cancel` exists, but that
-is a different resource family (platform-executed actions); there is no
-equivalent under `/v1/approvals`.
+**Resolved.** `POST /v1/approvals/{approval_id}/cancel` exists now — the
+same resource family as `/v1/approvals/{approval_id}/decide`, not a
+workaround via the platform-executed-actions family this entry originally
+pointed at.
 
-**What it blocks.** Answering an approval in the nanobots UI leaves the
-1Claw mirror pending forever. The person then gets a push notification for a
-decision they already made, which trains people to ignore the notifications
-that matter.
-
-**What we do instead.** Leave the mirror pending and let it expire, and say
-so in the log. Documented in `internal/runner/approver.go`.
+**What this still blocks.** Wiring it in. `internal/runner/approver.go`
+still leaves the mirror pending and lets it expire, exactly as before; this
+entry only records that the endpoint we needed showed up, not that the
+build calls it yet. Tracked as ordinary backlog.
 
 ---
 
@@ -193,55 +197,55 @@ time, and poll by id. Loses only the runs whose history was already lost.
 
 ## 11. A runtime template that runs a plain binary, and a way to get files into a runtime
 
-**What we need.** Two things for `nanobots deploy 1claw`:
+**First half resolved.** `GET /v1/runtimes/templates` returned nine
+language-runtime and agent-framework templates when this was written.
+Re-probed live: there are now ten, and the new one is `binary` — "Run a
+compiled program: a release asset from `BINARY_URL` (SHA-256 pinned) or a
+startup command after cloning a repo. 1Claw CLI and sidecar included." That
+is exactly the gap named here.
 
-- A `nanobots` runtime template, or any template that runs a static binary.
-  `GET /v1/runtimes/templates` returns nine and they are all language
-  runtimes (python, node) or agent frameworks (hermes, openclaw,
-  openclaude, opencode, claude-code, codex, amp). None runs a Go program,
-  so a deploy needs the user to build and push their own image first.
-- A file-transfer API for a runtime, so a swarm written locally can be
-  pushed to a hosted one. There is `POST /v1/runtimes/{id}/shell/session`,
-  but driving a shell to move files is not an interface to build on.
+**Second half, still open.** No dedicated file-transfer API for a running
+runtime exists yet — `binary`'s own "clone a repo" path is the closest
+thing, and covers the same need a different way (push to a repo the
+runtime clones, rather than push files to a running one), but it hasn't
+been tried against a real deploy.
 
-**What it blocks.** The hosted path being one command. Today
-`nanobots deploy 1claw` requires `--image` and cannot carry the user's own
-swarms; both are reported by the command rather than discovered later.
-
-**What we do instead.** Ship the `Dockerfile` and tell people to push it.
-`docs/hosting.md` says exactly what does and does not travel.
+**What this still blocks.** `nanobots deploy 1claw` doesn't use either yet.
+Wiring the CLI to offer `binary` as a template, and to push this repo's own
+swarms via a clone rather than `--image`, is real work that hasn't started.
+Recorded here as a platform gap now half-closed; the CLI change is ordinary
+backlog.
 
 ---
 
-## 12. Memory search that matches something
+## 12. ~~Memory search that matches something~~ — shipped, and wired in
 
-**What we need.** `POST /v1/agents/{id}/memory/search` to return the entries
-a query is about. It is in the spec, with a `top_k` and a score per result,
-and it answers every request successfully — with nothing in it.
-
-Probed against the live account, one entry in the namespace:
+**Resolved.** `POST /v1/agents/{id}/memory/search` used to answer every
+non-empty query with nothing, on the account this was first probed against.
+Re-probed after 1Claw shipped a fix, same shape of test, one entry in the
+namespace:
 
 ```
-PUT    .../memory/probe-ns/obs-live-1  "refunds always get escalated"  -> stored
-GET    .../memory/probe-ns             -> the entry, tier "durable"
-search {"query":"refunds"}                          -> 0 results
-search {"query":"refunds always get escalated"}     -> 0 results   (exact text)
-search {"query":"escalated"}                        -> 0 results
-search {"query":""}                                 -> 1 result
+PUT    .../memory/probe-ns2/search-probe  "refunds always get escalated to a human" -> stored
+search {"query":"refunds"}                                -> 1 result, score 0.95
+search {"query":"escalated to human"}                     -> 1 result, score 0.90
+search {"query":"refunds always get escalated to a human"} -> 1 result, score 1.0
+search {"query":"what happens with refund requests"}       -> 0 results (no shared words)
 ```
 
-An empty query returns everything; any non-empty query returns nothing, the
-stored text character for character included, and 60 seconds of waiting
-changes neither. Nothing among the 499 paths configures an embedding model,
-and the agent has `memory_enabled`.
+Exact and partial-word queries now score and rank real matches. The last
+line is the honest limit that's left: this is **lexical** matching, not
+semantic — a paraphrase sharing no words with the stored text still finds
+nothing, so it is not the same capability Honcho's dialectic answer is.
 
-**What it blocks.** Recall on the 1Claw memory backend. `inbox-triage`,
-`support-triage` and `draft-replies` each ask a question in plain language
-about what they have seen before; on 1Claw they get `ErrNoRecall` and
-degrade, which is the honest outcome but not the useful one.
-
-**What we do instead.** The 1Claw backend stays key/value and says so, so a
-bot that needs recall fails loudly rather than being told "nothing known"
-forever. Recall comes from Honcho instead (`docs/memory.md`). The code that
-would wire this up was written and then removed rather than shipped dark:
-see the comment on `memory.OneClaw`.
+**What this unblocked.** `memory.OneClaw` now implements `Recaller` —
+`Remember` stores each observation under a generated key, `Recall` returns
+the matching stored text verbatim (not a synthesized sentence, since the
+API doesn't perform that step). `docs/memory.md` and
+`internal/api/server.go`'s `memoryStatus` were updated in the same change:
+the latter had a now-stale hardcoded "1claw never recalls" that would have
+kept reporting `memory_recall: false` to the UI even after this landed,
+which is exactly the kind of claim this file exists to catch. `inbox-triage`,
+`support-triage` and `draft-replies` get real recall on a 1Claw-backed
+deployment now; Honcho remains the other recall-capable backend for anyone
+who wants synthesized answers over lexical retrieval.

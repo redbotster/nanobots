@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/runner"
 	"github.com/redbotster/nanobots/internal/step"
 )
@@ -319,6 +320,35 @@ func TestStatusReportsDockerSeparatelyFromOneClaw(t *testing.T) {
 //
 // Proved by removing the catalog from under it: within the TTL the answer
 // must still be there, which it can only be if the disk was not touched.
+// The 1claw memory backend's real store (memory.OneClaw) implements
+// Recaller now — see docs/1claw-feature-requests.md #12 — but
+// memoryStatus sees *memory.DeferredOneClaw at this point (the real store
+// is swapped in per bot-run, once an agent id is known), which never
+// implements Recaller itself. A naive RecallerOf(store) check would report
+// "1claw" memory as unable to recall even though it now can, the same
+// honesty bug this repo's whole memory-status feature exists to avoid.
+func TestStatusReportsOneClawMemoryAsRecallCapable(t *testing.T) {
+	srv := &Server{
+		BotsDir: t.TempDir(),
+		Orchestrator: &runner.Orchestrator{
+			Memory: &memory.DeferredOneClaw{Fallback: &memory.Local{}},
+		},
+	}
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/status", nil))
+
+	var got map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got["memory_backend"] != "1claw" {
+		t.Errorf("memory_backend = %v, want %q", got["memory_backend"], "1claw")
+	}
+	if got["memory_recall"] != true {
+		t.Errorf("memory_recall = %v, want true", got["memory_recall"])
+	}
+}
+
 func TestStatusDoesNotRereadTheCatalogOnEveryPoll(t *testing.T) {
 	srv := testServer(t)
 	botsDir := t.TempDir()
