@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/redbotster/nanobots/internal/schema"
 )
 
 // The prose pages are one corpus: README.md plus every page in docs/.
@@ -267,6 +269,41 @@ func TestTheClaimedCronSwarmCountIsAccurate(t *testing.T) {
 	}
 }
 
+// CLAUDE.md's own repo-shape section spells out the full trigger split
+// ("15 cron, 1 webhook, 2 manual"), which TestTheClaimedCronSwarmCountIsAccurate
+// doesn't check — that test only follows the cron half, and only into the
+// files where it found "cron" already; the sentence containing all three
+// numbers lives nowhere that test reads. v3's Phase 0 asked for every stated
+// count anywhere in README.md, CLAUDE.md and docs/ to be checked, and this
+// specific breakdown was the one still unchecked at the time — verified
+// accurate by hand against real trigger types before adding the test that
+// keeps it that way.
+func TestClaudeMdsTriggerBreakdownIsAccurate(t *testing.T) {
+	root := repoRoot(t)
+	files, err := filepath.Glob(filepath.Join(root, "examples", "swarms", "*.yaml"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no swarms found: %v", err)
+	}
+	counts := map[string]int{}
+	for _, f := range files {
+		sw, err := schema.LoadNanoswarm(f)
+		if err != nil {
+			t.Fatalf("load %s: %v", f, err)
+		}
+		counts[sw.Spec.Trigger.Type]++
+	}
+
+	claim := fmt.Sprintf("`examples/swarms/` — %d swarms: %d cron, %d webhook, %d manual.",
+		len(files), counts["cron"], counts["webhook"], counts["manual"])
+	raw, err := os.ReadFile(filepath.Join(root, "CLAUDE.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), claim) {
+		t.Errorf("CLAUDE.md's repo-shape section does not say %q — real trigger counts: %v", claim, counts)
+	}
+}
+
 // numberWord spells the small numbers these comments use.
 func numberWord(n int) string {
 	words := []string{"zero", "one", "two", "three", "four", "five", "six", "seven",
@@ -361,6 +398,30 @@ func stripFences(s string) string {
 		out.WriteString("\n")
 	}
 	return out.String()
+}
+
+// The README grew reference material once already — it reached 567 lines
+// before the test count, the catalog tables' prose and the real/simulated
+// breakdown moved into docs/ pages that already existed. Nothing stopped it
+// creeping back except someone noticing, so v3's Phase 0 asked for a test
+// that notices instead. 250 is not a hard architectural limit; it is a
+// trip-wire a bit above the trimmed size (249 lines when this was added) —
+// low enough to fire before the next long section accretes, high enough
+// that "what it is, why bricks, install, the catalog table, links" fits
+// without a fight.
+func TestTheReadmeStaysUnderTwoHundredFiftyLines(t *testing.T) {
+	root := repoRoot(t)
+	raw, err := os.ReadFile(filepath.Join(root, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Count(string(raw), "\n")
+	const max = 250
+	if lines > max {
+		t.Errorf("README.md is %d lines, over the %d-line cap. Move the new "+
+			"reference material into a docs/ page (existing pages: docs/README.md's "+
+			"index) rather than raising this number.", lines, max)
+	}
 }
 
 // No bot's demo output may contain an em dash.
