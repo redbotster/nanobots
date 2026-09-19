@@ -2,6 +2,7 @@ package planner
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/redbotster/nanobots/internal/schema"
@@ -48,7 +49,17 @@ func Plan(swarmPath, botsDir string) (*PlanResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	return PlanSwarm(sw, botsDir)
+	// Seeded with this swarm's own path, so a nested swarm that eventually
+	// references this same file (A nests B nests A) is caught even though
+	// the cycle only closes back at the top. PlanSwarm has no path to seed
+	// with — a swarm nesting back to an in-memory, not-yet-saved draft is
+	// the one case that gap leaves open, and the recursion depth cap in
+	// InlineNestedSwarms is the backstop for it.
+	abs, absErr := filepath.Abs(swarmPath)
+	if absErr != nil {
+		abs = swarmPath
+	}
+	return planSwarm(sw, botsDir, []string{abs})
 }
 
 // PlanSwarm is Plan without the file load — same resolve/type-check/DAG
@@ -56,6 +67,14 @@ func Plan(swarmPath, botsDir string) (*PlanResult, error) {
 // uses this to type-check a swarm as it's being built, before it's ever
 // saved to a YAML file (see internal/api/builder.go).
 func PlanSwarm(sw *schema.Nanoswarm, botsDir string) (*PlanResult, error) {
+	return planSwarm(sw, botsDir, nil)
+}
+
+func planSwarm(sw *schema.Nanoswarm, botsDir string, chain []string) (*PlanResult, error) {
+	sw, err := InlineNestedSwarms(sw, botsDir, chain)
+	if err != nil {
+		return nil, err
+	}
 	resolved, err := Resolve(sw, botsDir)
 	if err != nil {
 		return nil, err

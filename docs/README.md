@@ -41,6 +41,7 @@ it.
 | [error-policy.md](error-policy.md) | `on_error: continue`, and what gets skipped |
 | [when.md](when.md) | `when:`, and the one thing it's allowed to look at |
 | [loop.md](loop.md) | `loop:`, pagination, and why it isn't fan-out |
+| [nested-swarms.md](nested-swarms.md) | `swarm:`, nesting a whole swarm as one node |
 | [hosting.md](hosting.md) | running it somewhere that is not your laptop |
 
 ## Connecting things

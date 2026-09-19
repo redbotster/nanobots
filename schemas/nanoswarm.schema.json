@@ -85,6 +85,9 @@
               "retry_backoff": {
                 "type": "string"
               },
+              "swarm": {
+                "type": "string"
+              },
               "use": {
                 "type": "string"
               },
@@ -186,6 +189,68 @@
           "required": [
             "target"
           ],
+          "type": "object"
+        },
+        "ports": {
+          "properties": {
+            "inputs": {
+              "items": {
+                "properties": {
+                  "default": {
+                    "type": "string"
+                  },
+                  "maps_to": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "required": {
+                    "type": "boolean"
+                  },
+                  "type": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "type"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "outputs": {
+              "items": {
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "maps_to": {
+                    "type": "string"
+                  },
+                  "mime": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "schema": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "type"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
           "type": "object"
         },
         "snaps": {

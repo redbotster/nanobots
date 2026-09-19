@@ -119,6 +119,9 @@
                   "default": {
                     "type": "string"
                   },
+                  "maps_to": {
+                    "type": "string"
+                  },
                   "name": {
                     "type": "string"
                   },
@@ -141,6 +144,9 @@
               "items": {
                 "properties": {
                   "description": {
+                    "type": "string"
+                  },
+                  "maps_to": {
                     "type": "string"
                   },
                   "mime": {

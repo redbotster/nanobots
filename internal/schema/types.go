@@ -25,6 +25,11 @@ type InputPort struct {
 	Type     string `json:"type" yaml:"type"`
 	Default  string `json:"default,omitempty" yaml:"default,omitempty"`
 	Required bool   `json:"required,omitempty" yaml:"required,omitempty"`
+	// MapsTo is only meaningful on a Nanoswarm's own Spec.Ports (a swarm
+	// nested elsewhere as a `swarm:` node) — "<bot-id>.<port>", the inner
+	// bot input this boundary port's value is handed to. Empty on every
+	// Nanobot's own ports, which have nothing to map to.
+	MapsTo string `json:"maps_to,omitempty" yaml:"maps_to,omitempty"`
 }
 
 // OutputPort is a typed output on a Nanobot.
@@ -34,6 +39,10 @@ type OutputPort struct {
 	Mime        string `json:"mime,omitempty" yaml:"mime,omitempty"`
 	Schema      string `json:"schema,omitempty" yaml:"schema,omitempty"` // path to a JSON Schema file, for json-typed outputs
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
+	// MapsTo is only meaningful on a Nanoswarm's own Spec.Ports: the inner
+	// "<bot-id>.<port>" this boundary output's value comes from. See
+	// InputPort.MapsTo.
+	MapsTo string `json:"maps_to,omitempty" yaml:"maps_to,omitempty"`
 }
 
 // Ports groups a Nanobot's inputs and outputs.
@@ -200,6 +209,12 @@ type BotRef struct {
 	Use    string         `json:"use,omitempty" yaml:"use,omitempty"`   // registry ref: name@version
 	Path   string         `json:"path,omitempty" yaml:"path,omitempty"` // local path, alternative to use:
 	Inputs map[string]any `json:"inputs,omitempty" yaml:"inputs,omitempty"`
+	// Swarm nests a whole other Nanoswarm as this one node, alternative to
+	// Use/Path: a path to another swarm's YAML, resolved relative to this
+	// swarm's own directory. The referenced swarm must declare Spec.Ports —
+	// its typed boundary — since that's what this node's inputs and outputs
+	// type-check against. See internal/planner.InlineNestedSwarms.
+	Swarm string `json:"swarm,omitempty" yaml:"swarm,omitempty"`
 	// OnError decides whether this bot failing ends the run.
 	//
 	//	stop      (default) the run fails, as it always has
@@ -338,6 +353,12 @@ type NanoswarmSpec struct {
 	Bots     []BotRef       `json:"bots" yaml:"bots"`
 	Snaps    []Snap         `json:"snaps,omitempty" yaml:"snaps,omitempty"`
 	Deploy   Deploy         `json:"deploy" yaml:"deploy"`
+	// Ports declares this swarm's own external interface, for when it is
+	// nested elsewhere as a single `swarm:` node. Empty means this swarm
+	// cannot be nested — a swarm with no declared boundary has no typed
+	// contract to snap into, the same reason an undeclared bot port can't
+	// be snapped either.
+	Ports Ports `json:"ports,omitempty" yaml:"ports,omitempty"`
 }
 
 // Nanoswarm is a saved graph of nanobots snapped together.

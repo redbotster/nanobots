@@ -90,5 +90,5 @@ Not a way to branch a swarm's shape — every bot in the swarm is still
 planned, typed, and shown on the canvas whether its `when:` turns out true
 or false on a given run. Bounded iteration is `loop:` (`docs/loop.md`), a
 separate primitive with its own restrictions. Nesting a whole swarm as one
-node (`swarm:`) is a separate, larger piece of the same "control flow" idea
-and is not built yet.
+node is `swarm:` (`docs/nested-swarms.md`), a separate, larger piece of the
+same "control flow" idea.
