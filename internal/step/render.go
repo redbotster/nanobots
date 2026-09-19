@@ -83,7 +83,7 @@ func RenderHTMLToPDF(templatePath string, data any) (pdfBytes []byte, mime strin
 
 	ctx, cancel := context.WithTimeout(context.Background(), chromeRenderTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, chrome,
+	args := append([]string{
 		"--headless=new",
 		"--disable-gpu",
 		"--no-sandbox",
@@ -91,11 +91,12 @@ func RenderHTMLToPDF(templatePath string, data any) (pdfBytes []byte, mime strin
 		// read-only when the container runs with --read-only (the whole
 		// point of the harness images). Point it at the same tmpfs-backed
 		// scratch dir we already made for the HTML/PDF files.
-		"--user-data-dir="+dir,
-		"--print-to-pdf="+pdfPath,
+		"--user-data-dir=" + dir,
+		"--print-to-pdf=" + pdfPath,
 		"--no-pdf-header-footer",
-		"file://"+htmlPath,
-	)
+	}, chromeProxyArgs()...)
+	args = append(args, "file://"+htmlPath)
+	cmd := exec.CommandContext(ctx, chrome, args...)
 	cmd.WaitDelay = chromeWaitDelay
 	out, err := cmd.CombinedOutput()
 	if ctx.Err() == context.DeadlineExceeded {
@@ -139,15 +140,16 @@ func RenderHTMLToPNG(templatePath string, data any) (pngBytes []byte, mime strin
 
 	ctx, cancel := context.WithTimeout(context.Background(), chromeRenderTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, chrome,
+	args := append([]string{
 		"--headless=new",
 		"--disable-gpu",
 		"--no-sandbox",
-		"--user-data-dir="+dir,
-		"--screenshot="+pngPath,
+		"--user-data-dir=" + dir,
+		"--screenshot=" + pngPath,
 		"--window-size=640,480",
-		"file://"+htmlPath,
-	)
+	}, chromeProxyArgs()...)
+	args = append(args, "file://"+htmlPath)
+	cmd := exec.CommandContext(ctx, chrome, args...)
 	cmd.WaitDelay = chromeWaitDelay
 	out, err := cmd.CombinedOutput()
 	if ctx.Err() == context.DeadlineExceeded {
@@ -161,6 +163,27 @@ func RenderHTMLToPNG(templatePath string, data any) (pngBytes []byte, mime strin
 		return nil, "", fmt.Errorf("read rendered png: %w", err)
 	}
 	return png, "image/png", nil
+}
+
+// chromeProxyArgs forces every request Chrome makes through the run's
+// egress proxy, when one is set — internal/runner starts one and sets
+// NANOBOTS_EGRESS_PROXY for exactly the reason this exists: a bot renders
+// HTML in this same process's Chrome, and a remote asset the HTML
+// references (an <img>, a font, a script) is fetched by Chrome directly,
+// outside guardrails.network_egress's host-side check (see EgressPolicy's
+// doc comment — that check covers service.call and web.fetch, both
+// callbacks to nanobotd, and says plainly that this is what it does not
+// cover). The proxy enforces the same allowlist on Chrome's own requests.
+//
+// A CLI flag, not relying on Chrome reading HTTP_PROXY from the
+// environment: not every Chrome build honors it the same way on every
+// platform, and a flag it definitely reads is worth more than one it
+// probably does.
+func chromeProxyArgs() []string {
+	if addr, ok := os.LookupEnv("NANOBOTS_EGRESS_PROXY"); ok && addr != "" {
+		return []string{"--proxy-server=" + addr}
+	}
+	return nil
 }
 
 // findChrome locates a Chrome/Chromium binary. NANOBOTS_CHROME_PATH, when

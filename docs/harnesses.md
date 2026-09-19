@@ -100,23 +100,40 @@ Relying on people remembering that failed in practice. A 36-hour-old image made 
 
 `NANOBOTS_REBUILD_HARNESS=1` still forces a rebuild. If the source tree can't be hashed, the old "the image exists, that's good enough" rule applies rather than rebuilding on every run.
 
-## The one thing openclaw can still reach
+## What openclaw's own Chromium can reach
 
 `guardrails.network_egress` is enforced for `web.fetch` — the step that
 takes an arbitrary URL from a bot's inputs — because that step runs on the
 host, where the bot that asked and the URL it asked for are both known (see
 `docs/bot-contract.md` and `internal/step.EgressPolicy`).
 
-An `openclaw` bot is the exception, and it is worth being exact about why.
+An `openclaw` bot was the exception, and it is worth being exact about why.
 `transform.render` runs a real Chromium *inside* the container, so remote
-assets referenced by the HTML it renders are fetched by the browser, past
-any check this build performs. Nothing in the catalog renders remote assets
-— the templates are self-contained — but the guardrail does not stop one
-that did.
+assets referenced by the HTML it renders are fetched by the browser — an
+LLM-authored summary rendered to a PDF could carry an `<img src>` chosen by
+whoever's email or ticket it was built from, and Chrome would fetch it with
+nothing to stop it. Nothing in the catalog renders remote assets today —
+the templates are self-contained — but the guardrail didn't stop one that
+did.
 
-Closing it needs a per-run Docker network with an egress proxy in front of
-it. Until then this is the honest boundary: enforced for the step that
-fetches on your behalf, not for a browser you asked to draw a page.
+**Closed.** A bot with declared `network_egress` and any network interface
+at all gets a small forward proxy — `internal/runner.EgressProxy` — that
+enforces the exact same allowlist `step.EgressPolicy` already checks for
+`web.fetch`, one definition either path can't disagree with. Chrome is
+launched with `--proxy-server` pointed at it, so an HTTPS request tunnels
+through a host check (the proxy sees the CONNECT target, never what's sent
+over it — no man-in-the-middle needed) and a plain HTTP request is checked
+the same way `web.fetch` is. A bot that declares no egress at all keeps the
+existing, stricter answer: `--network none`, so there's no interface for
+anything — Chrome included — to reach out on.
+
+What this does not add: the container still has a routable network
+(`--network bridge`) rather than one that can *only* reach the proxy, so
+the isolation here rests on nothing else in the container making a network
+call on its own — true today, since a bot's declared steps never run
+arbitrary code, only this same controlled `nanobot-agent` binary. A future
+harness that ran less controlled code would need the stronger version: a
+per-run network with no route out except through the proxy.
 
 ## Running without a container
 
@@ -186,7 +203,7 @@ all. `runner.needsContainerNetwork` is the predicate, and it is
 deny-by-default: a step type it has never heard of keeps its network, so a
 new step fails loudly in review rather than silently at midnight.
 
-What is left is the allowlist. "None" is a Docker flag; "only
-googleapis.com" needs a per-run network and an egress proxy, and a bot that
-legitimately calls back to nanobotd still gets an open bridge. That part is
-still reported rather than enforced, and `docs/status.md` says so.
+What was left was the allowlist — "none" is a Docker flag, "only
+googleapis.com" needed a proxy in front of the bridge, since a bot that
+legitimately calls back to nanobotd still needs an open network. That part
+is closed too now: see "What openclaw's own Chromium can reach" above.

@@ -960,17 +960,34 @@ func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID str
 		// a sandbox nobody can see is a sandbox nobody trusts.
 		run.Log(botID, "", "container has no network (this bot declares no egress and calls nothing)")
 	}
+
+	env := map[string]string{
+		"NANOBOTS_CALLBACK_URL": o.CallbackAddr,
+		"NANOBOTS_RUN_TOKEN":    token,
+		"NANOBOTS_BLOB_DIR":     "/tmp/nanobots-blobs",
+		// Where the host's own store is mounted, for reading files an
+		// upstream bot produced. See step.FallbackBlobStore.
+		"NANOBOTS_BLOB_READONLY_DIR": "/blobs",
+	}
+	// A bot's own callbacks (service.call, ai.generate, web.fetch, ...) are
+	// already checked against guardrails.network_egress on the host — see
+	// step.EgressPolicy. The one thing that check can't see is a real
+	// Chrome, inside this same container, fetching whatever HTML from
+	// transform.render happens to reference. This proxy closes that,
+	// reusing the identical allowlist so the two can never disagree.
+	egress, err := StartEgressProxyIfNeeded(nb.Spec.Guardrails.NetworkEgress, noNetwork)
+	if err != nil {
+		return nil, fmt.Errorf("start egress proxy: %w", err)
+	}
+	if egress != nil {
+		defer egress.Close()
+		env["NANOBOTS_EGRESS_PROXY"] = egress.Addr()
+	}
+
 	_, _, err = RunContainer(run.Context(), ContainerSpec{
 		Image: image, User: user, NoNetwork: noNetwork,
 		BotDir: nb.SourcePath, RunDir: runDir, BlobDir: o.BlobDir,
-		Env: map[string]string{
-			"NANOBOTS_CALLBACK_URL": o.CallbackAddr,
-			"NANOBOTS_RUN_TOKEN":    token,
-			"NANOBOTS_BLOB_DIR":     "/tmp/nanobots-blobs",
-			// Where the host's own store is mounted, for reading files an
-			// upstream bot produced. See step.FallbackBlobStore.
-			"NANOBOTS_BLOB_READONLY_DIR": "/blobs",
-		},
+		Env:        env,
 		MaxRuntime: maxRuntime,
 	})
 

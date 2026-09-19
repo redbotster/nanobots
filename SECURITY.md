@@ -40,8 +40,8 @@ and saying so here saves you the time:
   running as you. The two routes that spend money or send mail are the
   exceptions and do carry tokens.
 - **Bots run with network egress.** A bot declaring `network_egress` reaches
-  the public internet from inside its container. `web.fetch` is separately
-  restricted — see below.
+  the hosts on that list from inside its container, and nothing outside it —
+  see below.
 - **Demo mode is the default.** Every bot ships on `connection: demo` and
   reads fixtures, not your accounts, until you change it.
 
@@ -53,6 +53,13 @@ Reported findings should take these into account:
   metadata), private, multicast and unspecified addresses. The check runs in
   the dialer's `Control` hook, on the address actually being connected to, so
   DNS rebinding does not get past it (`internal/step/webfetch_guard.go`).
+- A container's own network is limited to `guardrails.network_egress`, not
+  just its callbacks to nanobotd. An `openclaw` bot renders HTML in a real
+  Chromium inside its container; a forward proxy (`internal/runner.EgressProxy`)
+  is the only route out for it, checking the same allowlist `web.fetch` does,
+  so a remote asset a rendered page references can't reach further than a
+  `service.call` could. A bot declaring no egress gets no network interface
+  at all (`--network none`).
 - Path segments from a URL are validated before becoming filesystem paths.
   `http.ServeMux` routes on the escaped path while handlers read the decoded
   one, so `..%2f` is not what routing saw — see `internal/api/botpath.go`.

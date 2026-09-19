@@ -3,6 +3,7 @@ package step
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -47,6 +48,105 @@ func TestRenderHTMLToPNGNoChromeFallsBackToHTML(t *testing.T) {
 	}
 	if mime != "text/html" || string(data) != "hi" {
 		t.Errorf("got %q, %q", mime, data)
+	}
+}
+
+// A remote asset an LLM-authored summary could carry (an <img src>, chosen
+// by whoever's email or ticket the summary was built from) is fetched by
+// this same process's Chrome, not by a callback network_egress already
+// checks — so Chrome itself has to be pointed at the run's egress proxy
+// when one is set.
+// writeArgvRecordingChrome writes a fake "chrome" that logs its full argv
+// to argvPath and touches whichever file --print-to-pdf= or --screenshot=
+// names, so RenderHTMLToPDF/PNG's own read of the output succeeds
+// regardless of where the proxy flag lands among the others.
+func writeArgvRecordingChrome(t *testing.T, path, argvPath string) {
+	t.Helper()
+	script := `#!/bin/sh
+echo "$@" > "` + argvPath + `"
+for a in "$@"; do
+  case "$a" in
+    --print-to-pdf=*) touch "${a#--print-to-pdf=}" ;;
+    --screenshot=*) touch "${a#--screenshot=}" ;;
+  esac
+done
+`
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A remote asset an LLM-authored summary could carry (an <img src>, chosen
+// by whoever's email or ticket the summary was built from) is fetched by
+// this same process's Chrome, not by a callback network_egress already
+// checks — so Chrome itself has to be pointed at the run's egress proxy
+// when one is set.
+func TestRenderHTMLToPDFPassesTheEgressProxyToChrome(t *testing.T) {
+	dir := t.TempDir()
+	argvPath := filepath.Join(dir, "argv.txt")
+	fakeChrome := filepath.Join(dir, "chrome-records-argv.sh")
+	writeArgvRecordingChrome(t, fakeChrome, argvPath)
+	t.Setenv("NANOBOTS_CHROME_PATH", fakeChrome)
+	t.Setenv("NANOBOTS_EGRESS_PROXY", "host.docker.internal:54321")
+
+	tmplPath := filepath.Join(dir, "t.html")
+	os.WriteFile(tmplPath, []byte("hi"), 0o600)
+
+	if _, _, err := RenderHTMLToPDF(tmplPath, nil); err != nil {
+		t.Fatalf("RenderHTMLToPDF: %v", err)
+	}
+	argv, err := os.ReadFile(argvPath)
+	if err != nil {
+		t.Fatalf("read recorded argv: %v", err)
+	}
+	if !strings.Contains(string(argv), "--proxy-server=host.docker.internal:54321") {
+		t.Errorf("chrome invoked without --proxy-server: %s", argv)
+	}
+}
+
+func TestRenderHTMLToPDFOmitsProxyFlagWhenNoneIsSet(t *testing.T) {
+	dir := t.TempDir()
+	argvPath := filepath.Join(dir, "argv.txt")
+	fakeChrome := filepath.Join(dir, "chrome-records-argv.sh")
+	writeArgvRecordingChrome(t, fakeChrome, argvPath)
+	t.Setenv("NANOBOTS_CHROME_PATH", fakeChrome)
+
+	tmplPath := filepath.Join(dir, "t.html")
+	os.WriteFile(tmplPath, []byte("hi"), 0o600)
+
+	if _, _, err := RenderHTMLToPDF(tmplPath, nil); err != nil {
+		t.Fatalf("RenderHTMLToPDF: %v", err)
+	}
+	argv, err := os.ReadFile(argvPath)
+	if err != nil {
+		t.Fatalf("read recorded argv: %v", err)
+	}
+	if strings.Contains(string(argv), "--proxy-server") {
+		t.Errorf("chrome invoked with a proxy flag nobody set: %s", argv)
+	}
+}
+
+// The PNG path (sheet-reporter's chart) needs the same treatment as PDF.
+func TestRenderHTMLToPNGPassesTheEgressProxyToChrome(t *testing.T) {
+	dir := t.TempDir()
+	argvPath := filepath.Join(dir, "argv.txt")
+	fakeChrome := filepath.Join(dir, "chrome-records-argv.sh")
+	writeArgvRecordingChrome(t, fakeChrome, argvPath)
+	t.Setenv("NANOBOTS_CHROME_PATH", fakeChrome)
+	t.Setenv("NANOBOTS_EGRESS_PROXY", "host.docker.internal:54321")
+
+	tmplPath := filepath.Join(dir, "t.html")
+	os.WriteFile(tmplPath, []byte("hi"), 0o600)
+
+	if _, _, err := RenderHTMLToPNG(tmplPath, nil); err != nil {
+		t.Fatalf("RenderHTMLToPNG: %v", err)
+	}
+	argv, err := os.ReadFile(argvPath)
+	if err != nil {
+		t.Fatalf("read recorded argv: %v", err)
+	}
+	if !strings.Contains(string(argv), "--proxy-server=host.docker.internal:54321") {
+		t.Errorf("chrome invoked without --proxy-server: %s", argv)
 	}
 }
 

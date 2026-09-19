@@ -204,10 +204,13 @@ What a bot and a swarm look like as files, in real YAML from this repo:
 The bot contract, the planner, the runner, the 1Claw bridge, seven direct
 service clients, the composer, the foundry, the scheduler, approvals,
 fan-out, run history and the WebUI are all real and exercised against live
-APIs. Published packages are not: no release is tagged, so `brew` and `npx`
-do not work yet. Container-level network egress is reported per bot rather
-than enforced. No bot ships connected to a real account — every one starts on
-`connection: demo` until a human deliberately flips it.
+APIs. Published packages are partly there: tagged releases publish real
+binaries and a container image, but `brew` and `npx` still don't work — the
+Homebrew tap and the npm package need accounts this repo doesn't hold yet.
+Container-level network egress is enforced, including a bot's own Chromium
+rendering, not just its callbacks to nanobotd. No bot ships connected to a
+real account — every one starts on `connection: demo` until a human
+deliberately flips it.
 
 The full list, and the line-by-line table of what is real versus simulated,
 is [docs/status.md](docs/status.md). The gaps that are 1Claw's rather than

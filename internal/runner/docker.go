@@ -164,20 +164,18 @@ func dockerRunArgs(spec ContainerSpec, name string) []string {
 	for k, v := range spec.Env {
 		args = append(args, "-e", k+"="+v)
 	}
-	// guardrails.network_egress IS enforced, but on the host rather than
-	// here — see step.EgressPolicy. Almost nothing a bot does reaches the
-	// outside from inside its container: every credentialed step, and
-	// web.fetch, is a callback to nanobotd. web.fetch is the one that takes
-	// an arbitrary URL from a bot's inputs, and it is checked there.
+	// guardrails.network_egress is enforced two ways now, neither of them a
+	// Docker flag. Almost nothing a bot does reaches the outside from
+	// inside its container: every credentialed step, and web.fetch, is a
+	// callback to nanobotd, checked on the host by step.EgressPolicy. The
+	// one thing that isn't a callback — an openclaw bot's own Chromium,
+	// fetching whatever a rendered page references — is checked by
+	// StartEgressProxyIfNeeded's forward proxy, which Chrome is pointed at
+	// via NANOBOTS_EGRESS_PROXY (see internal/step.chromeProxyArgs). Both
+	// paths read the same declared list, so they can't disagree about it.
 	//
-	// A bot that needs nothing gets nothing: ContainerSpec.NoNetwork above.
-	//
-	// TODO(nanobots#egress-container): what remains uncovered is a real
-	// browser in a bot that *does* call back. An openclaw bot renders HTML
-	// in Chromium in here, and remote assets that HTML references are
-	// fetched by the browser, outside any check. Narrowing that to an
-	// allowlist needs a per-run network plus an egress proxy; "none" is the
-	// only part Docker can express on its own.
+	// A bot that needs nothing gets nothing regardless: ContainerSpec.NoNetwork
+	// above.
 	return append(args, spec.Image)
 }
 
