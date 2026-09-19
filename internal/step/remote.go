@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/redbotster/nanobots/internal/llm"
 	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/schema"
 )
@@ -181,3 +182,13 @@ func (r *RemoteDeps) WebFetch(params map[string]any) (any, error) {
 }
 
 func (r *RemoteDeps) Blobs() BlobStore { return r.Blobstore }
+
+// GenerateWithTools, like ServiceCall/AIGenerate/WebFetch, round-trips
+// through nanobotd — the container never holds the real LLM credential
+// tool-calling needs any more than it holds a 1Claw one.
+func (r *RemoteDeps) GenerateWithTools(messages []llm.Message, tools []llm.ToolDef, model schema.Model) (*llm.ToolCallResult, error) {
+	var out llm.ToolCallResult
+	err := r.call("/internal/steps/agent_generate",
+		map[string]any{"messages": messages, "tools": tools, "model": model}, &out)
+	return &out, err
+}

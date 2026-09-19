@@ -182,6 +182,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("POST /internal/steps/service_call", s.handleStepServiceCall)
 	mux.HandleFunc("POST /internal/steps/ai_generate", s.handleStepAIGenerate)
+	mux.HandleFunc("POST /internal/steps/agent_generate", s.handleStepAgentGenerate)
 	mux.HandleFunc("POST /internal/steps/memory_get", s.handleStepMemoryGet)
 	mux.HandleFunc("POST /internal/steps/memory_put", s.handleStepMemoryPut)
 	mux.HandleFunc("POST /internal/steps/memory_recall", s.handleStepMemoryRecall)

@@ -302,6 +302,9 @@ func Interpret(nb *schema.Nanobot, resolvedInputs map[string]any, swarmVars map[
 				log(s.Name, "notify -> %s", channel)
 			}
 
+		case "agent.loop":
+			out, err = runAgentLoop(nb, s, ctx, deps, log)
+
 		default:
 			err = fmt.Errorf("step type %q is not implemented", s.Type)
 		}
@@ -800,6 +803,7 @@ func Types() []string {
 		"approve",
 		"notify",
 		"stop.if",
+		"agent.loop",
 	}
 }
 

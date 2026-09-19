@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/redbotster/nanobots/internal/llm"
 	"github.com/redbotster/nanobots/internal/schema"
 )
 
@@ -42,6 +43,10 @@ type RecordingDeps struct {
 	// order preserves first-seen order so a diff of two recordings reads
 	// the same way twice.
 	order []string
+	// agentLoopTurns accumulates fixtures/agent_loop.json — the one
+	// fixture that is a sequence, not a single value, so it can't go
+	// through record's last-write-wins map the way everything else does.
+	agentLoopTurns []any
 }
 
 func NewRecordingDeps(inner Deps) *RecordingDeps {
@@ -171,5 +176,34 @@ func (r *RecordingDeps) Approve(summary, tier string) (bool, string, error) {
 }
 func (r *RecordingDeps) Notify(m, c string) error { return r.Inner.Notify(m, c) }
 func (r *RecordingDeps) Blobs() BlobStore         { return r.Inner.Blobs() }
+
+// GenerateWithTools records each turn onto fixtures/agent_loop.json in
+// call order — DemoDeps.GenerateWithTools reads them back the same way,
+// one array entry per call. Recorded in the exact shape a turn already is
+// (content/done, or tool_calls) rather than the whole *llm.ToolCallResult,
+// so the fixture on disk reads the same as one this doc's own examples
+// show, not a Go struct dump.
+func (r *RecordingDeps) GenerateWithTools(messages []llm.Message, tools []llm.ToolDef, model schema.Model) (*llm.ToolCallResult, error) {
+	out, err := r.Inner.GenerateWithTools(messages, tools, model)
+	if err == nil {
+		turn := map[string]any{}
+		if out.Done {
+			turn["content"] = out.Content
+			turn["done"] = true
+		} else {
+			calls := make([]map[string]any, len(out.ToolCalls))
+			for i, c := range out.ToolCalls {
+				calls[i] = map[string]any{"id": c.ID, "name": c.Name, "arguments": c.Arguments}
+			}
+			turn["tool_calls"] = calls
+		}
+		r.mu.Lock()
+		r.agentLoopTurns = append(r.agentLoopTurns, turn)
+		turns := append([]any{}, r.agentLoopTurns...)
+		r.mu.Unlock()
+		r.record("agent_loop.json", turns)
+	}
+	return out, err
+}
 
 var _ Deps = (*RecordingDeps)(nil)

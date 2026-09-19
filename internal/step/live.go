@@ -157,6 +157,19 @@ func (l *LiveDeps) AIGenerate(prompt string, model schema.Model) (string, error)
 	return l.LLM.Generate(context.Background(), prompt, model)
 }
 
+// GenerateWithTools is agent.loop's own path. Falling back to fixtures
+// when there's no LLM at all matches AIGenerate; falling back when there
+// is one but it can't do tool-calling is different on purpose —
+// llm.ErrNoToolCalling names the real reason (this backend, not "no LLM
+// configured") rather than silently degrading to demo data for a loop that
+// genuinely can't run without a real model deciding what to call.
+func (l *LiveDeps) GenerateWithTools(messages []llm.Message, tools []llm.ToolDef, model schema.Model) (*llm.ToolCallResult, error) {
+	if l.LLM == nil {
+		return l.Demo.GenerateWithTools(messages, tools, model)
+	}
+	return llm.GenerateWithTools(context.Background(), l.LLM, messages, tools, model)
+}
+
 func (l *LiveDeps) Render(templatePath string, data any, to string) ([]byte, string, error) {
 	return l.Demo.Render(templatePath, data, to)
 }

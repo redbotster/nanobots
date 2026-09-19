@@ -159,6 +159,60 @@ type Step struct {
 	// id, an etag or a timestamp, and "is this the same one as last time"
 	// does not need a type system.
 	Equals string `json:"equals,omitempty" yaml:"equals,omitempty"`
+
+	// The rest are agent.loop's own fields — see docs/agent-loop.md.
+	// Goal is the templated instruction the model is given, resolved
+	// against the same ctx every other step template is.
+	Goal string `json:"goal,omitempty" yaml:"goal,omitempty"`
+	// Tools is exactly what the model may call this iteration — declared
+	// explicitly by the bot author, not derived from Spec.Services, so a
+	// bot's own YAML is the complete, readable answer to "what can this
+	// loop actually do" rather than something inferred from a services
+	// list meant for a different purpose (connection status, guardrails).
+	Tools []AgentTool `json:"tools,omitempty" yaml:"tools,omitempty"`
+	// MaxIterations bounds the loop — required, and capped (see
+	// internal/planner.maxAgentLoopIterations): an unbounded "keep trying
+	// tools" against a model's own judgement is not a thing this runs
+	// unattended, the same reasoning loop:'s own Max exists for.
+	//
+	// A spend ceiling (the original design's max_spend_usd) is not here.
+	// Nothing in internal/llm.ToolCallResult carries a per-call token count
+	// or cost back from any backend, so a field like that would be a
+	// promise this build cannot keep — declared in YAML, checked nowhere,
+	// which is worse than not having it. guardrails.daily_budget_usd is the
+	// real ceiling today, enforced by Shroud itself per agent; a per-loop
+	// one is future work once a backend actually reports what a call cost.
+	MaxIterations int `json:"max_iterations,omitempty" yaml:"max_iterations,omitempty"`
+}
+
+// AgentTool is one tool an agent.loop step may call, exactly as the model
+// sees it: OpenAI/Anthropic-shaped (name, description, JSON Schema
+// parameters). Service/Op say what actually runs when the model calls it —
+// the same step.Deps.ServiceCall/WebFetch/MemoryGet/MemoryPut dispatch
+// every other step type already uses, driven by the model's own chosen
+// arguments instead of a fixed params: map.
+type AgentTool struct {
+	Name        string         `json:"name" yaml:"name"`
+	Description string         `json:"description" yaml:"description"`
+	Parameters  map[string]any `json:"parameters,omitempty" yaml:"parameters,omitempty"` // JSON Schema
+	// Service/Op: this tool is a service.call to Service's Op. Mutually
+	// exclusive with Builtin.
+	Service string `json:"service,omitempty" yaml:"service,omitempty"`
+	Op      string `json:"op,omitempty" yaml:"op,omitempty"`
+	// Builtin names a fixed, non-service tool: "web.fetch", "memory.get" or
+	// "memory.put" — the same three the loop's own doc comment on BotRef
+	// promises, and the only three internal/step.runAgentLoop knows how to
+	// dispatch. Mutually exclusive with Service/Op.
+	Builtin string `json:"builtin,omitempty" yaml:"builtin,omitempty"`
+	// Writes marks this tool as a real external write — a one-line summary
+	// of what calling it does ("send an email", "post to #general") shown
+	// in the approval prompt, not just a boolean. Any non-empty value gates
+	// every call to this tool behind deps.Approve, the identical inline
+	// gate bots/email-send-approved already uses before its own send —
+	// reused rather than invented, so a write from inside a loop is held to
+	// the same standard as a write from a fixed step list. Empty means this
+	// tool never writes anywhere real (a lookup, a fetch, a memory read).
+	Writes string `json:"writes,omitempty" yaml:"writes,omitempty"`
 }
 
 // Guardrails are constraints a bot declares about itself.

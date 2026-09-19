@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 
+	"github.com/redbotster/nanobots/internal/llm"
 	"github.com/redbotster/nanobots/internal/schema"
 )
 
@@ -108,6 +109,11 @@ type Deps interface {
 	// call (conformance/tests must never depend on the internet).
 	WebFetch(params map[string]any) (any, error)
 	Blobs() BlobStore
+	// GenerateWithTools runs one turn of an agent.loop step's tool-calling
+	// conversation. Only a ToolCaller-capable backend can do this (see
+	// internal/llm); DemoDeps replays a recorded transcript instead of
+	// calling one, the same relationship AIGenerate has to a fixture.
+	GenerateWithTools(messages []llm.Message, tools []llm.ToolDef, model schema.Model) (*llm.ToolCallResult, error)
 }
 
 // FallbackBlobStore writes to Primary and reads from Primary first, then

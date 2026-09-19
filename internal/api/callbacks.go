@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"errors"
+	"github.com/redbotster/nanobots/internal/llm"
 	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/schema"
 	"github.com/redbotster/nanobots/internal/step"
@@ -73,6 +74,29 @@ func (s *Server) handleStepAIGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := deps.AIGenerate(req.Prompt, req.Model)
+	if err != nil {
+		writeCallbackError(w, err)
+		return
+	}
+	writeCallbackResult(w, result)
+}
+
+func (s *Server) handleStepAgentGenerate(w http.ResponseWriter, r *http.Request) {
+	deps, ok := s.depsFromRequest(r)
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	var req struct {
+		Messages []llm.Message `json:"messages"`
+		Tools    []llm.ToolDef `json:"tools"`
+		Model    schema.Model  `json:"model"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		writeCallbackError(w, err)
+		return
+	}
+	result, err := deps.GenerateWithTools(req.Messages, req.Tools, req.Model)
 	if err != nil {
 		writeCallbackError(w, err)
 		return

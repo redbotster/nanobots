@@ -230,12 +230,18 @@
               "equals": {
                 "type": "string"
               },
+              "goal": {
+                "type": "string"
+              },
               "inputs": {
                 "additionalProperties": true,
                 "type": "object"
               },
               "key": {
                 "type": "string"
+              },
+              "max_iterations": {
+                "type": "integer"
               },
               "name": {
                 "type": "string"
@@ -277,6 +283,40 @@
               },
               "to": {
                 "type": "string"
+              },
+              "tools": {
+                "items": {
+                  "properties": {
+                    "builtin": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "op": {
+                      "type": "string"
+                    },
+                    "parameters": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "service": {
+                      "type": "string"
+                    },
+                    "writes": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "description"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
               },
               "type": {
                 "type": "string"

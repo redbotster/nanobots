@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/redbotster/nanobots/internal/llm"
 	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/schema"
 )
@@ -57,6 +58,9 @@ type DemoDeps struct {
 	// "DEMO DATA" banner. Nil is fine.
 	OnServiceCall func(svc schema.Service, op string, demo bool)
 	memory        map[string]map[string]string
+	// agentLoopCalls indexes into fixtures/agent_loop.json — see
+	// GenerateWithTools.
+	agentLoopCalls int
 }
 
 func NewDemoDeps(fixturesDir string, blobs BlobStore) *DemoDeps {
@@ -101,6 +105,69 @@ func (d *DemoDeps) AIGenerate(prompt string, model schema.Model) (string, error)
 		return "", err
 	}
 	return string(b), nil
+}
+
+// GenerateWithTools plays back fixtures/agent_loop.json — a JSON array of
+// turns, one per call this bot's own agent.loop step ends up making, in
+// order. Each turn is either {"tool_calls":[{"id","name","arguments"}]} or
+// {"content":"...","done":true}, mirroring llm.ToolCallResult directly
+// rather than inventing a second shape to translate. Calling this more
+// times than the fixture has turns is a fixture that doesn't cover what
+// the bot actually does, so it's a clear error rather than an empty reply.
+func (d *DemoDeps) GenerateWithTools(_ []llm.Message, _ []llm.ToolDef, _ schema.Model) (*llm.ToolCallResult, error) {
+	v, err := d.loadFixture("agent_loop.json")
+	if err != nil {
+		return nil, err
+	}
+	turns, ok := v.([]any)
+	if !ok {
+		return nil, fmt.Errorf("fixtures/agent_loop.json must be a JSON array of turns")
+	}
+	if d.agentLoopCalls >= len(turns) {
+		return nil, fmt.Errorf("agent.loop called a %d%s time, but fixtures/agent_loop.json only has %d turn(s) —"+
+			" add the next one the real conversation actually took",
+			d.agentLoopCalls+1, ordinalSuffix(d.agentLoopCalls+1), len(turns))
+	}
+	raw, err := json.Marshal(turns[d.agentLoopCalls])
+	if err != nil {
+		return nil, err
+	}
+	d.agentLoopCalls++
+	var parsed struct {
+		Content   string `json:"content"`
+		Done      bool   `json:"done"`
+		ToolCalls []struct {
+			ID        string `json:"id"`
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		} `json:"tool_calls"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return nil, fmt.Errorf("parse fixtures/agent_loop.json turn %d: %w", d.agentLoopCalls, err)
+	}
+	out := &llm.ToolCallResult{Content: parsed.Content, Done: parsed.Done}
+	for _, tc := range parsed.ToolCalls {
+		out.ToolCalls = append(out.ToolCalls, llm.ToolCall{ID: tc.ID, Name: tc.Name, Arguments: tc.Arguments})
+	}
+	return out, nil
+}
+
+// ordinalSuffix is just for a readable error message ("1st", "2nd", "3rd",
+// "4th") — not worth a dependency for.
+func ordinalSuffix(n int) string {
+	if n%100 >= 11 && n%100 <= 13 {
+		return "th"
+	}
+	switch n % 10 {
+	case 1:
+		return "st"
+	case 2:
+		return "nd"
+	case 3:
+		return "rd"
+	default:
+		return "th"
+	}
 }
 
 // WebFetch serves bots/<id>/fixtures/web.fetch.json — like every other

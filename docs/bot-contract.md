@@ -20,7 +20,7 @@ No bot container ever holds a real 1Claw credential, not even a short-lived one.
 
 ## The step types
 
-These thirteen are what the interpreter implements. `step.Types()` is the list in Go, and a test checks it against the interpreter's own switch — and this section against that list — so none of the three can drift apart:
+These fourteen are what the interpreter implements. `step.Types()` is the list in Go, and a test checks it against the interpreter's own switch — and this section against that list — so none of the three can drift apart:
 
 | step | does |
 |---|---|
@@ -36,6 +36,7 @@ These thirteen are what the interpreter implements. `step.Types()` is the list i
 | `approve` | block until a human decides (`docs/approvals.md`) |
 | `notify` | send a message to a channel |
 | `stop.if` | end the bot here, successfully, because nothing has changed — the primitive a watch needs |
+| `agent.loop` | the model decides which of a declared set of tools to call, iteration by iteration, until it has an answer (`docs/agent-loop.md`) |
 
 A step binds its result to a port with `output:`, or pulls several fields out of one result at once with `outputs:`.
 
