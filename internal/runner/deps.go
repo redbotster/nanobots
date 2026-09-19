@@ -5,6 +5,7 @@ import (
 	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/schema"
+	"github.com/redbotster/nanobots/internal/secrets"
 	"github.com/redbotster/nanobots/internal/step"
 )
 
@@ -21,7 +22,7 @@ import (
 // the log saying the key was being ignored. An LLM is now enough on its
 // own; 1Claw is still what adds real service calls, vault credentials and
 // Shroud's budget and redaction guardrails on top.
-func BuildDeps(run *Run, botID string, nb *schema.Nanobot, oc *oneclaw.Client, agentID, agentAPIKey string, blobs step.BlobStore, services step.ServiceConfigs, override step.Approver, mem memory.Store, gen llm.Generator, mirror ApprovalMirror) step.Deps {
+func BuildDeps(run *Run, botID string, nb *schema.Nanobot, oc *oneclaw.Client, agentID, agentAPIKey string, blobs step.BlobStore, services step.ServiceConfigs, store secrets.Store, override step.Approver, mem memory.Store, gen llm.Generator, mirror ApprovalMirror) step.Deps {
 	fixturesDir := nb.SourcePath + "/fixtures"
 	var approver step.Approver = &RunQueueApprover{
 		Run: run, Bot: botID, Step: "approve", Mirror: mirror,
@@ -32,7 +33,13 @@ func BuildDeps(run *Run, botID string, nb *schema.Nanobot, oc *oneclaw.Client, a
 	}
 
 	hasOneClaw := oc != nil && oc.Configured()
-	if !hasOneClaw && gen == nil {
+	// A secrets.Store means GitHub/Slack/Stripe/HubSpot's static tokens
+	// might be sitting in a keychain or an encrypted file with no 1Claw
+	// account anywhere — the whole point of internal/secrets
+	// (docs/secrets.md). Without this, a bot whose only live call was
+	// `service.call: github` and no ai.generate step would still be forced
+	// onto demo fixtures on a fresh machine with a pasted token and no LLM.
+	if !hasOneClaw && gen == nil && store == nil {
 		d := step.NewDemoDeps(fixturesDir, blobs)
 		d.Approver = approver
 		// Same note the live path makes. Without it, a fresh install — no
@@ -49,6 +56,7 @@ func BuildDeps(run *Run, botID string, nb *schema.Nanobot, oc *oneclaw.Client, a
 	ld := step.NewLiveDeps(oc, oneclaw.NewShroudClient(agentID, agentAPIKey), agentID, fixturesDir, blobs)
 	ld.Approver = approver
 	ld.Services = services
+	ld.Secrets = store
 	ld.Egress = step.EgressPolicy{Allow: nb.Spec.Guardrails.NetworkEgress}
 	// Every service call this bot makes, marked when it was served from
 	// fixtures — see Run.NoteDemoService for why that has to be visible.

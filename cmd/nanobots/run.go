@@ -98,12 +98,17 @@ func runRun(args []string) error {
 		return err
 	}
 
+	secretsStore, err := wiring.BuildSecretsStore(oc, paths.SecretsDir, func(f string, a ...any) { fmt.Printf(f+"\n", a...) })
+	if err != nil {
+		return err
+	}
+
 	callbacks := runner.NewCallbackRegistry()
 	orch := wiring.BuildOrchestrator(wiring.OrchestratorOpts{
 		RepoRoot:     root,
 		BotsDir:      filepath.Join(root, botsDir),
 		CallbackPort: port,
-	}, paths, oc, svc, callbacks)
+	}, paths, oc, svc, secretsStore, callbacks)
 	orch.Memory = mem
 	orch.LLM = gen
 	orch.Roles = &roles.Store{
@@ -120,6 +125,8 @@ func runRun(args []string) error {
 		OneClaw:      oc,
 		BotsDir:      filepath.Join(root, botsDir),
 		Blobs:        blobs,
+		VaultID:      svc.VaultID,
+		Secrets:      secretsStore,
 	}
 	go http.Serve(listener, srv.Handler())
 

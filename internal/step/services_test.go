@@ -78,10 +78,10 @@ func TestServiceConfigsCarriesEveryProviderInOneValue(t *testing.T) {
 	cfg := ServiceConfigs{
 		VaultID:  "vault-1",
 		Google:   GoogleConfig{ClientID: "g", VaultID: "vault-1"},
-		GitHub:   GitHubConfig{VaultID: "vault-1"},
-		Slack:    SlackConfig{VaultID: "vault-1"},
-		Stripe:   StripeConfig{VaultID: "vault-1"},
-		HubSpot:  HubSpotConfig{VaultID: "vault-1"},
+		GitHub:   GitHubConfig{TokenKey: "github/token"},
+		Slack:    SlackConfig{TokenKey: "slack/bot_token"},
+		Stripe:   StripeConfig{TokenKey: "stripe/secret_key"},
+		HubSpot:  HubSpotConfig{TokenKey: "hubspot/token"},
 		X:        XConfig{ClientID: "x", VaultID: "vault-1"},
 		LinkedIn: LinkedInConfig{ClientID: "li", VaultID: "vault-1"},
 	}

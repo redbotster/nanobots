@@ -146,10 +146,23 @@ func (s *Server) handleSetProviderConnection(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, resp)
 }
 
-// requireConnectedAccount is the same check the single-bot toggle makes:
-// there must be a real credential in the vault before any bot is pointed at
-// a real account.
+// requireConnectedAccount is the same check handleConnectionsStatus makes,
+// shared here (and by the single-bot toggle in bot_connection.go) so going
+// live can never disagree with what Settings itself reports as connected —
+// there must be a real credential in the right backend before any bot is
+// pointed at a real account.
 func (s *Server) requireConnectedAccount(provider string) error {
+	if staticTokenServices[provider] {
+		if s.Secrets == nil {
+			return fmt.Errorf("no secrets backend configured — see docs/secrets.md")
+		}
+		if _, found, err := s.Secrets.Get(vaultKeyFor[provider]); err != nil {
+			return err
+		} else if !found {
+			return fmt.Errorf("%s isn't connected yet — connect it from Settings first", provider)
+		}
+		return nil
+	}
 	if s.OneClaw == nil || !s.OneClaw.Configured() {
 		return fmt.Errorf("1Claw isn't configured — connect an account from Settings first")
 	}
@@ -157,10 +170,10 @@ func (s *Server) requireConnectedAccount(provider string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := s.OneClaw.GetSecret(vault.ID, vaultKeyFor[provider]); err != nil {
-		return fmt.Errorf("%s isn't connected yet — connect it from Settings first", provider)
+	if s.serviceConnected(provider, vault.ID) {
+		return nil
 	}
-	return nil
+	return fmt.Errorf("%s isn't connected yet — connect it from Settings first", provider)
 }
 
 // setProviderOnBot rewrites every service of one provider on one bot,

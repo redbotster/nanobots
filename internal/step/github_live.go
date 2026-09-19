@@ -10,7 +10,6 @@ import (
 // provider: github and a non-demo connection. TokenKey defaults to
 // "github/token" in the same 1Claw vault Google/Slack use.
 type GitHubConfig struct {
-	VaultID  string
 	TokenKey string
 }
 
@@ -19,7 +18,7 @@ func (cfg GitHubConfig) tokenConfig() VaultTokenConfig {
 	if key == "" {
 		key = "github/token"
 	}
-	return VaultTokenConfig{VaultID: cfg.VaultID, Key: key}
+	return VaultTokenConfig{Key: key}
 }
 
 // githubAPI is the subset of *github.Client's methods dispatchGitHub calls —
@@ -30,15 +29,12 @@ type githubAPI interface {
 
 func (l *LiveDeps) githubClient() (githubAPI, error) {
 	cfg := l.Services.GitHub.tokenConfig()
-	if !cfg.configured() {
-		return nil, fmt.Errorf("github: not configured — connect a personal access token from Settings")
-	}
 	if l.githubTokenCache == nil {
-		l.githubTokenCache = &vaultToken{oc: l.OneClaw, cfg: cfg}
+		l.githubTokenCache = &vaultToken{store: l.Secrets, cfg: cfg}
 	}
 	token, err := l.githubTokenCache.Get()
 	if err != nil {
-		return nil, err
+		return nil, wrapTokenErr("github", "connect a personal access token from Settings", err)
 	}
 	return github.NewClient(token), nil
 }

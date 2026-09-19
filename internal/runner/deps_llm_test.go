@@ -23,7 +23,7 @@ func probeBot() *schema.Nanobot {
 func buildWith(t *testing.T, run *Run, gen llm.Generator) step.Deps {
 	t.Helper()
 	return BuildDeps(run, "probe", probeBot(), nil, "", "", nil,
-		step.ServiceConfigs{}, nil, nil, gen, nil)
+		step.ServiceConfigs{}, nil, nil, nil, gen, nil)
 }
 
 // A provider key with no 1Claw used to get you nothing: BuildDeps returned

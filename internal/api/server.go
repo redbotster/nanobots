@@ -23,6 +23,7 @@ import (
 	"github.com/redbotster/nanobots/internal/runner"
 	"github.com/redbotster/nanobots/internal/scheduler"
 	"github.com/redbotster/nanobots/internal/schema"
+	"github.com/redbotster/nanobots/internal/secrets"
 	"github.com/redbotster/nanobots/internal/step"
 )
 
@@ -65,6 +66,14 @@ type Server struct {
 	// internal/wiring. Empty means 1Claw isn't configured, and the lock
 	// probe stays silent.
 	VaultID string
+
+	// Secrets is where handleConnectToken writes a pasted GitHub/Slack/
+	// Stripe/HubSpot token and handleConnectionsStatus reads it back from —
+	// a 1Claw vault, the OS keychain, or an encrypted local file, resolved
+	// once at startup by internal/wiring.BuildSecretsStore. nil (only in
+	// tests that don't set it) makes handleConnectToken refuse with a clear
+	// error instead of a nil-pointer panic. See docs/secrets.md.
+	Secrets secrets.Store
 
 	// docker and vault cache their probes behind the status endpoint. Zero
 	// values are ready to use.

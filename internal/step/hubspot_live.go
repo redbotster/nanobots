@@ -11,7 +11,6 @@ import (
 // "hubspot/token" in the same 1Claw vault every other direct integration
 // uses.
 type HubSpotConfig struct {
-	VaultID  string
 	TokenKey string
 }
 
@@ -20,7 +19,7 @@ func (cfg HubSpotConfig) tokenConfig() VaultTokenConfig {
 	if key == "" {
 		key = "hubspot/token"
 	}
-	return VaultTokenConfig{VaultID: cfg.VaultID, Key: key}
+	return VaultTokenConfig{Key: key}
 }
 
 // hubspotAPI is the subset of *hubspot.Client's methods dispatchHubSpot calls.
@@ -31,15 +30,12 @@ type hubspotAPI interface {
 
 func (l *LiveDeps) hubspotClient() (hubspotAPI, error) {
 	cfg := l.Services.HubSpot.tokenConfig()
-	if !cfg.configured() {
-		return nil, fmt.Errorf("hubspot: not configured — connect a private-app token from Settings")
-	}
 	if l.hubspotTokenCache == nil {
-		l.hubspotTokenCache = &vaultToken{oc: l.OneClaw, cfg: cfg}
+		l.hubspotTokenCache = &vaultToken{store: l.Secrets, cfg: cfg}
 	}
 	token, err := l.hubspotTokenCache.Get()
 	if err != nil {
-		return nil, err
+		return nil, wrapTokenErr("hubspot", "connect a private-app token from Settings", err)
 	}
 	return hubspot.NewClient(token), nil
 }

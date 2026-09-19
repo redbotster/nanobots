@@ -11,6 +11,7 @@ import (
 	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/schema"
+	"github.com/redbotster/nanobots/internal/secrets"
 )
 
 // LiveDeps runs a bot against real services and a real model, falling back
@@ -73,6 +74,12 @@ type LiveDeps struct {
 	//
 	// One field rather than seven: see ServiceConfigs for why.
 	Services ServiceConfigs
+
+	// Secrets is where GitHub/Slack/Stripe/HubSpot's static tokens actually
+	// live — see internal/secrets. nil means no backend at all; every
+	// vaultToken then fails with "no secrets backend configured" instead of
+	// reaching for a *oneclaw.Client that might not exist.
+	Secrets secrets.Store
 
 	// Lazily built, vault-backed clients. Private because their lifetime is
 	// this LiveDeps' — one run — and nothing outside should hold one.

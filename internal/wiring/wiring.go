@@ -30,6 +30,7 @@ import (
 	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/runner"
+	"github.com/redbotster/nanobots/internal/secrets"
 	"github.com/redbotster/nanobots/internal/step"
 	"github.com/redbotster/nanobots/internal/x"
 	"strings"
@@ -43,6 +44,7 @@ type Paths struct {
 	FoundryWorkDir string // foundry job worktrees
 	HistoryDir     string // persisted run history
 	MemoryDir      string // what bots remember between runs
+	SecretsDir     string // the secrets.File backend's key and ciphertext, when that's the backend in use
 }
 
 // ResolvePaths locates (and creates where needed) everything under
@@ -64,6 +66,7 @@ func ResolvePaths() (Paths, error) {
 		FoundryWorkDir: filepath.Join(base, "foundry"),
 		HistoryDir:     filepath.Join(base, "history"),
 		MemoryDir:      filepath.Join(base, "memory"),
+		SecretsDir:     filepath.Join(base, "secrets"),
 	}
 	if err := os.MkdirAll(p.RunWorkDir, 0o755); err != nil {
 		return Paths{}, err
@@ -84,13 +87,15 @@ type ServiceConfigs = step.ServiceConfigs
 type Logf func(format string, args ...any)
 
 // BuildServiceConfigs resolves the shared 1Claw vault once (EnsureVault is a
-// real network call, so not per-run) and fills in whichever providers have
-// credentials available.
+// real network call, so not per-run) and fills in whichever OAuth providers
+// have credentials available.
 //
-// GitHub/Slack/Stripe/HubSpot need only the vault id — their credential is a
-// static token pasted in via Settings. Google/X/LinkedIn additionally need
-// an OAuth client id from the env file, because those are refresh-token
-// flows rather than static tokens. See docs/connections.md.
+// GitHub/Slack/Stripe/HubSpot need nothing here any more: their credential
+// is a static token read through a secrets.Store (see BuildSecretsStore),
+// which may or may not be a 1Claw vault. Google/X/LinkedIn still need an
+// OAuth client id from the env file and a 1Claw vault to hold the resulting
+// refresh token, because those are OAuth flows this build has not moved off
+// 1Claw — see docs/secrets.md for what's built and what isn't yet.
 //
 // An unconfigured provider is not an error: it stays zero and its bots run
 // on fixtures.
@@ -108,10 +113,6 @@ func BuildServiceConfigs(oc *oneclaw.Client, envFilePath string, logf Logf) (Ser
 		return cfg, fmt.Errorf("ensure 1Claw vault for connected-service credentials: %w", err)
 	}
 	cfg.VaultID = vault.ID
-	cfg.GitHub = step.GitHubConfig{VaultID: vault.ID}
-	cfg.Slack = step.SlackConfig{VaultID: vault.ID}
-	cfg.Stripe = step.StripeConfig{VaultID: vault.ID}
-	cfg.HubSpot = step.HubSpotConfig{VaultID: vault.ID}
 
 	clientID, err := google.LoadClientID(envFilePath)
 	if err != nil {
@@ -146,6 +147,73 @@ func BuildServiceConfigs(oc *oneclaw.Client, envFilePath string, logf Logf) (Ser
 	return cfg, nil
 }
 
+// secretsBackendEnv names the backend NANOBOTS_SECRETS= picks explicitly,
+// overriding the default logic below. Unset or empty means "decide for me".
+const secretsBackendEnv = "NANOBOTS_SECRETS"
+
+// BuildSecretsStore picks where GitHub/Slack/Stripe/HubSpot's static
+// tokens are read from and written to — see docs/secrets.md for what each
+// backend actually protects.
+//
+// NANOBOTS_SECRETS=oneclaw|keychain|file picks explicitly. Otherwise: a
+// 1Claw account already means a vault exists and may already hold a token
+// connected through `nanobots connect` or Settings, so it stays the
+// default rather than silently splitting one install's credentials across
+// two places. Without one, the encrypted local file — never an automatic
+// probe of the OS keychain.
+//
+// That last part was not the original design: the default used to try
+// secrets.Available() first. Reproduced live in this repo's own test
+// suite: on a session that *can* show UI, the underlying `security` call
+// doesn't fail fast, it can pop a real, silent permission dialog and then
+// block waiting for a human to click it — which nanobotd's own unattended
+// startup would hit exactly the same way. secrets.Available() now bounds
+// that with a timeout (see its doc comment) so it can never hang forever,
+// but "might silently pop a system dialog during daemon boot" is still a
+// bad default even bounded — so keychain is opt-in only, via
+// NANOBOTS_SECRETS=keychain, where a human has already decided to see that
+// dialog if one appears.
+func BuildSecretsStore(oc *oneclaw.Client, secretsDir string, logf Logf) (secrets.Store, error) {
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(secretsBackendEnv))) {
+	case "oneclaw":
+		if oc == nil || !oc.Configured() {
+			return nil, fmt.Errorf("%s=oneclaw but 1Claw isn't configured — add ONECLAW_API_KEY", secretsBackendEnv)
+		}
+		return oneClawSecretsStore(oc)
+	case "keychain":
+		return secrets.Keychain{}, nil
+	case "file":
+		return &secrets.File{Dir: secretsDir}, nil
+	case "":
+		// fall through to the default logic below
+	default:
+		return nil, fmt.Errorf("%s=%q not recognized — want oneclaw, keychain, or file",
+			secretsBackendEnv, os.Getenv(secretsBackendEnv))
+	}
+	if oc != nil && oc.Configured() {
+		store, err := oneClawSecretsStore(oc)
+		if err != nil {
+			return nil, err
+		}
+		logf("secrets: reading and writing through the 1Claw vault (see docs/secrets.md)")
+		return store, nil
+	}
+	logf("secrets: no 1Claw account — reading and writing through an encrypted local file at %s "+
+		"(set NANOBOTS_SECRETS=keychain to use your OS keychain instead; see docs/secrets.md)", secretsDir)
+	return &secrets.File{Dir: secretsDir}, nil
+}
+
+func oneClawSecretsStore(oc *oneclaw.Client) (secrets.Store, error) {
+	vault, err := oc.EnsureVault("nanobots-main")
+	if err != nil {
+		return nil, fmt.Errorf("ensure 1Claw vault for connected-service credentials: %w", err)
+	}
+	return &secrets.OneClaw{Client: oc, VaultID: vault.ID}, nil
+}
+
 // OrchestratorOpts is what differs between the two entry points: the daemon
 // serves on a fixed port, the CLI on an ephemeral one.
 type OrchestratorOpts struct {
@@ -160,6 +228,7 @@ func BuildOrchestrator(
 	paths Paths,
 	oc *oneclaw.Client,
 	svc ServiceConfigs,
+	store secrets.Store,
 	callbacks *runner.CallbackRegistry,
 ) *runner.Orchestrator {
 	return &runner.Orchestrator{
@@ -174,6 +243,7 @@ func BuildOrchestrator(
 		RunWorkDir:    paths.RunWorkDir,
 		BlobDir:       paths.BlobDir,
 		Services:      svc,
+		Secrets:       store,
 	}
 }
 

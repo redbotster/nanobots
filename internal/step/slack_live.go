@@ -11,7 +11,6 @@ import (
 // targets Slack (see slackChannelFrom). TokenKey defaults to
 // "slack/bot_token" in the same 1Claw vault Google/GitHub use.
 type SlackConfig struct {
-	VaultID  string
 	TokenKey string
 }
 
@@ -20,7 +19,7 @@ func (cfg SlackConfig) tokenConfig() VaultTokenConfig {
 	if key == "" {
 		key = "slack/bot_token"
 	}
-	return VaultTokenConfig{VaultID: cfg.VaultID, Key: key}
+	return VaultTokenConfig{Key: key}
 }
 
 type slackAPI interface {
@@ -29,15 +28,12 @@ type slackAPI interface {
 
 func (l *LiveDeps) slackClient() (slackAPI, error) {
 	cfg := l.Services.Slack.tokenConfig()
-	if !cfg.configured() {
-		return nil, fmt.Errorf("slack: not configured — connect a bot token from Settings")
-	}
 	if l.slackTokenCache == nil {
-		l.slackTokenCache = &vaultToken{oc: l.OneClaw, cfg: cfg}
+		l.slackTokenCache = &vaultToken{store: l.Secrets, cfg: cfg}
 	}
 	token, err := l.slackTokenCache.Get()
 	if err != nil {
-		return nil, err
+		return nil, wrapTokenErr("slack", "connect a bot token from Settings", err)
 	}
 	return slack.NewClient(token), nil
 }

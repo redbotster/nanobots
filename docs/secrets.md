@@ -7,14 +7,22 @@ through `internal/oneclaw.Client.GetSecret`/`PutSecret`. That meant a real
 connection needed a 1Claw account even for the two-minute version: paste a
 token, run the bot.
 
-`internal/secrets` is the fix for that, and this page is honest about how
-much of it is built. **The interface and its backends exist and are fully
-tested. Nothing in the running app uses them yet** — the connect-flow
-handlers in `internal/api` and `internal/step/vault_token.go` still go
-straight to `internal/oneclaw` directly. This page describes the part that
-exists; it does not claim the "no 1Claw account" story works end to end,
-because it doesn't yet. See [oneclaw-bridge.md](oneclaw-bridge.md) for how
-the vault is actually reached today.
+`internal/secrets` is the fix for that. GitHub, Slack, Stripe and HubSpot's
+static tokens — the four providers that were only ever a paste, never an
+OAuth dance — now read and write through a `Store` chosen once at startup:
+`internal/step/vault_token.go` and the paste-a-token handlers in
+`internal/api/connections.go` no longer touch `internal/oneclaw` for these
+directly. A machine with only `ANTHROPIC_API_KEY` and a pasted GitHub token
+now runs a GitHub-backed bot live with no 1Claw account.
+
+What's still 1Claw-only: Google, X and LinkedIn are OAuth refresh-token
+flows, and both connecting them (`internal/api/connections.go`'s
+`handleConnect{Google,X,LinkedIn}Start`) and reading them back
+(`internal/step/{google,x,linkedin}_live.go`) still go straight through
+`*oneclaw.Client`. Moving those off 1Claw is a real OAuth-callback
+redesign, not a drop-in `Store` swap, and hasn't been attempted. See
+[oneclaw-bridge.md](oneclaw-bridge.md) for how the vault is reached for
+those and for everything else 1Claw still does (agents, memory, approvals).
 
 ## The interface
 
@@ -51,22 +59,31 @@ delete a single secret, only a whole vault — which this repo will never do
 on someone's behalf.
 
 **`Keychain`** shells out to the OS (via `github.com/zalando/go-keyring` —
-the `security` CLI on macOS, not cgo). It does not always work, and
-`secrets.Available()` is how you find out *before* trusting it rather than
-after a `Put` fails: verified live in this repo's own sandboxed dev shell
-that `keyring.Set` fails there with
+the `security` CLI on macOS, not cgo). **It is opt-in only**
+(`NANOBOTS_SECRETS=keychain`) — never selected automatically, for a reason
+found the hard way, not assumed. It does not always work, and two different
+failure shapes have both been reproduced live in this repo, not guessed at:
 
-```
-security: SecKeychainItemCreateFromContent (<default>): User interaction is not allowed.
-```
+- In a sandboxed, non-interactive shell, `keyring.Set` fails fast:
+  ```
+  security: SecKeychainItemCreateFromContent (<default>): User interaction is not allowed.
+  ```
+  That's a non-interactive session correctly being refused — CI, a
+  container, exactly the kind of environment `nanobotd` might run in.
+- In a session that *can* show UI, it doesn't fail — it can pop a real,
+  silent macOS permission dialog and then block waiting for a human to
+  click it. Run inside this repo's own `go test ./... -race`, with no 1Claw
+  configured, the original design (which tried the keychain automatically
+  whenever no backend was chosen) hit exactly this: the whole `internal/daemon`
+  package hung for the full ten-minute `go test` timeout before failing.
+  That is what "automatic" would have meant for `nanobotd`'s own unattended
+  startup too.
 
-A non-interactive session — CI, a container, a sandboxed shell, exactly the
-kind of environment `nanobotd` itself might run in — cannot unlock or write
-to a login keychain at all. That's the OS doing its job, not a bug in the
-wrapper. `Available()` does a real throwaway set-then-delete rather than
-trusting the platform name, because the platform name is exactly what makes
-this look available when it isn't: this build compiles the macOS backend on
-every macOS host, whether or not the current session can pass that gate.
+Both findings are why `secrets.Available()` — the real throwaway
+set-then-delete probe a caller uses to check before trusting this backend,
+rather than trusting the platform name — is bounded by a two-second
+timeout and fails closed (reports unavailable) rather than hanging, and why
+the backend is never chosen without a human asking for it by name.
 
 **`File`** generates an [age](https://age-encryption.org) X25519 identity
 once, at `secrets.age-key`, and stores every secret encrypted at
@@ -86,15 +103,36 @@ passphrase-protected key would close that gap and isn't built yet: it needs
 an interactive prompt somewhere in `nanobots init` or `nanobotd`'s startup,
 which doesn't exist for this backend today.
 
+## Choosing a backend
+
+`internal/wiring.BuildSecretsStore` picks one backend at startup, for the
+whole process:
+
+- `NANOBOTS_SECRETS=oneclaw|keychain|file` picks explicitly. `oneclaw`
+  fails loudly if `ONECLAW_API_KEY` isn't set, rather than silently
+  falling back to something else.
+- Otherwise, a configured 1Claw account is the default — it already has a
+  vault, and may already hold a token connected through `nanobots connect`
+  or Settings, so using it avoids silently splitting one install's
+  credentials across two places.
+- Without one, the default is `File` — **never** an automatic keychain
+  probe. That was the original design, and it was wrong: reproduced live
+  in this repo's own test suite, trying the keychain automatically hung
+  `internal/daemon`'s tests for the full ten-minute `go test` timeout,
+  because the probe can pop a real permission dialog and then wait
+  forever for a human who isn't there. `Keychain` is opt-in only, via
+  `NANOBOTS_SECRETS=keychain`.
+
+Whichever backend is chosen, only GitHub/Slack/Stripe/HubSpot use it.
+Google/X/LinkedIn still always go through 1Claw, as above.
+
 ## What's next
 
-Wiring `internal/step/vault_token.go` and the `internal/api` connect-flow
-handlers through `Store` instead of `*oneclaw.Client` directly, a
-`NANOBOTS_SECRETS=` backend-selection env var in `internal/wiring`, and a
-Settings-page line stating which backend holds a given credential and what
-that implies — none of that exists yet. Until it does, every real
-connection in this app still goes through the 1Claw vault, as
-[oneclaw-bridge.md](oneclaw-bridge.md) describes.
+A Settings-page line stating which backend holds a given credential and
+what that implies doesn't exist yet — the WebUI's connect flow works with
+any backend now, but doesn't yet say which one it just wrote to. Moving
+Google/X/LinkedIn off 1Claw, if that's ever wanted, needs a real
+OAuth-callback redesign, not a `Store` swap — see the note above.
 
 ## Run it for real
 

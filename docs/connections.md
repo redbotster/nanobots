@@ -9,7 +9,7 @@ A design principle carried through the whole build: wherever a human would norma
 | `oauth_1claw` | 1Claw's own OAuth provider registry, `POST /v1/agents/{id}/oauth/connect` | A provider 1Claw already supports (its registry lists `openid, email, profile, calendar, drive` today — no Gmail scopes) |
 | `oauth_native` | A provider-specific OAuth client Nanobots implements directly | A provider 1Claw doesn't support natively but has a normal OAuth flow (e.g. a dedicated Google client) |
 | `browser` | [1Claw Browser Bridge](https://docs.1claw.co/docs/agents/browser-bridge) — pair a device once, then the bot drives a real, already-authenticated browser | Services with no OAuth at all, or a login flow that's just easier to click through than to integrate |
-| `api_key_vault` | A human pastes a key once; it goes straight into a 1Claw vault secret | Last resort — still never touches the bot or nanobotd's disk |
+| `api_key_vault` | A human pastes a key once; it's written through this deployment's secrets backend — a 1Claw vault, the OS keychain, or an encrypted local file (see [secrets.md](secrets.md)) | Last resort — still never touches the bot or nanobotd's disk |
 | `demo` | Fixture data, no network call | Explicitly marked on a service when real access isn't wired up yet |
 
 ## Why every bot's Google service is `demo` right now
@@ -39,7 +39,7 @@ Change `post-publisher`'s `services[].connection` from `demo` to `oauth_native` 
 
 ## Slack, GitHub, Stripe, and HubSpot (`api_key_vault`)
 
-All four use plain, non-expiring tokens rather than an OAuth flow, so connecting any of them is just: **Settings → paste the token → Save** (`POST /api/connections/{service}` with `{"token": "..."}`, `internal/api/connections.go`). Same storage as Google — a 1Claw vault secret, never local disk, never inside a bot container. Unlike Google, there's no CLI equivalent yet (`nanobots connect` only implements `google`, below) — the WebUI is the only way to connect these four today.
+All four use plain, non-expiring tokens rather than an OAuth flow, so connecting any of them is just: **Settings → paste the token → Save** (`POST /api/connections/{service}` with `{"token": "..."}`, `internal/api/connections.go`). Unlike Google/X/LinkedIn, this does **not** need a 1Claw account: the token is written through whatever secrets backend this deployment resolved at startup — a 1Claw vault if one's configured, otherwise an encrypted local file by default, or the OS keychain if you asked for it with `NANOBOTS_SECRETS=keychain` (see [secrets.md](secrets.md)) — never local disk in the clear, never inside a bot container. Unlike Google, there's no CLI equivalent yet (`nanobots connect` only implements `google`, below) — the WebUI is the only way to connect these four today.
 
 - **Slack**: create a bot token at [api.slack.com/apps](https://api.slack.com/apps), scoped to `chat:write`, and invite the bot to whatever channel it should post in. `bots/notify`'s `channel` input recognizes a `"slack:#channel-name"` or `"slack:C0123..."` value and posts there for real once connected (`internal/step/slack_live.go`) — any other channel prefix (`"email:..."`, `"sms:..."`) still has no live backend and stays a documented no-op.
 - **GitHub**: create a personal access token scoped to `repo` (or `public_repo` for public repos only). `bots/github-issues-digest` uses it via a normal `service.call` with `provider: github`, same pattern as Google.
@@ -98,10 +98,17 @@ Each bot's `nanobot.yaml` is edited with the same surgical line editor the singl
 
 ## Asking "what is connected" used to be the slowest thing in the app
 
-`GET /api/connections` reads eight vault secrets — seven services plus
-LinkedIn's fallback — and 1Claw is roughly 900ms away and throttles
-concurrent reads. Sequentially that was 7.8s. Concurrently it is 3.5s, not
-the ~1s the arithmetic suggests, because of the throttling.
+`GET /api/connections` reads eight secrets — seven services plus
+LinkedIn's fallback — and this measurement is from when all eight went
+through a 1Claw vault, which is roughly 900ms away and throttles
+concurrent reads: sequentially that was 7.8s, concurrently 3.5s, not the
+~1s the arithmetic suggests, because of the throttling. Four of those
+eight (Slack, GitHub, Stripe, HubSpot) now go through whatever
+[secrets backend](secrets.md) this deployment resolved — a fast local read
+when that's the encrypted file or the OS keychain, the same throttled 1Claw
+read when it's still the vault. Google, X, and LinkedIn's OAuth refresh
+tokens are unaffected; they're the ones actually behind this section's
+worst case.
 
 Four screens fetch it on mount: Settings, the bot library, the builder, and
 the getting-started card, which is on the landing page. So the app's very

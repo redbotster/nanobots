@@ -33,6 +33,15 @@ var vaultKeyFor = map[string]string{
 	"linkedin": "linkedin/refresh_token",
 }
 
+// staticTokenServices names the providers whose credential is a plain
+// pasted token — read through s.Secrets, which may or may not be a 1Claw
+// vault (see docs/secrets.md). google/x/linkedin are OAuth flows and still
+// go through s.OneClaw directly: they need a real vault to hold the
+// resulting refresh token, which this build has not moved off 1Claw.
+var staticTokenServices = map[string]bool{
+	"slack": true, "github": true, "stripe": true, "hubspot": true,
+}
+
 type connectionStatus struct {
 	Service   string `json:"service"`
 	Connected bool   `json:"connected"`
@@ -67,9 +76,16 @@ const connectionTTL = time.Minute
 // only in the output, which is why results go into a pre-sized slice by
 // index rather than being appended as they finish.
 func (s *Server) readConnections() ([]connectionStatus, error) {
-	vault, err := s.OneClaw.EnsureVault("nanobots-main")
-	if err != nil {
-		return nil, err
+	// Only resolved when something still needs it: an OAuth provider's
+	// check, below. A machine with a secrets.Store but no 1Claw account at
+	// all must not fail this whole read over a vault it doesn't need.
+	var vaultID string
+	if s.OneClaw != nil && s.OneClaw.Configured() {
+		vault, err := s.OneClaw.EnsureVault("nanobots-main")
+		if err != nil {
+			return nil, err
+		}
+		vaultID = vault.ID
 	}
 	out := make([]connectionStatus, len(connectionServices))
 	var wg sync.WaitGroup
@@ -77,20 +93,40 @@ func (s *Server) readConnections() ([]connectionStatus, error) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := s.OneClaw.GetSecret(vault.ID, vaultKeyFor[service])
-			connected := err == nil
-			if service == "linkedin" && !connected {
-				// LinkedIn may have connected without a refresh token at all
-				// (see internal/step/linkedin_live.go) — a stored access token
-				// alone still counts as connected.
-				_, err := s.OneClaw.GetSecret(vault.ID, "linkedin/access_token")
-				connected = err == nil
-			}
-			out[i] = connectionStatus{Service: service, Connected: connected}
+			out[i] = connectionStatus{Service: service, Connected: s.serviceConnected(service, vaultID)}
 		}()
 	}
 	wg.Wait()
 	return out, nil
+}
+
+// serviceConnected checks the one backend a given provider's credential
+// actually lives in — s.Secrets for a static pasted token, s.OneClaw's
+// vault for an OAuth refresh token. vaultID is "" when 1Claw isn't
+// configured, which any OAuth provider then correctly reports as
+// disconnected without touching s.OneClaw at all.
+func (s *Server) serviceConnected(service, vaultID string) bool {
+	if staticTokenServices[service] {
+		if s.Secrets == nil {
+			return false
+		}
+		_, found, err := s.Secrets.Get(vaultKeyFor[service])
+		return err == nil && found
+	}
+	if vaultID == "" {
+		return false
+	}
+	if _, err := s.OneClaw.GetSecret(vaultID, vaultKeyFor[service]); err == nil {
+		return true
+	}
+	if service != "linkedin" {
+		return false
+	}
+	// LinkedIn may have connected without a refresh token at all (see
+	// internal/step/linkedin_live.go) — a stored access token alone still
+	// counts as connected.
+	_, err := s.OneClaw.GetSecret(vaultID, "linkedin/access_token")
+	return err == nil
 }
 
 // handleConnectionsStatus reports which services have a credential in the
@@ -115,7 +151,8 @@ func (s *Server) readConnections() ([]connectionStatus, error) {
 // results go into a pre-sized slice by index rather than being appended as
 // they finish.
 func (s *Server) handleConnectionsStatus(w http.ResponseWriter, r *http.Request) {
-	if s.OneClaw == nil || !s.OneClaw.Configured() {
+	oneClawReady := s.OneClaw != nil && s.OneClaw.Configured()
+	if !oneClawReady && s.Secrets == nil {
 		writeJSONCached(w, r, http.StatusOK, []connectionStatus{})
 		return
 	}
@@ -152,16 +189,11 @@ func (s *Server) handleConnectToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("token is required"))
 		return
 	}
-	if s.OneClaw == nil || !s.OneClaw.Configured() {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("1Claw isn't configured yet — add ONECLAW_API_KEY first"))
+	if s.Secrets == nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("no secrets backend configured — see docs/secrets.md"))
 		return
 	}
-	vault, err := s.OneClaw.EnsureVault("nanobots-main")
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	if err := s.OneClaw.PutSecret(vault.ID, key, strings.TrimSpace(req.Token)); err != nil {
+	if err := s.Secrets.Put(key, strings.TrimSpace(req.Token)); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}

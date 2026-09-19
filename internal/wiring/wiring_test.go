@@ -103,7 +103,7 @@ func TestBuildOrchestratorPointsContainersAtTheHost(t *testing.T) {
 	orch := BuildOrchestrator(
 		OrchestratorOpts{RepoRoot: "/repo", BotsDir: "/repo/bots", CallbackPort: "7474"},
 		Paths{StateDir: "/state", RunWorkDir: "/runs", BlobDir: "/blobs"},
-		nil, ServiceConfigs{}, runner.NewCallbackRegistry(),
+		nil, ServiceConfigs{}, nil, runner.NewCallbackRegistry(),
 	)
 	if got := orch.CallbackAddr; got != "http://host.docker.internal:7474" {
 		t.Errorf("CallbackAddr = %q — a container cannot reach the daemon at localhost", got)
