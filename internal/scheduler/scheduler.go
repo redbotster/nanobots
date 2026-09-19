@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
+
 	"github.com/redbotster/nanobots/internal/runner"
 	"github.com/redbotster/nanobots/internal/schema"
 )
@@ -29,16 +31,31 @@ type RunStore interface {
 	List() []*runner.Run
 }
 
-// Scheduler polls SwarmsDir on an interval and fires any swarm whose
-// trigger: {type: cron, ...} is due — the same real execution path a
-// human clicking "Run" in the WebUI goes through (Orchestrator.ExecuteSwarm
-// + RunStore.Add), so a scheduled run shows up in the Runs page exactly
-// like a manual one, including its own approval gates.
+// pollFallbackInterval is only used if fsnotify itself can't start — see
+// Run's doc comment. It matches the interval every version of this
+// scheduler used before fsnotify existed.
+const pollFallbackInterval = 20 * time.Second
+
+// maxWait bounds how long Run ever sleeps between rescans, even when
+// nothing is currently scheduled to fire. Not a polling interval in the
+// old sense — a rescan this triggers finds nothing to do and goes back to
+// sleep until the next real event or the next actual due time, whichever
+// is sooner — but a ceiling so a bug in next-fire math (wrong timezone,
+// wrong year) self-heals within a day instead of sleeping forever.
+const maxWait = time.Hour
+
+// Scheduler watches SwarmsDir and fires any swarm whose trigger:
+// {type: cron, ...} is due — the same real execution path a human clicking
+// "Run" in the WebUI goes through (Orchestrator.ExecuteSwarm +
+// RunStore.Add), so a scheduled run shows up in the Runs page exactly like
+// a manual one, including its own approval gates.
 type Scheduler struct {
 	Orchestrator Orchestrator
 	Runs         RunStore
 	SwarmsDir    string
-	PollInterval time.Duration    // 0 => 20s
+	// PollInterval, when set, is only honored by the fsnotify-unavailable
+	// fallback path — see Run. 0 there means pollFallbackInterval.
+	PollInterval time.Duration
 	Now          func() time.Time // 0 => time.Now; overridable for tests
 
 	// Breaker stops a schedule that has failed the same way over and over.
@@ -61,30 +78,117 @@ type swarmState struct {
 	paused bool
 }
 
-// Run blocks, ticking until ctx is cancelled — meant to be started as
+// Run blocks until ctx is cancelled — meant to be started as
 // `go scheduler.Run(ctx)` alongside nanobotd's HTTP server.
+//
+// It watches SwarmsDir with fsnotify rather than polling it: a swarm added,
+// edited, or removed while nanobotd keeps running takes effect on the next
+// filesystem event, not on the next tick of a fixed timer, and the process
+// otherwise sleeps until the earliest known cron fire time instead of
+// waking up every 20 seconds to find nothing due. If fsnotify itself can't
+// start — an OS-level watch-descriptor limit, a SwarmsDir that doesn't
+// exist yet — that's a real, documented failure mode (inotify has a
+// system-wide cap), not a reason to stop scheduling: it falls back to the
+// plain polling loop every version of this scheduler used before, logged
+// so it's visible rather than a silent degradation.
 func (s *Scheduler) Run(ctx context.Context) {
-	interval := s.PollInterval
-	if interval == 0 {
-		interval = 20 * time.Second
-	}
 	now := s.Now
 	if now == nil {
 		now = time.Now
 	}
-
 	s.tick(now())
-	ticker := time.NewTicker(interval)
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Printf("scheduler: fsnotify unavailable (%v) — falling back to polling every %s", err, s.pollInterval())
+		s.runPolling(ctx, now)
+		return
+	}
+	defer watcher.Close()
+	if err := watcher.Add(s.SwarmsDir); err != nil {
+		log.Printf("scheduler: could not watch %s (%v) — falling back to polling every %s", s.SwarmsDir, err, s.pollInterval())
+		s.runPolling(ctx, now)
+		return
+	}
+
+	for {
+		timer := time.NewTimer(s.wait(now()))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case _, ok := <-watcher.Events:
+			timer.Stop()
+			if !ok {
+				return
+			}
+			// Any event in the directory is worth a full rescan — cheap,
+			// and it avoids guessing which specific file changed from an
+			// event that can arrive as create+remove+create for a single
+			// editor save (temp file, then rename).
+			s.tick(now())
+		case werr, ok := <-watcher.Errors:
+			timer.Stop()
+			if !ok {
+				return
+			}
+			log.Printf("scheduler: watch error: %v", werr)
+		case <-timer.C:
+			s.tick(now())
+		}
+	}
+}
+
+func (s *Scheduler) pollInterval() time.Duration {
+	if s.PollInterval > 0 {
+		return s.PollInterval
+	}
+	return pollFallbackInterval
+}
+
+// runPolling is the pre-fsnotify behavior, kept as the fallback Run's doc
+// comment describes rather than deleted: a fixed-interval rescan that
+// notices file changes because it looks again, not because anything told
+// it to.
+func (s *Scheduler) runPolling(ctx context.Context, now func() time.Time) {
+	ticker := time.NewTicker(s.pollInterval())
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case t := <-ticker.C:
-			_ = t
+		case <-ticker.C:
 			s.tick(now())
 		}
 	}
+}
+
+// wait returns how long to sleep before the next rescan is worth doing on
+// its own: the time until the earliest nextFire currently tracked, bounded
+// to [0, maxWait]. A negative-or-zero result (something is already due)
+// fires the timer immediately rather than blocking.
+func (s *Scheduler) wait(now time.Time) time.Duration {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	earliest := now.Add(maxWait)
+	found := false
+	for _, st := range s.state {
+		if st.nextFire.IsZero() {
+			continue
+		}
+		if st.nextFire.Before(earliest) {
+			earliest = st.nextFire
+			found = true
+		}
+	}
+	if !found {
+		return maxWait
+	}
+	if d := earliest.Sub(now); d > 0 {
+		return d
+	}
+	return 0
 }
 
 // tick re-scans SwarmsDir (a swarm can be added, edited, or removed while

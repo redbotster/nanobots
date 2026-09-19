@@ -1,11 +1,11 @@
 # The scheduler
 
-Every catalog swarm declares `trigger: {type: cron, expr: "...", timezone: "..."}` — "every weekday morning, recap my inbox." Until now, nothing in this build ever actually fired one; `cmd/nanobotd/main.go`'s own doc comment named this gap explicitly. `internal/scheduler` closes it: `nanobotd` polls `examples/swarms/` on an interval and executes any cron-triggered swarm that's due, through the exact same `Orchestrator.ExecuteSwarm` + `RunStore.Add` path a human clicking **Run** in the WebUI goes through — a scheduled run shows up in the Runs page identically to a manual one, including its own approval gates.
+Every catalog swarm declares `trigger: {type: cron, expr: "...", timezone: "..."}` — "every weekday morning, recap my inbox." Until now, nothing in this build ever actually fired one; `cmd/nanobotd/main.go`'s own doc comment named this gap explicitly. `internal/scheduler` closes it: `nanobotd` watches `examples/swarms/` and executes any cron-triggered swarm that's due, through the exact same `Orchestrator.ExecuteSwarm` + `RunStore.Add` path a human clicking **Run** in the WebUI goes through — a scheduled run shows up in the Runs page identically to a manual one, including its own approval gates.
 
 ## How it works
 
-- **No dependency** — a minimal, self-contained 5-field cron parser (`internal/scheduler/cron.go`), not a library. Supports `*`, exact numbers, ranges (`1-5`), steps (`*/30`), and comma lists — verified against every `trigger.expr` actually used in `examples/swarms/*.yaml`, not a generic spec built in a vacuum.
-- **Polls, doesn't require a restart** — every tick (default 20s) re-scans the swarms directory, so adding a new swarm, editing a cron expression, or deleting a swarm takes effect on the next tick, not the next `nanobots up`.
+- **No dependency for cron itself** — a minimal, self-contained 5-field cron parser (`internal/scheduler/cron.go`), not a library. Supports `*`, exact numbers, ranges (`1-5`), steps (`*/30`), and comma lists — verified against every `trigger.expr` actually used in `examples/swarms/*.yaml`, not a generic spec built in a vacuum.
+- **Watches, doesn't poll** — `fsnotify` (the standard cross-platform file-watch library: inotify on Linux, kqueue on macOS/BSD, `ReadDirectoryChangesW` on Windows) tells the scheduler the moment a swarm is added, edited, or removed, and it rescans right then rather than on the next tick of a fixed timer. Between events it sleeps until the earliest cron fire time it currently knows about — not a fixed interval — so a schedule fires within milliseconds of being due, not up to 20 seconds late. If fsnotify itself can't start (an OS-level watch-descriptor limit, a `SwarmsDir` that doesn't exist yet — real, documented failure modes, not hypothetical), it falls back to the same fixed-interval polling every earlier version of this scheduler used, logged so the degradation is visible rather than silent.
 - **Fires immediately if already due on first sight** — if a schedule already matches the instant it's discovered (nanobotd just started, or a swarm was just edited to "every minute"), it fires right then rather than silently waiting a full cycle. This is a deliberate choice, not an oversight: the alternative (always wait for the *next* occurrence) would mean editing a swarm to run more often could leave it looking broken for up to a full cycle.
 - **One bad swarm never blocks another** — an unparseable cron expression, or a swarm that fails to launch, is logged and skipped; every other swarm's schedule keeps running.
 - **Timezone-aware** — `trigger.timezone` (an IANA name, e.g. `America/Chicago`) is resolved via the standard library; an unknown timezone falls back to UTC with a logged warning rather than crashing the scheduler.
@@ -152,10 +152,13 @@ Below the threshold the schedule line warns instead — "· 3 failed in a row"
 The pause is *derived from run history*, not kept as its own state machine.
 History already survives a restart, so the pause does too: restarting the
 daemon is not a reason to spend another twenty hours proving the same
-point. The only thing stored is "the user pressed Try it again at time T"
-(`~/.nanobots/state/agents/schedule-resumed.json`), after which failures are
-counted afresh. A corrupt marker leaves schedules paused, which is the safe
-direction — it can never start one firing behind your back.
+point. The only thing stored is "the user pressed Try it again at time T" —
+a `schedule_resumes` row in the same shared SQLite file run history lives
+in (`~/.nanobots/nanobots.db`; this used to be its own
+`schedule-resumed.json`, see [run-history.md](run-history.md) for the
+storage change generally), after which failures are counted afresh. A row
+that won't parse leaves schedules paused, which is the safe direction — it
+can never start one firing behind your back.
 
 One success anywhere in the streak clears it. This is for "never worked",
 not "sometimes fails". A manual swarm never reports as paused, since it has

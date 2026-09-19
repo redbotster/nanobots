@@ -154,6 +154,13 @@ func build(opts Options) (*api.Server, *scheduler.Scheduler, Options, error) {
 		return nil, nil, opts, err
 	}
 
+	// One shared handle for every subsystem that has moved onto SQLite —
+	// see wiring.OpenStateDB.
+	db, err := wiring.OpenStateDB(paths)
+	if err != nil {
+		return nil, nil, opts, err
+	}
+
 	mem, err := wiring.BuildMemory(paths, opts.EnvFilePath, oc, func(f string, a ...any) { log.Printf(f, a...) })
 	if err != nil {
 		return nil, nil, opts, err
@@ -216,7 +223,7 @@ func build(opts Options) (*api.Server, *scheduler.Scheduler, Options, error) {
 		Agent:         &foundry.ClaudeCLIAgent{RepoRoot: opts.RepoRoot, APIKey: anthropicKey},
 	}}
 
-	runs := wiring.BuildRunStore(paths, func(f string, a ...any) { log.Printf(f, a...) })
+	runs := wiring.BuildRunStore(db, paths, func(f string, a ...any) { log.Printf(f, a...) })
 
 	labSession := lab.NewSession(gen, lab.Config{
 		Team: team.Config{
@@ -251,7 +258,7 @@ func build(opts Options) (*api.Server, *scheduler.Scheduler, Options, error) {
 	// The breaker is shared with the API rather than made twice, so the app
 	// can show why a schedule stopped and offer to start it again — a pause
 	// nobody can see is just a schedule that mysteriously does not run.
-	breaker := &scheduler.Breaker{Dir: paths.StateDir}
+	breaker := &scheduler.Breaker{DB: db}
 	srv.ScheduleBreaker = breaker
 	sched := &scheduler.Scheduler{
 		Orchestrator: orch,

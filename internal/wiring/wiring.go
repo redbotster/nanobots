@@ -20,6 +20,7 @@
 package wiring
 
 import (
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -31,6 +32,7 @@ import (
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/runner"
 	"github.com/redbotster/nanobots/internal/secrets"
+	"github.com/redbotster/nanobots/internal/statedb"
 	"github.com/redbotster/nanobots/internal/step"
 	"github.com/redbotster/nanobots/internal/x"
 	"strings"
@@ -249,12 +251,23 @@ func BuildOrchestrator(
 	}
 }
 
+// OpenStateDB opens the one SQLite file every daemon subsystem that has
+// moved off its own on-disk format shares — run history today, schedule
+// state and the circuit breaker's resume markers as of this change, more
+// to follow. Called once, by whichever entry point is starting up
+// (internal/daemon or cmd/nanobots/run.go), and the resulting handle is
+// threaded to each subsystem that needs it — see internal/statedb's
+// package doc for why that's one connection pool, not one per subsystem.
+func OpenStateDB(paths Paths) (*sql.DB, error) {
+	return statedb.Open(paths.DBPath)
+}
+
 // BuildRunStore returns a store backed by the shared SQLite file, so a run
 // started from the CLI and a run started from the WebUI land in the same
 // place and both survive a restart. History that can't be read is worth a
 // warning, never a refusal to start.
-func BuildRunStore(paths Paths, logf Logf) *runner.RunStore {
-	store, err := runner.NewPersistentRunStore(paths.DBPath, paths.HistoryDir, logf)
+func BuildRunStore(db *sql.DB, paths Paths, logf Logf) *runner.RunStore {
+	store, err := runner.NewPersistentRunStore(db, paths.HistoryDir, logf)
 	if err != nil && logf != nil {
 		logf("some run history could not be read from %s: %v", paths.DBPath, err)
 	}

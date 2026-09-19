@@ -1,13 +1,14 @@
 package scheduler
 
 import (
+	"database/sql"
 	"errors"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/redbotster/nanobots/internal/runner"
+	"github.com/redbotster/nanobots/internal/statedb"
 )
 
 // finished builds a run that already ended, at a chosen time.
@@ -19,6 +20,16 @@ func finished(swarm string, at time.Time, status runner.RunStatus, errMsg string
 	}
 	r.SetStatus(status)
 	return r
+}
+
+func openTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := statedb.Open(filepath.Join(t.TempDir(), "nanobots.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
 }
 
 func TestBreakerCountsTheStreakAndTripsAtTheThreshold(t *testing.T) {
@@ -120,14 +131,14 @@ func TestBreakerIgnoresRunsStillInFlight(t *testing.T) {
 // has to survive a restart, or every daemon restart silently re-runs a
 // schedule that was deliberately stopped.
 func TestBreakerResumeClearsTheStreakAndPersists(t *testing.T) {
-	dir := t.TempDir()
+	db := openTestDB(t)
 	base := time.Now().Add(-time.Hour)
 	runs := []*runner.Run{
 		finished("desk", base.Add(1*time.Minute), runner.StatusFailed, "boom"),
 		finished("desk", base.Add(2*time.Minute), runner.StatusFailed, "boom"),
 	}
 
-	b := &Breaker{Dir: dir, MaxFailures: 2}
+	b := &Breaker{DB: db, MaxFailures: 2}
 	if !b.Check("desk", runs).Paused {
 		t.Fatal("should be paused before resuming")
 	}
@@ -138,12 +149,16 @@ func TestBreakerResumeClearsTheStreakAndPersists(t *testing.T) {
 		t.Errorf("still paused after resume: %+v", got)
 	}
 
-	// A fresh breaker over the same directory — the restart case.
-	if got := (&Breaker{Dir: dir, MaxFailures: 2}).Check("desk", runs); got.Paused {
+	// A fresh breaker over the same database — the restart case.
+	if got := (&Breaker{DB: db, MaxFailures: 2}).Check("desk", runs); got.Paused {
 		t.Errorf("a restart forgot the resume and re-paused: %+v", got)
 	}
-	if _, err := filepath.Glob(filepath.Join(dir, "schedule-resumed.json")); err != nil {
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM schedule_resumes WHERE swarm_name = 'desk'`).Scan(&n); err != nil {
 		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("schedule_resumes has %d row(s) for desk, want 1", n)
 	}
 
 	// A failure *after* the resume starts a new streak.
@@ -153,11 +168,17 @@ func TestBreakerResumeClearsTheStreakAndPersists(t *testing.T) {
 	}
 }
 
-// A corrupt marker file must leave schedules paused rather than firing
-// them. It can only ever fail in the safe direction.
-func TestBreakerSurvivesACorruptMarkerFile(t *testing.T) {
-	dir := t.TempDir()
-	if err := writeFile(filepath.Join(dir, "schedule-resumed.json"), "{not json"); err != nil {
+// A row that won't parse must leave schedules paused rather than firing
+// them. It can only ever fail in the safe direction — the SQLite-era
+// equivalent of the old corrupt-JSON-file test: loadLocked skips a row it
+// can't read rather than treating it as "never resumed" incorrectly in the
+// other direction.
+func TestBreakerSurvivesAnUnparseableResumeRow(t *testing.T) {
+	db := openTestDB(t)
+	if _, err := db.Exec(scheduleResumesSchema); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO schedule_resumes (swarm_name, resumed_at) VALUES ('desk', 'not-a-timestamp')`); err != nil {
 		t.Fatal(err)
 	}
 	base := time.Now().Add(-time.Hour)
@@ -165,13 +186,9 @@ func TestBreakerSurvivesACorruptMarkerFile(t *testing.T) {
 		finished("desk", base, runner.StatusFailed, "boom"),
 		finished("desk", base.Add(time.Minute), runner.StatusFailed, "boom"),
 	}
-	if got := (&Breaker{Dir: dir, MaxFailures: 2}).Check("desk", runs); !got.Paused {
-		t.Errorf("a corrupt marker un-paused a broken schedule: %+v", got)
+	if got := (&Breaker{DB: db, MaxFailures: 2}).Check("desk", runs); !got.Paused {
+		t.Errorf("an unparseable resume row un-paused a broken schedule: %+v", got)
 	}
-}
-
-func writeFile(path, body string) error {
-	return os.WriteFile(path, []byte(body), 0o600)
 }
 
 // Declining an approval is the feature working, not the swarm breaking.
@@ -181,8 +198,8 @@ func writeFile(path, body string) error {
 // wasn't a fault: the approval was declined." A swarm whose whole job is to
 // ask before it sends must not lose its schedule for being told no.
 func TestDecliningAnApprovalDoesNotPauseTheSchedule(t *testing.T) {
-	dir := t.TempDir()
-	b := &Breaker{Dir: dir, MaxFailures: 3}
+	db := openTestDB(t)
+	b := &Breaker{DB: db, MaxFailures: 3}
 
 	var runs []*runner.Run
 	for i := 0; i < 5; i++ {
@@ -202,8 +219,8 @@ func TestDecliningAnApprovalDoesNotPauseTheSchedule(t *testing.T) {
 // And a real failure still trips it, including one that happens to follow a
 // decline. The exemption is for the declined run, not for the swarm.
 func TestARealFailureStillPausesAfterADecline(t *testing.T) {
-	dir := t.TempDir()
-	b := &Breaker{Dir: dir, MaxFailures: 2}
+	db := openTestDB(t)
+	b := &Breaker{DB: db, MaxFailures: 2}
 
 	declined := runner.NewRun("s")
 	declined.StartedAt = time.Now()

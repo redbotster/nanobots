@@ -50,8 +50,12 @@ func TestBuildRunStoreKeepsTheWorkspacesOfRunsItStillHas(t *testing.T) {
 		}
 	}
 
+	db, err := OpenStateDB(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var logged []string
-	store := BuildRunStore(paths, func(f string, a ...any) { logged = append(logged, f) })
+	store := BuildRunStore(db, paths, func(f string, a ...any) { logged = append(logged, f) })
 	if store == nil {
 		t.Fatal("no store")
 	}
@@ -85,8 +89,12 @@ func TestBuildRunStoreOnAFreshMachine(t *testing.T) {
 		HistoryDir: filepath.Join(base, "history"),
 		RunWorkDir: filepath.Join(base, "runs"),
 	}
+	db, err := OpenStateDB(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var logged []string
-	store := BuildRunStore(paths, func(f string, a ...any) { logged = append(logged, f) })
+	store := BuildRunStore(db, paths, func(f string, a ...any) { logged = append(logged, f) })
 	if store == nil || len(store.List()) != 0 {
 		t.Fatal("a fresh machine did not produce an empty store")
 	}
@@ -187,7 +195,11 @@ func TestBuildRunStoreKeepsBlobsAKeptRunStillShows(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	BuildRunStore(paths, nil)
+	db, err := OpenStateDB(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	BuildRunStore(db, paths, nil)
 
 	exists := func(d string) bool {
 		_, err := os.Stat(filepath.Join(paths.BlobDir, "sha256", d))

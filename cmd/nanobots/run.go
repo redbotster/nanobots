@@ -71,6 +71,10 @@ func runRun(args []string) error {
 	if err != nil {
 		return err
 	}
+	db, err := wiring.OpenStateDB(paths)
+	if err != nil {
+		return err
+	}
 	// "" resolves to $NANOBOTS_ENV_FILE then ~/.secrets/nanobots.env, the
 	// same default LoadAPIKey used just above — this command has no
 	// --env-file flag of its own, unlike nanobotd.
@@ -117,7 +121,7 @@ func runRun(args []string) error {
 	}
 	// The same persistent store the daemon uses, so a run started here shows
 	// up in the WebUI's Runs page and survives this command exiting.
-	runs := wiring.BuildRunStore(paths, func(f string, a ...any) { fmt.Printf(f+"\n", a...) })
+	runs := wiring.BuildRunStore(db, paths, func(f string, a ...any) { fmt.Printf(f+"\n", a...) })
 	srv := &api.Server{
 		Orchestrator: orch,
 		Runs:         runs,

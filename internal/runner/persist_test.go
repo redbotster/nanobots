@@ -9,15 +9,23 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/redbotster/nanobots/internal/statedb"
 )
 
-// newTestStore opens a SQLite-backed store colocated with dir, treating dir
-// as the legacy JSON history directory too — every test here already writes
-// its hand-built JSON snapshots straight into dir, and the migration path
-// picks them up from there exactly once, the same way a real upgrade would.
+// newTestStore opens a fresh *sql.DB handle (matching what a real restart
+// does) colocated with dir, treating dir as the legacy JSON history
+// directory too — every test here already writes its hand-built JSON
+// snapshots straight into dir, and the migration path picks them up from
+// there exactly once, the same way a real upgrade would.
 func newTestStore(t *testing.T, dir string) (*RunStore, error) {
 	t.Helper()
-	return NewPersistentRunStore(filepath.Join(dir, "nanobots.db"), dir, nil)
+	db, err := statedb.Open(filepath.Join(dir, "nanobots.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return NewPersistentRunStore(db, dir, nil)
 }
 
 func TestRunSurvivesARestart(t *testing.T) {
