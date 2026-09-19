@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -7,10 +7,13 @@
 /* ---------------------------------------------------------------------------
    Theme tokens.
 
-   Dark is the default and the design's native state; light is a real second
-   theme, not an inversion — the cyan accent is darkened to #0089b3 so it
-   still passes as body text and as a border against white, which #00d4ff
-   does not.
+   Warm and soft rather than the neon-on-void look this started as — same
+   token names (nothing that reads them changed), retuned so both themes
+   read as calm and friendly instead of a technical readout. Dark is still
+   the default and still a real theme of its own, not an inversion of
+   light; light is still not an inversion of dark either — see the comment
+   on the token block below for why each color earns its own value rather
+   than one being derived from the other.
 
    Three states, deliberately: an explicit choice stamps data-theme on <html>
    and wins in both directions; no attribute means "follow the OS", which is
@@ -21,25 +24,25 @@
 :root {
   color-scheme: dark;
 
-  --c-void: 5 7 13;
-  --c-panel: 11 17 31;
-  --c-panel-2: 16 26 46;
-  --c-edge: rgba(0, 212, 255, 0.16);
-  --c-edge-strong: rgba(0, 212, 255, 0.4);
-  --c-tron: 0 212 255;
-  --c-deep: 47 107 255;
-  --c-glow: 191 243 255;
-  --c-ink: 227 237 246;
-  --c-muted: 124 147 171;
-  --c-warn: 255 159 67;
-  --c-ok: 61 220 155;
-  --c-danger: 255 93 108;
+  --c-void: 23 21 19;
+  --c-panel: 34 31 28;
+  --c-panel-2: 44 40 36;
+  --c-edge: rgba(255, 250, 245, 0.08);
+  --c-edge-strong: rgba(255, 250, 245, 0.18);
+  --c-tron: 129 156 255;
+  --c-deep: 173 148 255;
+  --c-glow: 148 175 255;
+  --c-ink: 240 235 228;
+  --c-muted: 172 161 150;
+  --c-warn: 255 178 90;
+  --c-ok: 108 209 156;
+  --c-danger: 255 130 130;
 
-  --c-grid: rgba(0, 212, 255, 0.035);
-  --c-selection: rgba(0, 212, 255, 0.3);
-  --c-scrollbar: rgba(0, 212, 255, 0.35);
-  --c-glow-shadow: rgba(0, 212, 255, 0.25);
-  --c-glow-shadow-sm: rgba(0, 212, 255, 0.2);
+  --c-grid: rgba(255, 250, 245, 0);
+  --c-selection: rgba(129, 156, 255, 0.32);
+  --c-scrollbar: rgba(255, 250, 245, 0.18);
+  --c-glow-shadow: rgba(0, 0, 0, 0.45);
+  --c-glow-shadow-sm: rgba(0, 0, 0, 0.32);
 }
 
 /* The light values are written twice on purpose. Plain CSS has no way to
@@ -51,50 +54,50 @@
   :root:not([data-theme="dark"]) {
     color-scheme: light;
 
-    --c-void: 244 247 251;
+    --c-void: 250 248 245;
     --c-panel: 255 255 255;
-    --c-panel-2: 234 240 247;
-    --c-edge: rgba(6, 90, 120, 0.16);
-    --c-edge-strong: rgba(6, 120, 160, 0.42);
-    --c-tron: 0 137 179;
-    --c-deep: 42 88 214;
-    --c-glow: 11 111 142;
-    --c-ink: 13 27 42;
-    --c-muted: 90 113 134;
-    --c-warn: 181 106 0;
-    --c-ok: 13 143 95;
-    --c-danger: 208 38 56;
+    --c-panel-2: 240 236 230;
+    --c-edge: rgba(60, 48, 38, 0.09);
+    --c-edge-strong: rgba(60, 48, 38, 0.2);
+    --c-tron: 59 92 222;
+    --c-deep: 124 92 240;
+    --c-glow: 37 78 216;
+    --c-ink: 33 28 24;
+    --c-muted: 122 111 100;
+    --c-warn: 176 108 6;
+    --c-ok: 22 138 92;
+    --c-danger: 196 58 58;
 
-    --c-grid: rgba(6, 120, 160, 0.05);
-    --c-selection: rgba(0, 137, 179, 0.22);
-    --c-scrollbar: rgba(6, 120, 160, 0.3);
-    --c-glow-shadow: rgba(0, 137, 179, 0.18);
-    --c-glow-shadow-sm: rgba(0, 137, 179, 0.14);
+    --c-grid: rgba(60, 48, 38, 0);
+    --c-selection: rgba(59, 92, 222, 0.22);
+    --c-scrollbar: rgba(60, 48, 38, 0.22);
+    --c-glow-shadow: rgba(33, 28, 24, 0.12);
+    --c-glow-shadow-sm: rgba(33, 28, 24, 0.08);
   }
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
 
-  --c-void: 244 247 251;
+  --c-void: 250 248 245;
   --c-panel: 255 255 255;
-  --c-panel-2: 234 240 247;
-  --c-edge: rgba(6, 90, 120, 0.16);
-  --c-edge-strong: rgba(6, 120, 160, 0.42);
-  --c-tron: 0 137 179;
-  --c-deep: 42 88 214;
-  --c-glow: 11 111 142;
-  --c-ink: 13 27 42;
-  --c-muted: 90 113 134;
-  --c-warn: 181 106 0;
-  --c-ok: 13 143 95;
-  --c-danger: 208 38 56;
+  --c-panel-2: 240 236 230;
+  --c-edge: rgba(60, 48, 38, 0.09);
+  --c-edge-strong: rgba(60, 48, 38, 0.2);
+  --c-tron: 59 92 222;
+  --c-deep: 124 92 240;
+  --c-glow: 37 78 216;
+  --c-ink: 33 28 24;
+  --c-muted: 122 111 100;
+  --c-warn: 176 108 6;
+  --c-ok: 22 138 92;
+  --c-danger: 196 58 58;
 
-  --c-grid: rgba(6, 120, 160, 0.05);
-  --c-selection: rgba(0, 137, 179, 0.22);
-  --c-scrollbar: rgba(6, 120, 160, 0.3);
-  --c-glow-shadow: rgba(0, 137, 179, 0.18);
-  --c-glow-shadow-sm: rgba(0, 137, 179, 0.14);
+  --c-grid: rgba(60, 48, 38, 0);
+  --c-selection: rgba(59, 92, 222, 0.22);
+  --c-scrollbar: rgba(60, 48, 38, 0.22);
+  --c-glow-shadow: rgba(33, 28, 24, 0.12);
+  --c-glow-shadow-sm: rgba(33, 28, 24, 0.08);
 }
 
 html,
@@ -105,11 +108,12 @@ body,
 
 body {
   margin: 0;
+  /* Flat, on purpose — the grid-line background this replaced was the
+     single biggest thing making the app read as a technical readout
+     rather than a calm place to look at your automations. --c-grid stays
+     defined (transparent) rather than deleted, so nothing that still
+     references it in an old branch or a screenshot diff breaks. */
   background: rgb(var(--c-void));
-  background-image:
-    linear-gradient(var(--c-grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--c-grid) 1px, transparent 1px);
-  background-size: 44px 44px;
   color: rgb(var(--c-ink));
   font-family: "IBM Plex Sans", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;

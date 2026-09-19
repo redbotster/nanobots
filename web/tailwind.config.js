@@ -31,12 +31,28 @@ export default {
         danger: channel("danger"),
       },
       fontFamily: {
-        display: ["'Chakra Petch'", "system-ui", "sans-serif"],
+        // Was Chakra Petch, a sci-fi display face that matched the old
+        // neon-grid look and nothing else about the app. Plus Jakarta Sans
+        // keeps headings visually distinct from body text (still its own
+        // font, still bolder) without reading as a technical readout.
+        display: ["'Plus Jakarta Sans'", "system-ui", "sans-serif"],
         body: ["-apple-system", "BlinkMacSystemFont", "'Segoe UI'", "system-ui", "sans-serif"],
       },
       boxShadow: {
-        glow: "0 0 24px var(--c-glow-shadow)",
-        "glow-sm": "0 0 12px var(--c-glow-shadow-sm)",
+        // Was a colored neon glow (0 0 24px, spreading evenly in every
+        // direction — the classic "this button is plugged in" effect). A
+        // real drop shadow, offset and softly blurred, reads as a calm
+        // elevated surface instead of a light source.
+        glow: "0 6px 20px -4px var(--c-glow-shadow)",
+        "glow-sm": "0 2px 10px -2px var(--c-glow-shadow-sm)",
+      },
+      borderRadius: {
+        // The default scale (lg = 0.5rem) is what read as technical next
+        // to muse.ai's reference — cards and inputs there are closer to a
+        // pill than a rounded rectangle. Bumped once, centrally: every
+        // existing rounded-lg/xl in the app (34 uses) gets softer for free.
+        lg: "0.875rem",
+        xl: "1.25rem",
       },
     },
   },
