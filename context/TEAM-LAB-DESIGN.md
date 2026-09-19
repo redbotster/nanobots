@@ -207,16 +207,23 @@ before any UI or harness work —
    file changed, so it's already indistinguishable from a human's edit
    until someone (or something) triggers a run, at which point the
    existing `approval_request` gate is the same one either way.
-   **Not yet run for real** — this machine has no `ANTHROPIC_API_KEY`
-   configured, so the mechanics (workspace persistence, isolation between
-   roles, the missing-credential path failing before touching git) are
-   verified and the actual agent session is not. `docs/team.md` says this
-   plainly; treat step 3 as blocked on it, not on more design.
+   **Run for real, once, with a second engine.** No funded
+   `ANTHROPIC_API_KEY` was available (the only one on this machine, from a
+   different project, reached the real API and failed there on billing —
+   proof the plumbing works, not that the plan Team should use does), so
+   Gemini CLI was added as a second engine (`internal/team.EngineGemini`,
+   `harness/team-gemini`) and verified instead: a real container gave
+   `designer` the task "read docs/anatomy.md, describe a nanoswarm, don't
+   edit anything," and it read the real file, answered correctly from its
+   real content, and left the worktree clean. That is the proof this step
+   asked for — it just came from the second engine tried, not the first.
+   `docs/team.md` has the full transcript. Claude Code itself is still
+   only mechanically verified; running it for real needs a funded key.
 3. Add a second Team agent in the same role's workspace and prove the
    recall-before-work / remember-after-work pattern actually stops the
    second one from redoing the first one's task, before trusting it at
    any real scale.
-   **Not done** — needs step 2's live run first.
+   **Not done** — step 2's live proof landed; this is now unblocked.
 4. Only then design Lab's chat surface, informed by what steps 2 and 3
    actually required.
    **Not done.**

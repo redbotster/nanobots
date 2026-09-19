@@ -18,17 +18,19 @@ import (
 // building a chat surface on top of it. `nanobots team run` is that
 // proof: one command, one role, one task, streamed to this terminal
 // exactly the way `nanobots run` streams a swarm's log.
-const teamUsage = `usage: nanobots team run <role> "<task>" [--repo <dir>]
+const teamUsage = `usage: nanobots team run <role> "<task>" [--engine claude|gemini] [--repo <dir>]
        nanobots team list [--repo <dir>]
 
   run <role> "<task>"   give that role one task in its own persistent workspace
   list                  roles that have a workspace under ~/.nanobots/team
 
+  --engine claude   (default) needs ANTHROPIC_API_KEY in ~/.secrets/nanobots.env
+  --engine gemini   needs GEMINI_API_KEY in ~/.secrets/nanobots.env
+
 A role's workspace is a real git worktree of this repo, on its own branch
-(team/<role>), kept between tasks rather than thrown away after one. It
-needs its own ANTHROPIC_API_KEY in ~/.secrets/nanobots.env — see
-docs/team.md for why this can't run through 1Claw/Shroud, the same reason
-the foundry's coding agent needs one.`
+(team/<role>), kept between tasks rather than thrown away after one. See
+docs/team.md for why the engine's own API key can't come from 1Claw/Shroud,
+the same reason the foundry's coding agent needs one.`
 
 func runTeam(args []string) error {
 	if len(args) == 0 {
@@ -51,24 +53,43 @@ func runTeam(args []string) error {
 
 func runTeamRun(args []string) error {
 	repoRoot := "."
+	engine := team.EngineClaude
 	var positional []string
 	for i := 0; i < len(args); i++ {
-		if args[i] == "--repo" {
+		switch args[i] {
+		case "--repo":
 			i++
 			if i >= len(args) {
 				return fmt.Errorf("--repo requires a directory")
 			}
 			repoRoot = args[i]
-			continue
+		case "--engine":
+			i++
+			if i >= len(args) {
+				return fmt.Errorf("--engine requires claude or gemini")
+			}
+			switch args[i] {
+			case "claude":
+				engine = team.EngineClaude
+			case "gemini":
+				engine = team.EngineGemini
+			default:
+				return fmt.Errorf("--engine %q — must be claude or gemini", args[i])
+			}
+		default:
+			positional = append(positional, args[i])
 		}
-		positional = append(positional, args[i])
 	}
 	if len(positional) != 2 {
 		return fmt.Errorf("usage: nanobots team run <role> \"<task>\"")
 	}
 	role, task := positional[0], positional[1]
 
-	apiKey, err := oneclaw.LoadEnvValue("", "ANTHROPIC_API_KEY")
+	anthropicKey, err := oneclaw.LoadEnvValue("", "ANTHROPIC_API_KEY")
+	if err != nil {
+		return err
+	}
+	geminiKey, err := oneclaw.LoadEnvValue("", "GEMINI_API_KEY")
 	if err != nil {
 		return err
 	}
@@ -77,12 +98,13 @@ func runTeamRun(args []string) error {
 		return err
 	}
 
-	fmt.Printf("%s: preparing workspace (team/%s)…\n", role, role)
+	fmt.Printf("%s: preparing workspace (team/%s), engine %s…\n", role, role, engine)
 	events := make(chan foundry.Event)
 	done := make(chan error, 1)
 	go func() {
-		done <- team.Run(context.Background(), team.Config{RepoRoot: repoRoot, TeamDir: teamDir, APIKey: apiKey},
-			team.TaskInput{Role: role, Task: task}, events)
+		done <- team.Run(context.Background(),
+			team.Config{RepoRoot: repoRoot, TeamDir: teamDir, AnthropicAPIKey: anthropicKey, GeminiAPIKey: geminiKey},
+			team.TaskInput{Role: role, Task: task, Engine: engine}, events)
 	}()
 
 	for {

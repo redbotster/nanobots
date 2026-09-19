@@ -9,6 +9,8 @@ import (
 type TaskInput struct {
 	Role string
 	Task string
+	// Engine selects the coding-agent CLI. "" defaults to EngineClaude.
+	Engine Engine
 }
 
 // BuildBrief assembles the prompt for one Team task. Unlike a foundry
