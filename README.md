@@ -156,6 +156,30 @@ Settings — nothing to learn before you can automate something) and
 changes which entry points are visible; a swarm built either way executes
 identically.
 
+## Team and Lab
+
+The composer drafts a swarm from your description. **Lab** (Advanced mode)
+is the other direction: a chat tab backed by an orchestrator that decides
+whether to delegate your message to a **Team** member or just answer it.
+
+A Team member is a persistent, role-scoped coding agent (Claude Code or
+Gemini CLI) working in its own git worktree of this repo — it can read the
+catalog, author or edit bots and swarms, and run the `nanobots` CLI itself,
+but nothing it does takes effect against a real account until a human runs
+or approves it, exactly the same gate a person editing YAML by hand goes
+through. No new trust boundary was built for this; the one nanobots already
+had turned out to be enough.
+
+```sh
+nanobots team run backend-engineer "add a stripe-watch bot to the catalog"
+```
+
+Needs its own `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` — Shroud is a
+single-shot proxy, not a multi-turn session an external CLI agent can sit
+behind, so this is a real credential this repo doesn't provision, the same
+disclosed gap the foundry's coding agent already has
+([docs/team.md](docs/team.md), [docs/lab.md](docs/lab.md)).
+
 ## The catalog
 
 **39 bots** (`bots/`) — 33 job bricks plus 6 utility bricks (`approve`,
@@ -204,13 +228,17 @@ What a bot and a swarm look like as files, in real YAML from this repo:
 The bot contract, the planner, the runner, the 1Claw bridge, seven direct
 service clients, the composer, the foundry, the scheduler, approvals,
 fan-out, run history and the WebUI are all real and exercised against live
-APIs. Published packages are partly there: tagged releases publish real
-binaries and a container image, but `brew` and `npx` still don't work — the
-Homebrew tap and the npm package need accounts this repo doesn't hold yet.
-Container-level network egress is enforced, including a bot's own Chromium
-rendering, not just its callbacks to nanobotd. No bot ships connected to a
-real account — every one starts on `connection: demo` until a human
-deliberately flips it.
+APIs. Team and Lab are real too — a live delegation, streamed into the
+chat as it happens, is in [docs/lab.md](docs/lab.md) — but Team's default
+engine (Claude Code) is only mechanically verified: the one API key
+available to test it had no credit, so only the second engine tried
+(Gemini) has actually done real work end to end. Published packages are
+partly there: tagged releases publish real binaries and a container image,
+but `brew` and `npx` still don't work — the Homebrew tap and the npm
+package need accounts this repo doesn't hold yet. Container-level network
+egress is enforced, including a bot's own Chromium rendering, not just its
+callbacks to nanobotd. No bot ships connected to a real account — every
+one starts on `connection: demo` until a human deliberately flips it.
 
 The full list, and the line-by-line table of what is real versus simulated,
 is [docs/status.md](docs/status.md). The gaps that are 1Claw's rather than
@@ -234,6 +262,8 @@ run it for real. The ones most people want first:
 | [approvals.md](docs/approvals.md) | the gate, and answering from your phone |
 | [testing.md](docs/testing.md) | the verification pass, and the claims that check themselves |
 | [status.md](docs/status.md) | what works today, real vs. simulated |
+| [team.md](docs/team.md) | a persistent, role-scoped coding agent, and why it needs no new gate |
+| [lab.md](docs/lab.md) | talking to your Team from one chat tab |
 
 The full product spec lives in
 [`context/NANOBOTS-BLUEPRINT.md`](context/NANOBOTS-BLUEPRINT.md) and

@@ -195,11 +195,14 @@ gaps rather than oversights:
 
 ## Not built yet
 
-The `kubernetes` and `apple` compile targets. A real dynamic agent loop —
-today's harnesses run a fixed, pre-written step list, not an LLM deciding
-what to do ([harnesses.md](harnesses.md)). A real OAuth integration for
-Google Business Profile, so `review-responder` stays on `connection: demo`.
-The hosted multi-tenant control plane.
+The `kubernetes` and `apple` compile targets. A real dynamic agent loop *as
+a bot harness* — today's bot harnesses run a fixed, pre-written step list,
+not an LLM deciding what to do ([harnesses.md](harnesses.md)). A dynamic
+loop exists now, just not as a harness a bot declares: Team
+([team.md](team.md)) runs a real coding-agent CLI in its own persistent
+workspace, and Lab ([lab.md](lab.md)) talks to it from one chat tab. A real
+OAuth integration for Google Business Profile, so `review-responder` stays
+on `connection: demo`. The hosted multi-tenant control plane.
 
 ## What's real vs. simulated
 
@@ -214,7 +217,8 @@ paper over what is actually happening. So, plainly:
 | One binary serves the WebUI and the API on a single port (`make build && nanobots up`), and 34 of 39 bots run without Docker. `v0.1.0` publishes binaries for six platform/arch pairs and a multi-arch `ghcr.io/redbotster/nanobots` image, which is what `nanobots deploy 1claw` now runs by default | `brew install` and `npx nanobots` still do not work: the Homebrew tap repository does not exist and the npm package is unpublished. Both configurations are written and validate; each is one secret away ([hosting.md](hosting.md)) |
 | 1Claw Human API, Shroud, vault secrets, agent memory, approval requests | 1Claw's execution-intent bindings (`internal/oneclaw.Execute`) assume a binding already exists on the agent — provisioning one from a `nanobot.yaml` service is not wired up |
 | Docker execution for the 5 browser bots: non-root, read-only fs, real container-to-container I/O wiring, no network interface at all for a bot that declares no egress and calls nothing, and an **enforced** `network_egress` allowlist for one that does — a forward proxy Chrome is pointed at, checking the same list `web.fetch` already checks ([harnesses.md](harnesses.md)) | The proxy still runs on a routable bridge network rather than one that can *only* reach it — safe today because a bot's declared steps never run code other than this repo's own controlled interpreter, but a future harness running less controlled code would need a per-run network with no other route out |
-| The step interpreter, for every harness type, incl. `web.fetch` and PDF/PNG rendering | The *dynamic agent loop* a harness name like `openclaw` implies — every harness today runs the same fixed, pre-written `spec.steps` list ([harnesses.md](harnesses.md)) |
+| The step interpreter, for every harness type, incl. `web.fetch` and PDF/PNG rendering | The *dynamic agent loop* a harness name like `openclaw` implies — every bot harness today runs the same fixed, pre-written `spec.steps` list ([harnesses.md](harnesses.md)). Team ([team.md](team.md)) is a real dynamic loop, just not one a bot's own harness runs |
+| Team — a persistent, role-scoped Claude Code or Gemini CLI agent in its own git worktree, and Lab, one chat tab that delegates to it or answers directly ([team.md](team.md), [lab.md](lab.md)). A real delegation, streamed live into the chat, is verified end to end with the Gemini engine | Claude Code (Team's default engine) is only mechanically verified — the one available API key had no credit. No cross-agent memory, no conversation persistence across a restart, and Lab's "what's a swarm doing" tool reads a Team role's git log, not a swarm's own run history |
 | The Google OAuth client (`internal/google`) — real PKCE flow, real REST calls (Gmail, Drive, Sheets, Calendar), unit-tested against fake servers | No bot ships with a non-demo Google connection by default — every bot's Google service is `connection: demo` until a human deliberately flips it ([connections.md](connections.md)) |
 | The Slack/GitHub/Stripe/HubSpot clients — real REST calls, unit-tested against fake servers; `notify`'s Slack delivery is genuinely wired once connected | Google Business Profile replies (`review-responder`) need a dedicated integration, and stay on `connection: demo` |
 | The X and LinkedIn OAuth2+PKCE clients and the shared `internal/oauth2pkce` core — real token exchange and refresh, real posting calls, wired end to end into `post-publisher` and Settings | Live end-to-end posting has not been exercised against a real X/LinkedIn developer app in this build, only against fake test servers |

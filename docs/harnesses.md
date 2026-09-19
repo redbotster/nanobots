@@ -87,7 +87,7 @@ ideas | starting (llm harness)
 
 The correction line still exists and still fires when a declaration and its steps genuinely disagree — `bots/render-pdf` declares `bare` and renders, so it's promoted on every run. Need always wins over declaration; the declaration is what the bot *is*, the steps are what it *needs*.
 
-`claude-code`, `opencode`, `openclaude` and `hermes` remain unimplemented and are still rejected by name. They describe *dynamic agent loops*, which is a different axis again — none of the three implemented harnesses runs one. The only place a real coding agent runs in this build is the foundry (`docs/foundry.md`), which authors new bots rather than running them.
+`claude-code`, `opencode`, `openclaude` and `hermes` remain unimplemented as *bot harness types* and are still rejected by name here — none of the three implemented harnesses runs a dynamic agent loop, and `spec.harness.type` in a `nanobot.yaml` still can't name one. That's a different thing from whether a real coding agent runs anywhere in this build at all, which it now does, twice, just not as a bot's own harness: the foundry (`docs/foundry.md`) runs one to author a new bot, and Team (`docs/team.md`) runs one — Claude Code or Gemini CLI, a human's choice, not a bot's declared harness — as a persistent role that can read the catalog and use the `nanobots` CLI itself. Lab (`docs/lab.md`) is the chat surface in front of Team. Neither is a `harness.type` a bot declares, and neither changes what's written here: a bot's own steps are still fully specified in YAML, still fixed, still not deciding anything dynamically.
 
 
 ## Images rebuild when the interpreter changes

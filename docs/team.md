@@ -152,6 +152,18 @@ engine specifically.
   and a Team engine runs an open-ended coding session, but the same
   "verify against a real invocation first" discipline applies to whichever
   gets built next.
+- **Not the second `foundry.Agent` its own doc comment anticipated.**
+  `internal/foundry/agent.go` says a second coding-agent CLI is "meant to
+  be a second implementation of this same interface" — `Agent.Run(ctx,
+  workDir, BriefInput, events)`, shaped around "author one new bot." Team's
+  Gemini engine doesn't implement it; `internal/team.Run` calls
+  `foundry.RunDockerAgent` directly with its own args and its own parser,
+  because a Team task isn't "author one new bot" and forcing it through
+  `BriefInput` would have meant stretching that shape to fit a job it
+  wasn't built for. `EnsureClaudeCodeImage`, `DockerAgentSpec`,
+  `RunDockerAgent`, `DisallowedTools` and `BuildScopedBinary` are what
+  actually got reused — the container-running primitives, not the
+  bot-authoring interface sitting in front of them.
 - **No multi-tenancy.** One nanobots install, one team, matching this
   build's existing single-tenant shape everywhere else. The design doc's
   "multiple companies" question is still open.
