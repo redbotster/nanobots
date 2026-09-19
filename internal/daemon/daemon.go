@@ -1,6 +1,8 @@
-// Package daemon wires up everything nanobotd needs and serves it over
-// HTTP. Shared by cmd/nanobotd (the standalone daemon binary) and cmd/nanobots
-// up (which runs the same thing in-process for a one-command dev loop).
+// Package daemon wires up everything the daemon needs and serves it over
+// HTTP. Called from cmd/nanobots' `up` command, which runs it in-process —
+// there is no separate daemon binary; a standalone `cmd/nanobotd` existed
+// early on and was never built by the Makefile, GoReleaser or the Docker
+// image once `up` could do the whole job in one process and one command.
 package daemon
 
 import (

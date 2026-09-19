@@ -206,8 +206,8 @@ func (s *Server) Handler() http.Handler {
 	// http.ServeMux matches the most specific pattern, and every handler
 	// above is more specific than "/".
 	//
-	// nil UI means the caller did not wire one — cmd/nanobotd, or a test —
-	// and "/" stays unregistered so an unknown path 404s as it always did.
+	// nil UI means the caller did not wire one — a test, typically — and
+	// "/" stays unregistered so an unknown path 404s as it always did.
 	if s.UI != nil {
 		mux.Handle("/", s.UI)
 	}

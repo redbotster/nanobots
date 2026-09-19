@@ -1,5 +1,5 @@
 // Package scheduler closes a real gap this build has had since its first
-// commit: cmd/nanobotd/main.go's own doc comment names "the scheduler (cron
+// commit: the daemon's own early doc comment named "the scheduler (cron
 // triggers)" as explicitly not built yet. Every catalog swarm declares a
 // trigger: {type: cron, expr: "...", timezone: "..."} — "every weekday
 // morning, recap my inbox" — but until now nothing ever actually fired one;
