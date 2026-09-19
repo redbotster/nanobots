@@ -46,15 +46,6 @@ const wildcard = "*"
 // own list — the reader needs to know what the bot promised, not just that
 // something was refused.
 func (p EgressPolicy) Check(rawURL string) error {
-	if len(p.Allow) == 0 {
-		return nil
-	}
-	for _, a := range p.Allow {
-		if strings.TrimSpace(a) == wildcard {
-			return nil
-		}
-	}
-
 	u, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil {
 		return fmt.Errorf("web.fetch: %q is not a URL: %w", rawURL, err)
@@ -69,6 +60,42 @@ func (p EgressPolicy) Check(rawURL string) error {
 	if host == "" {
 		return fmt.Errorf("web.fetch: %q has no host", rawURL)
 	}
+
+	// An IP literal that is loopback, link-local (this covers the cloud
+	// metadata address, 169.254.169.254, on every major provider) or
+	// private is refused before anything else, wildcard included — no
+	// bot's declared egress, however permissive, is a reason to let it
+	// reach this machine's own services or the platform's own
+	// infrastructure. competitor-watch's `network_egress: ["*"]` exists
+	// because the URLs it fetches come from a stranger's page content,
+	// which is exactly the shape of input this floor is for: nothing
+	// about "check what changed on this URL" should ever mean "ask
+	// nanobotd's own callback port what it knows."
+	//
+	// Deliberately IP-literal only, not a DNS lookup on every hostname
+	// this checks — that would make this hermetic package's tests (and
+	// every bot's real run) depend on live DNS, for protection a
+	// resolve-then-connect race could defeat anyway (the address could
+	// change between this check and the real connection, since neither
+	// web.fetch's client nor the egress proxy pins the address a lookup
+	// here would have seen). What this catches is the textbook version —
+	// a URL that names 169.254.169.254 or 127.0.0.1 outright — which is
+	// how this class of bug actually gets exploited in practice. A
+	// hostname an attacker registered to resolve to an internal address is
+	// a real, disclosed gap this does not close.
+	if ip := net.ParseIP(host); ip != nil && blockedIP(ip) {
+		return fmt.Errorf("web.fetch: %s is an address on this machine or its network"+
+			" — no bot's declared egress can reach that, wildcard included", host)
+	}
+
+	if len(p.Allow) == 0 {
+		return nil
+	}
+	for _, a := range p.Allow {
+		if strings.TrimSpace(a) == wildcard {
+			return nil
+		}
+	}
 	for _, a := range p.Allow {
 		if hostMatches(host, strings.TrimSpace(a)) {
 			return nil
@@ -77,6 +104,14 @@ func (p EgressPolicy) Check(rawURL string) error {
 	return fmt.Errorf("web.fetch: this bot declares it only reaches %s, and %s is not one of them"+
 		" — add the host to its guardrails.network_egress, or fetch somewhere it already allows",
 		strings.Join(p.Allow, ", "), host)
+}
+
+// blockedIP is the floor Check enforces on an IP literal regardless of what
+// a bot's own egress list says. See Check's own comment for what this
+// deliberately does not cover.
+func blockedIP(ip net.IP) bool {
+	return ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
+		ip.IsPrivate() || ip.IsUnspecified()
 }
 
 // hostMatches allows an exact host or any subdomain of an allowed one, so

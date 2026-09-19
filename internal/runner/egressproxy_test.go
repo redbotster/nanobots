@@ -78,18 +78,25 @@ func TestProxyRefusesAPlainHTTPRequestToADisallowedHost(t *testing.T) {
 	}
 }
 
+// The real step.EgressPolicy.Check refuses loopback outright regardless of
+// what's declared (step/egress_test.go proves that directly), and every
+// server this test process can actually reach is loopback by construction
+// — so this proves the proxy's own plumbing (parse, dial, RoundTrip, copy
+// the response back) for an allowed host via checkFn, the seam that exists
+// for exactly this: separating "does the tunnel work" from "does the
+// allowlist decide correctly", which is already covered elsewhere.
 func TestProxyAllowsAPlainHTTPRequestToAnAllowedHost(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("hello"))
 	}))
 	defer upstream.Close()
-	upstreamHost, _, _ := net.SplitHostPort(upstream.Listener.Addr().String())
 
-	p, err := StartEgressProxyIfNeeded([]string{upstreamHost}, false)
+	p, err := StartEgressProxyIfNeeded([]string{"nowhere.example"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer p.Close()
+	p.checkFn = func(string) error { return nil }
 
 	resp, err := proxyGET(t, dialAddr(p), upstream.URL)
 	if err != nil {
@@ -145,6 +152,41 @@ func TestProxyRefusesAnHTTPSConnectToADisallowedHost(t *testing.T) {
 	}
 }
 
+// v3 Phase 2's acceptance bar in full, through the real un-stubbed path
+// (no checkFn override): a container's own Chrome, proxied through this,
+// cannot reach the cloud metadata address even if a bot declared wildcard
+// egress — the one case an attacker-controlled render (an <img src> or a
+// fetch() in LLM-authored HTML) would actually try.
+func TestProxyRefusesAConnectToTheCloudMetadataAddressEvenUnderWildcard(t *testing.T) {
+	p, err := StartEgressProxyIfNeeded([]string{"*"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+
+	conn, err := net.DialTimeout("tcp", dialAddr(p), 2*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	target := "169.254.169.254:443"
+	if _, err := conn.Write([]byte("CONNECT " + target + " HTTP/1.1\r\nHost: " + target + "\r\n\r\n")); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("CONNECT status = %d, want 403 — a wildcard declaration must not reach the metadata address", resp.StatusCode)
+	}
+}
+
+// Same reasoning as TestProxyAllowsAPlainHTTPRequestToAnAllowedHost: the
+// test server is loopback, which the real policy always refuses, so
+// checkFn stands in for the allowlist decision while this proves the
+// tunnel itself — CONNECT, then a real TLS handshake over it.
 func TestProxyTunnelsAnHTTPSConnectToAnAllowedHost(t *testing.T) {
 	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("secure hello"))
@@ -152,11 +194,12 @@ func TestProxyTunnelsAnHTTPSConnectToAnAllowedHost(t *testing.T) {
 	defer upstream.Close()
 	upstreamHost, upstreamPort, _ := net.SplitHostPort(upstream.Listener.Addr().String())
 
-	p, err := StartEgressProxyIfNeeded([]string{upstreamHost}, false)
+	p, err := StartEgressProxyIfNeeded([]string{"nowhere.example"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer p.Close()
+	p.checkFn = func(string) error { return nil }
 
 	// A CONNECT tunnel through the proxy, then a real TLS handshake with
 	// the test server's own cert over it — end to end, the same shape

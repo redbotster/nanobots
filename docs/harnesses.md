@@ -170,6 +170,47 @@ arbitrary code, only this same controlled `nanobot-agent` binary. A future
 harness that ran less controlled code would need the stronger version: a
 per-run network with no route out except through the proxy.
 
+**v3 Phase 2 tried to build that stronger version and found it doesn't fit
+this architecture.** `--network internal` (Docker's own "no route to the
+outside" flag) was the obvious candidate — measured on the machine this was
+built on, a container on an `--internal` network genuinely cannot reach the
+open internet (confirmed with a raw TCP dial to `1.1.1.1`, not just DNS
+failing), but it *also* cannot reach the Docker host gateway, which is
+where nanobotd's own callback listener lives. `nanobots` doesn't run
+nanobotd itself in a container, so there's no sidecar on that internal
+network for the bot's container to reach instead — closing this properly
+means either containerizing nanobotd (a real architecture change, not a
+flag) or Linux-specific netfilter rules this build would then behave
+differently on macOS than on Linux. Recorded rather than attempted halfway.
+
+**What Phase 2 did close: `EgressPolicy.Check` had no floor.** Every check
+above is about a bot's *declared* list — but nothing stopped that list,
+wildcard included, from naming an address on this machine or its own
+network. `competitor-watch` declares `network_egress: ["*"]` because the
+URLs it fetches come from a stranger's page content, which is exactly the
+shape of input an SSRF needs: a crafted link pointing at
+`http://169.254.169.254/` (the cloud metadata address on every major
+provider) or `http://127.0.0.1:7474/` would have been fetched, wildcard
+being wildcard. `Check` now refuses an IP-literal loopback, link-local, or
+private address outright, before the allowlist logic even runs — checked
+live, not just in `go test`:
+
+```
+$ curl -x http://127.0.0.1:<proxy-port> https://169.254.169.254/latest/meta-data/ -v
+< HTTP/1.1 403 Forbidden
+* CONNECT tunnel failed, response 403
+```
+
+Deliberately IP-literal only, not a DNS lookup on every hostname `web.fetch`
+or the proxy checks — that would make a hermetic package's tests, and every
+bot's real run, depend on live DNS for protection a resolve-then-connect
+race could defeat anyway (neither caller pins the address a lookup here
+would have seen, so it could still change by the time the real connection
+happens). What this closes is the textbook version — a URL that names the
+metadata address or a loopback address outright, which is how this class
+of bug is actually exploited. A hostname registered to *resolve* to an
+internal address is a real, disclosed gap this does not close.
+
 ## Running without a container
 
 Most bots do not open one. `runsInProcess` in `internal/runner` decides per

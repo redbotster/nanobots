@@ -93,6 +93,49 @@ func TestAWildcardIsAnExplicitDeclaration(t *testing.T) {
 	}
 }
 
+// Loopback, link-local (the cloud metadata address lives here) and private
+// ranges are refused regardless of a bot's own declared egress — even
+// wildcard, which is exactly the case an SSRF through a bot that fetches
+// user-supplied URLs (competitor-watch) would need to bypass.
+func TestLoopbackMetadataAndPrivateRangesAreAlwaysRefused(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		url  string
+	}{
+		{"loopback v4", "http://127.0.0.1:7474/api/status"},
+		{"loopback v4 non-default port", "http://127.0.0.1:9999/"},
+		{"loopback v6", "http://[::1]:7474/"},
+		{"cloud metadata (AWS/GCP/Azure all use this address)", "http://169.254.169.254/latest/meta-data/"},
+		{"private 10/8", "http://10.0.0.5/"},
+		{"private 172.16/12", "http://172.20.1.1/"},
+		{"private 192.168/16", "http://192.168.1.1/"},
+		{"unspecified", "http://0.0.0.0/"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Wildcard: the most permissive declaration a bot can make, and
+			// still refused — the whole point of this being a floor rather
+			// than part of the allowlist logic.
+			if err := (EgressPolicy{Allow: []string{wildcard}}).Check(tc.url); err == nil {
+				t.Errorf("%s was allowed under a wildcard declaration", tc.url)
+			}
+			// Explicitly declaring the exact IP doesn't help either — this
+			// isn't a promise a bot's own guardrails can opt back into.
+			if err := (EgressPolicy{Allow: []string{"127.0.0.1", "169.254.169.254", "10.0.0.5",
+				"172.20.1.1", "192.168.1.1", "0.0.0.0", "::1"}}).Check(tc.url); err == nil {
+				t.Errorf("%s was allowed even when explicitly declared", tc.url)
+			}
+		})
+	}
+}
+
+// A public IP literal is unaffected by the internal-address floor — this
+// is about the specific reserved ranges, not IP literals in general.
+func TestAPublicIPLiteralIsNotBlockedByTheInternalFloor(t *testing.T) {
+	if err := (EgressPolicy{Allow: []string{"8.8.8.8"}}).Check("http://8.8.8.8/"); err != nil {
+		t.Errorf("a public IP, explicitly allowed, was refused: %v", err)
+	}
+}
+
 // The refusal has to name what the bot promised. "Refused" alone leaves
 // someone guessing which of two lists they need to change.
 func TestTheRefusalNamesTheBotsOwnList(t *testing.T) {
