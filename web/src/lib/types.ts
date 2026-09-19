@@ -76,7 +76,8 @@ export interface PlanResult {
   ok: boolean;
 }
 
-export type RunStatus = "pending" | "running" | "awaiting_approval" | "succeeded" | "failed";
+export type RunStatus =
+  "pending" | "running" | "awaiting_approval" | "awaiting_unlock" | "succeeded" | "failed";
 
 export interface LogEntry {
   time: string;

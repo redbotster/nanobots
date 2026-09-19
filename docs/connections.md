@@ -54,7 +54,9 @@ Unlike Google, there's no `connection: demo` to flip on `notify` itself (it isn'
 
 ### A real operational note: 1Claw vault passkey verification
 
-Depending on your account's vault security tier, 1Claw may require a passkey unlock before `GetSecret` succeeds — you'll see a 403 `"Passkey verification required to access vault secrets"` from 1Claw itself surfaced through whichever bot tried to read a connected credential. That's a genuine security feature of your 1Claw account, not a Nanobots bug, and not something this codebase tries to route around: unlock your vault with your passkey (1Claw's own dashboard/CLI) and retry.
+Depending on your account's vault security tier, 1Claw may require a passkey unlock before `GetSecret` succeeds — you'll see a 403 `"Passkey verification required to access vault secrets"` from 1Claw itself, surfaced through whichever bot tried to read a connected credential. That's a genuine security feature of your 1Claw account, not a Nanobots bug, and not something this codebase tries to route around.
+
+**v3 Phase 4 changed what happens next.** A run that hits this no longer fails outright — it pauses with status `awaiting_unlock` (the Runs page and the swarm card both say so, in words distinct from an approval: "waiting on 1Claw's vault", not "waiting for your approval," since there's no button in this app that answers it) and retries automatically every 30 seconds until either the vault unlocks or you stop the run. Unlock it with your passkey in 1Claw's own dashboard or CLI; nothing here needs a manual re-run. This doesn't count against the bot's own `retry:` budget — a locked vault could clear in a minute or sit for the rest of the day, and neither is the bot's own transient failure. `GET /api/status`'s `vault_locked`/`vault_reason` report the same condition proactively, before you've even pressed Run.
 
 ## Try it
 

@@ -10,6 +10,7 @@ const STATUS_TONE: Record<string, "ok" | "warn" | "danger" | "muted"> = {
   succeeded: "ok",
   running: "warn",
   awaiting_approval: "warn",
+  awaiting_unlock: "warn",
   failed: "danger",
   pending: "muted",
 };

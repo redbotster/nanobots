@@ -70,6 +70,12 @@ type Orchestrator struct {
 	// run's own context.
 	retryWaitFn func(context.Context, time.Duration)
 
+	// vaultUnlockWaitFn is the same seam as retryWaitFn, for
+	// attemptThroughVaultUnlock's own poll — a test can see the wait was
+	// requested (and how many times) without sitting out 30 real seconds
+	// per iteration.
+	vaultUnlockWaitFn func(context.Context, time.Duration)
+
 	// The one agent every approval is opened by. See approvalagent.go.
 	approvalAgentState
 }
@@ -373,12 +379,106 @@ func (o *Orchestrator) runOneBotWithRetries(run *Run, rs *planner.ResolvedSwarm,
 				run.Log(botID, "", "retrying (%d of %d) after: %v", i, tries, err)
 			}
 		}
-		err = attempt()
+		err = o.attemptThroughVaultUnlock(run, rs, botID, attempt)
 		if err == nil || !worthRetrying(err) {
 			return err
 		}
 	}
 	return err
+}
+
+// vaultUnlockPollInterval is how often a bot stuck behind a passkey-locked
+// vault is retried. Unmeasured against a real 1Claw account's own unlock
+// latency — chosen as a reasonable middle ground between "notices within a
+// minute of someone unlocking" and "doesn't hammer the API while nobody's
+// looking."
+const vaultUnlockPollInterval = 30 * time.Second
+
+// attemptThroughVaultUnlock calls attempt, and if it fails because 1Claw's
+// vault is passkey-locked (oneclaw.VaultLockedError), waits and retries
+// indefinitely rather than counting against the bot's own retry budget
+// (BotRef.Retry) or failing outright. A locked vault is not this bot's own
+// transient failure — see docs/status.md's own disclosure of this — and
+// could clear in a minute or the rest of the day; a hard failure here
+// would be wrong the instant someone actually unlocks it, and burning a
+// retry budget meant for real transient failures on "a human hasn't opened
+// 1Claw yet" would exhaust it for no reason connected to the bot at all.
+//
+// Only run cancellation (the user stopping the run) ends the wait early —
+// same shape as Run.RequestApproval, which also waits without a ceiling of
+// its own until a human acts or the run itself ends.
+//
+// Refuses to retry at all when the bot declares guardrails.writes_allowed —
+// the exact hazard docs/error-policy.md's CheckRetry already refuses at
+// plan time for an ordinary retry:. A retry re-runs the whole bot; a bot
+// that writes could have already sent something in an earlier step before
+// a later step's vault read hit the lock, and retrying it would send that
+// again. CheckRetry can't see this one coming (there's no retry: written
+// down for it to catch), so the same guard has to live here instead: fail
+// once, honestly, rather than silently risk a duplicate send.
+func (o *Orchestrator) attemptThroughVaultUnlock(run *Run, rs *planner.ResolvedSwarm, botID string, attempt func() error) error {
+	waited := false
+	for {
+		err := attempt()
+		locked, ok := oneclaw.AsVaultLocked(err)
+		if ok {
+			if writes := writesAllowedFor(rs, botID); len(writes) > 0 {
+				run.Log(botID, "", "%s — not retrying: this bot writes to %s, and a retry re-runs the whole bot",
+					locked.Error(), strings.Join(writes, ", "))
+				ok = false
+			}
+		}
+		if !ok {
+			if waited {
+				// Same "only if still alive" guard Run.requestApproval uses
+				// after its own wait: a container can outlast a human's
+				// decision and fail the run on its own max_runtime_secs
+				// while this loop was still waiting, and flipping a
+				// terminal run back to "running" would leave on-disk
+				// history and the live API disagreeing forever.
+				if s := run.GetStatus(); s != StatusSucceeded && s != StatusFailed {
+					run.SetStatus(StatusRunning)
+				}
+			}
+			return err
+		}
+		waited = true
+		run.SetStatus(StatusAwaitingUnlock)
+		run.Log(botID, "", "%s — will retry automatically once unlocked", locked.Error())
+		if stopErr := o.waitForVaultUnlockOrStop(run); stopErr != nil {
+			return stopErr
+		}
+	}
+}
+
+// waitForVaultUnlockOrStop sleeps one poll interval, cut short if the run
+// is cancelled — the same reason waitRetryBackoff does the same thing.
+// Returns non-nil only when the run should give up rather than retry
+// again.
+func (o *Orchestrator) waitForVaultUnlockOrStop(run *Run) error {
+	if o.vaultUnlockWaitFn != nil {
+		o.vaultUnlockWaitFn(run.Context(), vaultUnlockPollInterval)
+	} else {
+		select {
+		case <-time.After(vaultUnlockPollInterval):
+		case <-run.Context().Done():
+		}
+	}
+	if run.WasStoppedByUser() {
+		return ErrStopped
+	}
+	return run.Context().Err()
+}
+
+// writesAllowedFor reads a bot instance's own declared
+// guardrails.writes_allowed — the same field CheckRetry reads at plan time
+// to refuse an ordinary retry: on a bot that writes.
+func writesAllowedFor(rs *planner.ResolvedSwarm, botID string) []string {
+	rb, ok := rs.Bots[botID]
+	if !ok || rb.Nanobot == nil {
+		return nil
+	}
+	return rb.Nanobot.Spec.Guardrails.WritesAllowed
 }
 
 // waitRetryBackoff sleeps out a retry's backoff, cut short if the run is

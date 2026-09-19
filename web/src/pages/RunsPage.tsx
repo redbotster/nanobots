@@ -10,6 +10,7 @@ const tone: Record<Run["status"], "ok" | "warn" | "danger" | "muted"> = {
   succeeded: "ok",
   running: "warn",
   awaiting_approval: "warn",
+  awaiting_unlock: "warn",
   failed: "danger",
   pending: "muted",
 };

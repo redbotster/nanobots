@@ -21,8 +21,13 @@ const (
 	StatusPending          RunStatus = "pending"
 	StatusRunning          RunStatus = "running"
 	StatusAwaitingApproval RunStatus = "awaiting_approval"
-	StatusSucceeded        RunStatus = "succeeded"
-	StatusFailed           RunStatus = "failed"
+	// StatusAwaitingUnlock means a bot hit a passkey-locked 1Claw vault
+	// (oneclaw.VaultLockedError) — not a failure and not a retry storm, the
+	// same two things StatusAwaitingApproval already means for a pending
+	// human decision. See Orchestrator.attemptThroughVaultUnlock.
+	StatusAwaitingUnlock RunStatus = "awaiting_unlock"
+	StatusSucceeded      RunStatus = "succeeded"
+	StatusFailed         RunStatus = "failed"
 )
 
 // LogEntry is one line of a run's aggregated log, across all its bots.
