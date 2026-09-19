@@ -15,7 +15,27 @@ nothing is written into a bot container.
 
 That file is the only place a 1Claw key can live: everything else nanobots
 holds goes into a 1Claw vault secret, and a vault cannot decrypt itself
-without the key that opens it.
+without the key that opens it. `.devcontainer/devcontainer.json` deliberately
+does not mount it in — a dev container starts with no key at all, the same
+demo-data-only state a fresh clone starts in.
+
+## The rest of the CLI
+
+`nanobots plan`, `run` and `conform` (the README's Quick start) cover a
+swarm's own lifecycle. Three more talk to a running daemon or to 1Claw
+directly:
+
+```sh
+nanobots health                                           # is a running daemon answering?
+nanobots agents                                           # the 1Claw agents this repo made, and which are unused
+nanobots deploy 1claw --image <ref>                       # run it on a 1Claw Cloud Runtime
+```
+
+`health` is what a process manager should poll rather than guessing from
+the port. `agents` exists because agent count is a real cap
+(`docs/1claw-feature-requests.md` #4) — it's how you find and prune the ones
+this repo made but nothing uses anymore. `deploy 1claw` is covered in full
+in [docs/hosting.md](hosting.md).
 
 ## Where the key is read from
 

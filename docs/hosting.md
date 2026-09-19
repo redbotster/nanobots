@@ -14,6 +14,16 @@ catalog; they differ in what has to be installed and what can reach them.
 with a real headless browser, and about schedules that should fire when you
 are not there.
 
+## Released builds
+
+`v0.1.0` publishes binaries for macOS, Linux and Windows on both
+architectures, each with the WebUI compiled in, plus the
+`ghcr.io/redbotster/nanobots` container image. `brew install nanobots` and
+`npx nanobots` do **not** work yet: the Homebrew tap repository does not
+exist and the npm package is unpublished. The configuration for both
+already exists — `.goreleaser.yaml` and `npm/` — each one secret (a tap repo
+token, an npm publish token) away from working.
+
 ## Locally
 
 ```

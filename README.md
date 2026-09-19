@@ -48,41 +48,33 @@ make build          # WebUI + binary
 ./bin/nanobots up
 ```
 
-**Dev container** — open the repo in VS Code and *Reopen in Container*.
-`.devcontainer/devcontainer.json` brings Go, Node and the host's Docker, and
-installs both dependency sets on create. It deliberately does not mount your
-`~/.secrets/nanobots.env`.
+**Dev container** — open the repo in VS Code and *Reopen in Container*; it
+brings Go, Node and the host's Docker, and installs both dependency sets on
+create.
 
 Then type what you want automated into the box at the top of **Swarms** and
-press **Automate it** — or pick a ready-made swarm from the gallery below it
+press **Automate it**, or pick a ready-made swarm from the gallery below it
 and press **Run**. Nothing has to be configured first: every bot answers
 from this repo's example data until you connect an account.
 
 **Docker is optional.** 34 of the 39 bots run in this process; the 5 that
-need a container are the ones driving a real headless browser to render a
-PDF or a chart, and the run log says which path each bot took, every run
-([docs/architecture.md](docs/architecture.md)).
+need a container are the ones driving a real headless browser
+([docs/architecture.md](docs/architecture.md)). A plain `go build` also
+works while developing — a binary with no UI inside it, which says so when
+you open it — with `cd web && npm run dev` alongside for hot reload.
 
-`make build` is `npm run build` plus `go build`. A plain `go build` also
-works while developing — it produces a binary with no UI inside it, which
-says so when you open it, and you run `cd web && npm run dev` alongside for
-hot reload.
-
-**Released builds.** `v0.1.0` publishes binaries for macOS, Linux and
-Windows on both architectures, each with the WebUI compiled in, plus the
-`ghcr.io/redbotster/nanobots` image above. `brew install` and `npx nanobots`
-do **not** work yet: the Homebrew tap repository does not exist and the npm
-package is unpublished. The configuration for both is in `.goreleaser.yaml`
-and `npm/`, each one secret away.
+Released builds publish binaries and a container image; `brew install` and
+`npx nanobots` don't work yet — what's missing and why is
+[docs/hosting.md](docs/hosting.md).
 
 ```sh
 nanobots plan -f examples/swarms/daily-email-recap.yaml   # type-check a swarm, print its DAG
 nanobots run  -f examples/swarms/daily-email-recap.yaml   # run it, printing the log
 nanobots conform bots                                     # check every bot honours the contract
-nanobots health                                           # is a running daemon answering?
-nanobots agents                                           # the 1Claw agents this repo made, and which are unused
-nanobots deploy 1claw --image <ref>                       # run it on a 1Claw Cloud Runtime
 ```
+
+More of the CLI, including `health`, `agents` and `deploy 1claw`, is in
+[docs/setup.md](docs/setup.md).
 
 Making it act on your real accounts is three optional layers — a model,
 1Claw to hold the credentials, then one account at a time:
@@ -132,52 +124,33 @@ Type what you want into the box at the top of **Swarms**:
 
 > Help me automate a daily email recap and list it by priority
 
-Under the hood (`internal/api/compose.go`, `POST /api/compose`): the real bot
-catalog — every bot's id, description, and every port with its type and the
-fields inside its json ports — goes to the model along with your message; the
-answer is parsed into the exact shape the visual builder already saves; that
-draft runs through the real planner, so a hallucinated bot id or a mismatched
-port type comes back as a normal validation error rather than a silent bad
-save; and the validated draft opens in the builder, pre-populated.
+The real catalog goes to the model with your message; the draft runs
+through the real planner, so a hallucinated bot id comes back as a normal
+validation error, not a silent bad save; **it never saves or runs anything
+by itself** — every proposed swarm goes through the same human-reviews-it-
+first path as one built by hand.
 
-**It never saves or runs anything by itself.** Every proposed swarm goes
-through the same human-reviews-it-first path as one built by hand.
-
-If no combination of existing bots can satisfy the request, the composer says
-so instead of guessing, and offers to escalate: a sandboxed coding agent
-authors a brand-new bot, self-tests it against the real conformance runner,
-and opens the same approval gate a swarm's `approve` step uses before the bot
-ever joins the catalog. Approve it and the composer retries your original
-request automatically ([docs/foundry.md](docs/foundry.md)).
-
-A header toggle switches the whole UI between **basic** (Swarms, Runs,
-Settings — nothing to learn before you can automate something) and
-**advanced** (adds the bot library and the blank-canvas builder). It only
-changes which entry points are visible; a swarm built either way executes
-identically.
+If no combination of bots can do it, the composer says so and offers to
+escalate: a sandboxed coding agent authors a brand-new bot, self-tests it,
+and opens the same approval gate a swarm's `approve` step uses before it
+ever joins the catalog ([docs/foundry.md](docs/foundry.md)).
 
 ## Team and Lab
 
 The composer drafts a swarm from your description. **Lab** (Advanced mode)
-is the other direction: a chat tab backed by an orchestrator that decides
-whether to delegate your message to a **Team** member or just answer it.
-
-A Team member is a persistent, role-scoped coding agent (Claude Code or
-Gemini CLI) working in its own git worktree of this repo — it can read the
-catalog, author or edit bots and swarms, and run the `nanobots` CLI itself,
-but nothing it does takes effect against a real account until a human runs
-or approves it, exactly the same gate a person editing YAML by hand goes
-through. No new trust boundary was built for this; the one nanobots already
-had turned out to be enough.
+is the other direction: a chat tab that delegates your message to a
+persistent, role-scoped coding agent (**Team**, Claude Code or Gemini CLI,
+in its own git worktree of this repo) or just answers it. Nothing a Team
+member does takes effect against a real account until a human runs or
+approves it — the same gate a person editing YAML by hand goes through, no
+new trust boundary built for this one.
 
 ```sh
 nanobots team run backend-engineer "add a stripe-watch bot to the catalog"
 ```
 
-Needs its own `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` — Shroud is a
-single-shot proxy, not a multi-turn session an external CLI agent can sit
-behind, so this is a real credential this repo doesn't provision, the same
-disclosed gap the foundry's coding agent already has
+Needs its own `ANTHROPIC_API_KEY` or `GEMINI_API_KEY`, the same disclosed
+credential gap the foundry's coding agent already has
 ([docs/team.md](docs/team.md), [docs/lab.md](docs/lab.md)).
 
 ## The catalog
@@ -227,23 +200,13 @@ What a bot and a swarm look like as files, in real YAML from this repo:
 
 The bot contract, the planner, the runner, the 1Claw bridge, seven direct
 service clients, the composer, the foundry, the scheduler, approvals,
-fan-out, run history and the WebUI are all real and exercised against live
-APIs. Team and Lab are real too — a live delegation, streamed into the
-chat as it happens, is in [docs/lab.md](docs/lab.md) — but Team's default
-engine (Claude Code) is only mechanically verified: the one API key
-available to test it had no credit, so only the second engine tried
-(Gemini) has actually done real work end to end. Published packages are
-partly there: tagged releases publish real binaries and a container image,
-but `brew` and `npx` still don't work — the Homebrew tap and the npm
-package need accounts this repo doesn't hold yet. Container-level network
-egress is enforced, including a bot's own Chromium rendering, not just its
-callbacks to nanobotd. No bot ships connected to a real account — every
-one starts on `connection: demo` until a human deliberately flips it.
-
-The full list, and the line-by-line table of what is real versus simulated,
-is [docs/status.md](docs/status.md). The gaps that are 1Claw's rather than
-ours — what each one blocks and the honest workaround shipped meanwhile — are
-[docs/1claw-feature-requests.md](docs/1claw-feature-requests.md).
+fan-out, run history, Team, Lab and the WebUI are all real and exercised
+against live APIs — no bot ships connected to a real account, every one
+starts on `connection: demo` until a human deliberately flips it. The
+line-by-line table of what's real versus what's still simulated, and
+exactly which case each claim above was checked in, is
+[docs/status.md](docs/status.md). The gaps that are 1Claw's rather than
+ours are [docs/1claw-feature-requests.md](docs/1claw-feature-requests.md).
 
 ## Documentation
 
@@ -265,37 +228,22 @@ run it for real. The ones most people want first:
 | [team.md](docs/team.md) | a persistent, role-scoped coding agent, and why it needs no new gate |
 | [lab.md](docs/lab.md) | talking to your Team from one chat tab |
 
-The full product spec lives in
+The full product spec — YAML schemas, the launch catalog — lives in
 [`context/NANOBOTS-BLUEPRINT.md`](context/NANOBOTS-BLUEPRINT.md) and
-[`context/NANOBOTS-CATALOG.md`](context/NANOBOTS-CATALOG.md). Treat those as
-the source of truth for the YAML schemas and the launch catalog; everything
-under `docs/` covers what is actually built, and if it contradicts the code,
-the code wins.
+[`context/NANOBOTS-CATALOG.md`](context/NANOBOTS-CATALOG.md); `docs/` covers
+what's actually built, and wins if the two disagree.
 
 ## Contributing
 
-`CLAUDE.md` is the working style, and the short version is: never let the app
-say something that is not so, measure before improving, verify in a real
-browser, and keep the docs current in the same commit as the change. The full
-verification pass:
-
-```sh
-go build ./... && go vet ./... && go test ./... -race
-cd web && npx tsc -b && npm run lint && npm run format:check && npm run test
-```
-
-The second badge above is `scripts/e2e/first-run.ts`: a real browser, a real
-`docker compose up` with nothing configured, running a swarm to success —
-the claim this README opens with, checked daily rather than asserted
-([docs/testing.md](docs/testing.md)).
+`CLAUDE.md` is the working style: never let the app say something that isn't
+so, measure before improving, verify in a real browser, docs in the same
+commit as the change. The full verification pass and what the second badge
+above actually checks are both in [docs/testing.md](docs/testing.md).
 
 ## License
 
-Source-available, **not** open source. Nanobots is distributed under the
-[Sustainable Use License](LICENSE.md) — the same license n8n uses — with one
-deliberate change: n8n permits use "for your own internal business purposes",
-and this one does not.
-
-Non-commercial and personal use, and evaluation, are free. **Any commercial
-use requires express written permission** from Kevin Jones Enterprises Inc.,
-the author of Nanobots.
+Source-available, **not** open source, under the
+[Sustainable Use License](LICENSE.md) — the same one n8n uses, minus n8n's
+"for your own internal business purposes" carve-out. Non-commercial,
+personal and evaluation use are free; **any commercial use requires express
+written permission** from Kevin Jones Enterprises Inc., the author.
