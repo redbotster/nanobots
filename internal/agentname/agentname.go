@@ -30,10 +30,13 @@ const (
 	ShroudProxy = "nanobots-shroud-proxy"
 	// Foundry authors a new bot when the catalog genuinely cannot do it.
 	Foundry = "nanobots-foundry"
+	// Lab routes a chat message to a Team agent or answers it directly.
+	// See internal/lab and context/TEAM-LAB-DESIGN.md.
+	Lab = "nanobots-lab"
 )
 
 // WellKnown is every fixed name, for the code that has to tell a live agent
 // from a leftover one.
 func WellKnown() []string {
-	return []string{Approvals, Composer, ShroudProxy, Foundry}
+	return []string{Approvals, Composer, ShroudProxy, Foundry, Lab}
 }

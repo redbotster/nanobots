@@ -170,6 +170,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ approved, decided_by: "you" }),
     }),
+  sendLabMessage: (message: string) =>
+    req<{ ok: boolean }>("/api/lab/messages", {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    }),
   startFoundryJob: (
     request: string,
     missingCapability: string,
@@ -222,6 +227,22 @@ export function subscribeFoundryEvents(
   onEntry: (entry: import("./types").LogEntry) => void,
 ): () => void {
   const source = new EventSource(`/api/foundry/${jobId}/events`);
+  source.onmessage = (ev) => {
+    try {
+      onEntry(JSON.parse(ev.data));
+    } catch {
+      // ignore malformed frames rather than tearing down the stream
+    }
+  };
+  return () => source.close();
+}
+
+/** Mirrors subscribeRunEvents exactly, for Lab's one ongoing
+ * conversation — no id, since there is exactly one session per server. */
+export function subscribeLabEvents(
+  onEntry: (entry: import("./types").LogEntry) => void,
+): () => void {
+  const source = new EventSource("/api/lab/events");
   source.onmessage = (ev) => {
     try {
       onEntry(JSON.parse(ev.data));

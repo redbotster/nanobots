@@ -13,11 +13,13 @@ import (
 
 	"github.com/redbotster/nanobots/internal/api"
 	"github.com/redbotster/nanobots/internal/foundry"
+	"github.com/redbotster/nanobots/internal/lab"
 	"github.com/redbotster/nanobots/internal/oneclaw"
 	"github.com/redbotster/nanobots/internal/roles"
 	"github.com/redbotster/nanobots/internal/runner"
 	"github.com/redbotster/nanobots/internal/scheduler"
 	"github.com/redbotster/nanobots/internal/step"
+	"github.com/redbotster/nanobots/internal/team"
 	"github.com/redbotster/nanobots/internal/webui"
 	"github.com/redbotster/nanobots/internal/wiring"
 )
@@ -117,6 +119,32 @@ func build(opts Options) (*api.Server, *scheduler.Scheduler, Options, error) {
 		log.Println("foundry: ANTHROPIC_API_KEY configured — the composer can escalate a real gap to a coding agent")
 	}
 
+	// Same reasoning, for internal/team's second engine — see
+	// docs/team.md on why Gemini CLI needs its own key too.
+	geminiKey, err := oneclaw.LoadEnvValue(opts.EnvFilePath, "GEMINI_API_KEY")
+	if err != nil {
+		return nil, nil, opts, fmt.Errorf("load Gemini API key: %w", err)
+	}
+	// Claude preferred when both are configured — context/TEAM-LAB-DESIGN.md
+	// named it as the first Team harness; Gemini is the fallback this
+	// machine actually had credit for, not the default going forward.
+	var labEngine team.Engine
+	switch {
+	case anthropicKey != "":
+		labEngine = team.EngineClaude
+	case geminiKey != "":
+		labEngine = team.EngineGemini
+	}
+	teamDir, err := team.DefaultTeamDir()
+	if err != nil {
+		return nil, nil, opts, err
+	}
+	if labEngine != "" {
+		log.Printf("lab: Team engine %q configured", labEngine)
+	} else {
+		log.Println("lab: no Team engine configured — Lab will chat but can't delegate (see docs/team.md)")
+	}
+
 	paths, err := wiring.ResolvePaths()
 	if err != nil {
 		return nil, nil, opts, err
@@ -185,6 +213,16 @@ func build(opts Options) (*api.Server, *scheduler.Scheduler, Options, error) {
 
 	runs := wiring.BuildRunStore(paths, func(f string, a ...any) { log.Printf(f, a...) })
 
+	labSession := lab.NewSession(gen, lab.Config{
+		Team: team.Config{
+			RepoRoot:        opts.RepoRoot,
+			TeamDir:         teamDir,
+			AnthropicAPIKey: anthropicKey,
+			GeminiAPIKey:    geminiKey,
+		},
+		DefaultEngine: labEngine,
+	})
+
 	srv := &api.Server{
 		Orchestrator: orch,
 		Runs:         runs,
@@ -201,6 +239,7 @@ func build(opts Options) (*api.Server, *scheduler.Scheduler, Options, error) {
 		Webhook:      webhookTrigger,
 		Roles:        roleStore,
 		UI:           webui.Handler(),
+		Lab:          labSession,
 	}
 
 	// The breaker is shared with the API rather than made twice, so the app

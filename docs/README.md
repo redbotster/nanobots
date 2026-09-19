@@ -24,6 +24,7 @@ it.
 | [builder.md](builder.md) | the visual canvas, zoom, and how a layout stays honest |
 | [foundry.md](foundry.md) | what happens when the catalog genuinely cannot do it |
 | [team.md](team.md) | a persistent, role-scoped coding agent, and why it needs no new approval gate |
+| [lab.md](lab.md) | talking to your Team from one chat tab, and two real bugs found verifying it |
 | [fixtures.md](fixtures.md) | turning a real run into a bot's test data |
 | [supervisors.md](supervisors.md) | a review board that picks its own reviewers |
 | [sharing.md](sharing.md) | exporting a swarm and importing someone else's |

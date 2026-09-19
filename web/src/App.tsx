@@ -22,6 +22,7 @@ const SettingsPage = lazy(() =>
   import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage })),
 );
 const TeamPage = lazy(() => import("./pages/TeamPage").then((m) => ({ default: m.TeamPage })));
+const LabPage = lazy(() => import("./pages/LabPage").then((m) => ({ default: m.LabPage })));
 
 import { LandingPage } from "./pages/LandingPage";
 import { StatusDot } from "./components/StatusDot";
@@ -33,7 +34,7 @@ import { useApprovalNotifications } from "./lib/useApprovalNotifications";
 import { useTheme } from "./lib/theme";
 import { useStatus } from "./lib/useStatus";
 
-type Page = "swarm" | "bots" | "team" | "runs" | "settings";
+type Page = "swarm" | "bots" | "team" | "lab" | "runs" | "settings";
 
 const NAV: { id: Page; label: string; icon: string }[] = [
   { id: "bots", label: "Bot library", icon: "M4 7h16M4 12h10M4 17h7" },
@@ -45,6 +46,13 @@ const NAV: { id: Page; label: string; icon: string }[] = [
   // Between the catalog and the run log: the Team is about who works for
   // you, which sits naturally after "what exists" and before "what ran".
   { id: "team", label: "Team", icon: "M4 18h16M7 18V9m5 9V5m5 13v-6" },
+  // Lab talks to the Team on your behalf (context/TEAM-LAB-DESIGN.md) —
+  // right after Team, since it's the thing that directs it.
+  {
+    id: "lab",
+    label: "Lab",
+    icon: "M9 3h6l1 5-4 4-4-4zM7 21l3-8h4l3 8",
+  },
   { id: "runs", label: "Runs", icon: "M4 12h4l2-6 4 12 2-6h4" },
   {
     id: "settings",
@@ -73,13 +81,17 @@ function Dashboard({ onLeave }: { onLeave: () => void }) {
   } = useApprovalNotifications();
   const { theme, resolved: resolvedTheme, setTheme } = useTheme();
 
-  // Basic mode hides the bot library nav entry entirely — if a user was on
-  // it and switches to basic, don't leave them on an orphaned page.
+  // Basic mode hides the bot library and Lab nav entries entirely — Lab
+  // delegates to a Team member, which is exactly the "you'd need to know
+  // what a bot/swarm is first" territory basic mode already keeps out of
+  // view. If a user was on either and switches to basic, don't leave them
+  // on an orphaned page.
   useEffect(() => {
-    if (uiMode === "basic" && page === "bots") setPage("swarm");
+    if (uiMode === "basic" && (page === "bots" || page === "lab")) setPage("swarm");
   }, [uiMode, page]);
 
-  const visibleNav = uiMode === "basic" ? NAV.filter((item) => item.id !== "bots") : NAV;
+  const visibleNav =
+    uiMode === "basic" ? NAV.filter((item) => item.id !== "bots" && item.id !== "lab") : NAV;
 
   useEffect(() => {
     Promise.all([listBotsCached(), listSwarmsCached()])
@@ -240,6 +252,7 @@ function Dashboard({ onLeave }: { onLeave: () => void }) {
           <Suspense fallback={<LazyFallback />}>
             {page === "bots" && <BotLibrary />}
             {page === "team" && <TeamPage />}
+            {page === "lab" && <LabPage />}
             {page === "runs" && <RunsPage onOpenSettings={() => setPage("settings")} />}
             {page === "settings" && <SettingsPage status={status} />}
           </Suspense>

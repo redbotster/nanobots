@@ -226,7 +226,21 @@ before any UI or harness work —
    **Not done** — step 2's live proof landed; this is now unblocked.
 4. Only then design Lab's chat surface, informed by what steps 2 and 3
    actually required.
-   **Not done.**
+   **Built, ahead of step 3.** The user asked for Lab now rather than
+   waiting on the Honcho recall-before-work step, so it was built against
+   what step 2 alone required: a single-shot router
+   (`internal/llm.Generator` has no function-calling loop to build a real
+   one on), reusing `*runner.Run`'s existing log/subscribe machinery for
+   the chat's own SSE stream rather than a second pub-sub mechanism
+   (`internal/lab`, `docs/lab.md`). Verified in the real WebUI, against a
+   real Shroud call and a real Gemini delegation, which found two real
+   bugs a mocked test never would have — a canceled context that failed
+   every delegation, and a truncated final summary from not accumulating
+   Gemini's streamed delta chunks. Both are fixed and covered by tests
+   built from the real failing transcript; docs/lab.md has the full story.
+   Step 3 (recall-before-work) is still open, and Lab currently has no way
+   to tell two Team agents apart working the same role concurrently —
+   worth naming now that a real chat surface exists to eventually need it.
 
 This keeps the large, genuinely uncertain pieces (multi-tenancy, the
 harness-per-CLI matrix, 1,000-agent scale) as named risks with a first real

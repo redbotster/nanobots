@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/redbotster/nanobots/internal/foundry"
+	"github.com/redbotster/nanobots/internal/lab"
 	"github.com/redbotster/nanobots/internal/llm"
 	"github.com/redbotster/nanobots/internal/memory"
 	"github.com/redbotster/nanobots/internal/oneclaw"
@@ -94,6 +95,12 @@ type Server struct {
 	// which is what the daemon binary and every test get.
 	UI http.Handler
 
+	// Lab is the one ongoing Lab conversation this server holds — see
+	// internal/lab and context/TEAM-LAB-DESIGN.md. nil leaves the Lab
+	// endpoints reporting "not configured" rather than failing, the same
+	// shape every other optional integration here uses.
+	Lab *lab.Session
+
 	// connCache holds the last /api/connections answer. Zero value is a
 	// cold cache, so nothing has to construct it. See connections.go for
 	// why an eight-round-trip read is worth caching at all.
@@ -162,6 +169,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/foundry/{id}", s.handleGetFoundryJob)
 	mux.HandleFunc("GET /api/foundry/{id}/events", s.handleFoundryJobEvents)
 	mux.HandleFunc("POST /api/foundry/{id}/approvals/{approvalID}/decide", s.handleDecideFoundryReview)
+	mux.HandleFunc("POST /api/lab/messages", s.handleLabMessage)
+	mux.HandleFunc("GET /api/lab/events", s.handleLabEvents)
 	mux.HandleFunc("GET /api/blobs/{uri}", s.handleGetBlob)
 
 	// Token-authenticated, unlike everything above: this one spends money,
