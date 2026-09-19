@@ -1,9 +1,8 @@
 package scheduler
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
+	"database/sql"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -39,10 +38,11 @@ import (
 // proving the same point. The only stored state is "the user pressed
 // Resume at time T", after which failures are counted afresh.
 type Breaker struct {
-	// Dir is where resume markers are written. Empty disables persistence,
-	// which is what tests get; the breaker still works, it just forgets a
-	// Resume across restarts.
-	Dir string
+	// DB is where resume markers are written — the same shared SQLite file
+	// run history moved into (internal/statedb), a `schedule_resumes`
+	// table of its own. nil disables persistence, which is what tests get;
+	// the breaker still works, it just forgets a Resume across restarts.
+	DB *sql.DB
 	// MaxFailures is how many consecutive failures trip it. Zero means
 	// DefaultMaxFailures.
 	MaxFailures int
@@ -51,6 +51,13 @@ type Breaker struct {
 	resumed map[string]time.Time
 	loaded  bool
 }
+
+const scheduleResumesSchema = `
+CREATE TABLE IF NOT EXISTS schedule_resumes (
+	swarm_name TEXT PRIMARY KEY,
+	resumed_at TEXT NOT NULL
+);
+`
 
 // DefaultMaxFailures is high enough to ride out a transient blip — a
 // provider 503, a laptop asleep at the wrong moment — and low enough that a
@@ -140,8 +147,12 @@ func (b *Breaker) Resume(swarmName string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.loadLocked()
-	b.resumed[swarmName] = time.Now()
-	return b.saveLocked()
+	now := time.Now()
+	if err := b.saveLocked(swarmName, now); err != nil {
+		return err
+	}
+	b.resumed[swarmName] = now
+	return nil
 }
 
 func (b *Breaker) resumedAt(swarmName string) time.Time {
@@ -151,39 +162,53 @@ func (b *Breaker) resumedAt(swarmName string) time.Time {
 	return b.resumed[swarmName]
 }
 
-func (b *Breaker) markerPath() string {
-	return filepath.Join(b.Dir, "schedule-resumed.json")
-}
-
 func (b *Breaker) loadLocked() {
 	if b.loaded {
 		return
 	}
 	b.loaded = true
 	b.resumed = map[string]time.Time{}
-	if b.Dir == "" {
+	if b.DB == nil {
 		return
 	}
-	raw, err := os.ReadFile(b.markerPath())
+	if _, err := b.DB.Exec(scheduleResumesSchema); err != nil {
+		return
+	}
+	// A row that won't parse, or a table that can't be read at all, means
+	// "no one has resumed anything" — the safe reading either way: it can
+	// only leave a broken schedule paused, never start one firing again
+	// behind the user's back.
+	rows, err := b.DB.Query(`SELECT swarm_name, resumed_at FROM schedule_resumes`)
 	if err != nil {
 		return
 	}
-	// A corrupt marker file means "no one has resumed anything", which is
-	// the safe reading: it can only leave a broken schedule paused, never
-	// start one firing again behind the user's back.
-	_ = json.Unmarshal(raw, &b.resumed)
+	defer rows.Close()
+	for rows.Next() {
+		var name, at string
+		if rows.Scan(&name, &at) != nil {
+			continue
+		}
+		t, err := time.Parse(time.RFC3339Nano, at)
+		if err != nil {
+			continue
+		}
+		b.resumed[name] = t
+	}
 }
 
-func (b *Breaker) saveLocked() error {
-	if b.Dir == "" {
+func (b *Breaker) saveLocked(swarmName string, at time.Time) error {
+	if b.DB == nil {
 		return nil
 	}
-	if err := os.MkdirAll(b.Dir, 0o700); err != nil {
+	if _, err := b.DB.Exec(scheduleResumesSchema); err != nil {
 		return err
 	}
-	raw, err := json.MarshalIndent(b.resumed, "", "  ")
+	_, err := b.DB.Exec(`
+		INSERT INTO schedule_resumes (swarm_name, resumed_at) VALUES (?, ?)
+		ON CONFLICT (swarm_name) DO UPDATE SET resumed_at = excluded.resumed_at`,
+		swarmName, at.UTC().Format(time.RFC3339Nano))
 	if err != nil {
-		return err
+		return fmt.Errorf("recording resume for %q: %w", swarmName, err)
 	}
-	return os.WriteFile(b.markerPath(), append(raw, '\n'), 0o600)
+	return nil
 }

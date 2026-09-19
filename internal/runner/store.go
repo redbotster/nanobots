@@ -4,8 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"sync"
-
-	"github.com/redbotster/nanobots/internal/statedb"
 )
 
 // MaxPersistedRuns bounds run history. Was 200, kept low deliberately
@@ -40,22 +38,20 @@ func NewRunStore() *RunStore {
 	return &RunStore{runs: map[string]*Run{}}
 }
 
-// NewPersistentRunStore returns a store backed by the SQLite file at
-// dbPath, preloaded with the history already there. If dbPath has never
-// been used before and jsonDir holds history in the old one-file-per-run
-// format, it's imported once — see migrateJSONHistory. The JSON files are
-// never deleted by this: a storage-format change doesn't get to remove
-// data as a side effect, only add it in a new place. logf (nil is fine)
-// hears about the migration and about the load — a load error is returned
-// alongside a usable store either way; unreadable history is a reason to
-// warn, never a reason to refuse to start.
-func NewPersistentRunStore(dbPath, jsonDir string, logf func(string, ...any)) (*RunStore, error) {
+// NewPersistentRunStore returns a store backed by db (already open — see
+// internal/statedb.Open; the caller owns it because it's shared with other
+// subsystems now, not runner's alone), preloaded with the history already
+// there. If db's runs table has never been used and jsonDir holds history
+// in the old one-file-per-run format, it's imported once — see
+// migrateJSONHistory. The JSON files are never deleted by this: a
+// storage-format change doesn't get to remove data as a side effect, only
+// add it in a new place. logf (nil is fine) hears about the migration and
+// about the load — a load error is returned alongside a usable store
+// either way; unreadable history is a reason to warn, never a reason to
+// refuse to start.
+func NewPersistentRunStore(db *sql.DB, jsonDir string, logf func(string, ...any)) (*RunStore, error) {
 	if logf == nil {
 		logf = func(string, ...any) {}
-	}
-	db, err := statedb.Open(dbPath)
-	if err != nil {
-		return &RunStore{runs: map[string]*Run{}}, err
 	}
 	if err := ensureRunsSchema(db); err != nil {
 		return &RunStore{runs: map[string]*Run{}}, err
@@ -63,10 +59,10 @@ func NewPersistentRunStore(dbPath, jsonDir string, logf func(string, ...any)) (*
 
 	migrated, migrateErr := migrateJSONHistory(db, jsonDir)
 	if migrateErr != nil {
-		logf("migrating run history from %s to %s: %v", jsonDir, dbPath, migrateErr)
+		logf("migrating run history from %s: %v", jsonDir, migrateErr)
 	} else if migrated > 0 {
-		logf("migrated %d run(s) from %s to %s — the JSON files are untouched; "+
-			"delete them yourself once you've confirmed history looks right", migrated, jsonDir, dbPath)
+		logf("migrated %d run(s) from %s into the shared database — the JSON files are untouched; "+
+			"delete them yourself once you've confirmed history looks right", migrated, jsonDir)
 	}
 
 	s := &RunStore{runs: map[string]*Run{}, DB: db}

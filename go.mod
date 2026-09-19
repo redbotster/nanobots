@@ -4,6 +4,7 @@ go 1.25.6
 
 require (
 	filippo.io/age v1.3.2
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/google/uuid v1.6.0
 	github.com/zalando/go-keyring v0.2.8
 	gopkg.in/yaml.v3 v3.0.1
