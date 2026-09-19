@@ -53,6 +53,18 @@ export function LastRunLine({ swarm: s }: { swarm: SwarmSummary }) {
       </div>
     );
   }
+  if (s.last_run_status === "awaiting_unlock") {
+    // Deliberately different wording from awaiting_approval: this isn't
+    // something answered inside nanobots. Saying "waiting for your
+    // approval" here would send someone looking for an Approve button
+    // that doesn't exist for this state.
+    return (
+      <div className="mt-1 flex items-center gap-1.5 text-[11px] font-medium text-warn">
+        <StatusDot tone="warn" />
+        waiting on 1Claw's vault — unlock it with your passkey
+      </div>
+    );
+  }
   if (s.last_run_status === "running") {
     return (
       <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted">
@@ -78,6 +90,7 @@ const RUN_TONE: Record<string, "ok" | "warn" | "danger" | "muted"> = {
   succeeded: "ok",
   running: "warn",
   awaiting_approval: "warn",
+  awaiting_unlock: "warn",
   failed: "danger",
   pending: "muted",
 };

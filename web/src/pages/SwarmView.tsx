@@ -86,7 +86,10 @@ export function SwarmView({
     for (const b of plan?.bots ?? []) m.set(b.instance_id, b.bot_id);
     return m;
   }, [plan]);
-  const isBusy = run?.status === "running" || run?.status === "awaiting_approval";
+  const isBusy =
+    run?.status === "running" ||
+    run?.status === "awaiting_approval" ||
+    run?.status === "awaiting_unlock";
 
   const activityOf = (botId: string): "idle" | "running" | "done" | "failed" => {
     if (!run) return "idle";

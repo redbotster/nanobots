@@ -225,7 +225,7 @@ paper over what is actually happening. So, plainly:
 | The AI composer — a real Shroud call, a real planner validation pass, a real hydrate-into-the-builder handoff | The composer never auto-saves or auto-runs; a hallucinated bot id or type mismatch surfaces as a normal validation error for the human to see, by design |
 | The unified Connect UI (Settings) — real vault writes and reads, real Google OAuth kicked off server-side | Connections are always whole-port-to-port in the builder and the composer; a swarm's trigger/vars/deploy config has no UI yet; canvas layout is not persisted |
 | Approvals — a run blocks, flips to `awaiting_approval`, and waits for a real decision from the WebUI, the CLI, or 1Claw's own queue, which one shared agent opens it in; first answer wins ([approvals.md](approvals.md)) | A local answer still leaves the mirrored 1Claw approval pending rather than cancelling it — 1Claw's API gained a cancel endpoint after this was first built, but nothing calls it yet; and where 1Claw delivers the question — push, email, dashboard — is your account's setting, not this repo's ([1claw-feature-requests.md](1claw-feature-requests.md)) |
-| Per-item fan-out *and* the join back — a `.*` snap runs a downstream bot once per list item with one approval covering the batch ([fan-out.md](fan-out.md)) | Two swarms still snap `.0`: `content-engine` and `meeting-to-action` would fan out cleanly but multiply container starts, which is a cost decision rather than a missing primitive |
+| Per-item fan-out *and* the join back — a `.*` snap runs a downstream bot once per list item with one approval covering the batch ([fan-out.md](fan-out.md)); `get-paid` uses both | `content-engine` and `thread-from-an-idea` still snap `.0` — a product decision, not a missing primitive: fanning either would publish every brainstormed idea in one run instead of "the first one, scheduled across the week" ([fan-out.md](fan-out.md)) |
 | Basic/advanced mode toggle — a real, tested UI gate | Purely a UI-visibility gate; it never changes what actually executes |
 
 **A real constraint hit repeatedly while building this**: 1Claw vaults can
@@ -234,7 +234,11 @@ account's own vault security tier — a 403 `"Passkey verification required to
 access vault secrets"` from 1Claw itself, not a bug here. A connected
 credential can sit in the vault but be temporarily unreadable until a human
 unlocks it with their passkey in a browser. Bots that only need Shroud or
-`web.fetch` are unaffected, which is most of the hero path.
+`web.fetch` are unaffected, which is most of the hero path. A run that hits
+this pauses (`awaiting_unlock`, distinct from `awaiting_approval` in the
+run status and in the run log) and retries automatically every 30 seconds
+rather than failing outright or burning the bot's own `retry:` budget on
+something that isn't its own transient failure ([connections.md](connections.md)).
 
 ## Keeping this page honest
 

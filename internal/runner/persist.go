@@ -114,7 +114,8 @@ func (s snapshot) toRun() *Run {
 	// its goroutine, its containers, and anyone waiting on an approval are
 	// all gone. Saying so is more honest than restoring it as "running"
 	// forever, which is what a naive reload would do.
-	if r.Status == StatusRunning || r.Status == StatusPending || r.Status == StatusAwaitingApproval {
+	if r.Status == StatusRunning || r.Status == StatusPending || r.Status == StatusAwaitingApproval ||
+		r.Status == StatusAwaitingUnlock {
 		r.Status = StatusFailed
 		if r.Error == "" {
 			r.Error = "nanobotd restarted while this run was in progress"

@@ -34,6 +34,23 @@ describe("the swarm card's run line", () => {
     expect(screen.queryByText(/last ran/i)).toBeNull();
   });
 
+  // v3 Phase 4: a passkey-locked 1Claw vault pauses a run too, but it is
+  // not the same wait as an approval — there is no button in this app that
+  // answers it, so the wording must not send someone looking for one.
+  it("says a swarm is waiting on 1Claw's vault, distinctly from an approval", () => {
+    render(
+      <LastRunLine
+        swarm={swarm({
+          last_run_status: "awaiting_unlock",
+          last_run_at: "2026-09-15T10:00:00Z",
+        })}
+      />,
+    );
+    expect(screen.getByText(/1claw's vault/i)).toBeTruthy();
+    expect(screen.queryByText(/waiting for your approval/i)).toBeNull();
+    expect(screen.queryByText(/last ran/i)).toBeNull();
+  });
+
   // Same bug, smaller stakes: a run in progress is not a run that happened.
   it("says a running swarm is running, not when it last ran", () => {
     render(
