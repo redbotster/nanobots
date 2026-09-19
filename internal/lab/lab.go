@@ -134,7 +134,14 @@ func (s *Session) delegate(ctx context.Context, role, task string) {
 		s.appendLab("I'd delegate that, but no Team engine is configured — set ANTHROPIC_API_KEY or GEMINI_API_KEY in ~/.secrets/nanobots.env (see docs/team.md).")
 		return
 	}
-	s.run.Log("lab", "", "delegating to %s: %s", role, task)
+	// step "delegating" marks this as an interim status line, not Lab's
+	// answer — the WebUI treats a bare "lab"-authored entry (no step) as
+	// the signal a message is fully answered (see LabPage.tsx), and this
+	// line arrives well before that's true. Found live: without a way to
+	// tell the two apart, the chat's "still working" indicator cleared the
+	// instant this line appeared, while the actual delegation — the
+	// container starting, the real work — was still 30-90 seconds out.
+	s.run.Log("lab", "delegating", "delegating to %s: %s", role, task)
 
 	events := make(chan foundry.Event)
 	done := make(chan error, 1)
@@ -144,10 +151,30 @@ func (s *Session) delegate(ctx context.Context, role, task string) {
 
 	summary, err := consumeDelegation(role, events, done, func(bot, phase, msg string) { s.run.Log(bot, phase, "%s", msg) })
 	if err != nil {
-		s.appendLab(fmt.Sprintf("%s hit a problem: %v", role, err))
+		// The full error, unedited, first — team.Run's error can carry a
+		// whole container's stderr verbatim (RunDockerAgent wraps it in as
+		// -is: a coding agent's actual output is the point of watching it
+		// work, so nothing pre-filters it). Logged here under its own
+		// phase so it's genuinely still readable in the chat log, not just
+		// claimed to be, before appendLab's own message shortens it.
+		s.run.Log("team/"+role, "error", "%s", err.Error())
+		s.appendLab(fmt.Sprintf("%s hit a problem: %s", role, shortErr(err)))
 		return
 	}
 	s.appendLab(fmt.Sprintf("%s: %s", role, summary))
+}
+
+// shortErr caps a delegation failure to something worth reading in Lab's
+// own chat line. Found live, hitting Gemini's free-tier rate limit: with
+// no cap, that line was a multi-hundred-line raw JavaScript stack trace,
+// the actual 429 and its retry-after buried somewhere inside it.
+func shortErr(err error) string {
+	const max = 300
+	s := err.Error()
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "… (see the log above for the rest)"
 }
 
 // consumeDelegation drains one delegation's event stream, logging every

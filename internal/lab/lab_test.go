@@ -124,3 +124,37 @@ func TestHandleMessageDelegateWithNoEngineConfiguredSaysSo(t *testing.T) {
 		t.Errorf("last log line = %q", lastLogMsg(s))
 	}
 }
+
+// The WebUI tells "Lab is still working" apart from "Lab has answered" by
+// whether a "lab"-authored entry carries a step (see LabPage.tsx) — found
+// live, after treating any "lab" entry as "answered" cleared the busy
+// indicator on this interim line instead of the real one. A regression
+// here would silently break that distinction without any Go test failing
+// to say so, since nothing else reads Step.
+func TestDelegatingLogsAnInterimStepDistinctFromTheFinalAnswer(t *testing.T) {
+	gen := &fakeGenerator{answers: []string{`{"action":"delegate","role":"backend-engineer","task":"add a bot"}`}}
+	s := NewSession(gen, Config{
+		Team:          team.Config{RepoRoot: t.TempDir(), TeamDir: t.TempDir(), AnthropicAPIKey: "sk-test"},
+		DefaultEngine: team.EngineClaude,
+	})
+	s.HandleMessage(context.Background(), "add a stripe bot")
+
+	var sawInterim, sawFinal bool
+	for _, e := range s.Run().LogEntries() {
+		if e.Bot != "lab" {
+			continue
+		}
+		if e.Step == "delegating" {
+			sawInterim = true
+		}
+		if e.Step == "" {
+			sawFinal = true
+		}
+	}
+	if !sawInterim {
+		t.Error("no interim \"delegating\" step logged")
+	}
+	if !sawFinal {
+		t.Error("no final, step-less \"lab\" entry logged")
+	}
+}

@@ -91,6 +91,49 @@ Recorded here rather than patched with an unverified heuristic (inserting
 a space at every chunk boundary would be wrong just as often, since some
 chunks legitimately continue the previous word or punctuation).
 
+## Two more, found by driving it again rather than guessing what to improve
+
+**3. The input re-enabled, and the Send button re-read "Send," within
+about 100ms of asking for real work — while the actual delegation was
+still 30-90 seconds out.** `handleLabMessage` returns almost immediately by
+design (202, then SSE), so a naive "sending" flag tracks the POST, not the
+answer. Fixed with a separate `busy` flag in `LabPage.tsx` that clears only
+when Lab's real answer arrives, plus a "Lab is thinking…" indicator bubble
+and a disabled input meanwhile — so a second message can't land in the
+middle of the first one's answer.
+
+That fix's first version was wrong in a way only running it for real
+caught: it treated *any* `"lab"`-authored log entry as "the answer landed."
+A delegation logs two — `delegating to designer: …` the instant Lab
+decides to hand a task off, and the real answer only once that task
+finishes — and the busy indicator cleared on the first one, exactly the
+bug it was built to fix. Fixed by giving the interim line its own `step`
+(`"delegating"`) and having the WebUI treat only a bare, step-less `"lab"`
+entry as the real answer — covered by
+`TestDelegatingLogsAnInterimStepDistinctFromTheFinalAnswer`, since nothing
+else would notice this regress.
+
+**4. A delegation failure could dump a multi-hundred-line raw JavaScript
+stack trace straight into the chat.** Found hitting Gemini's actual
+free-tier rate limit mid-session: `team.Run`'s error carries a failed
+container's stderr verbatim, which is correct for the run's own log — the
+whole point of watching a coding agent is seeing what it actually did —
+but wrong for the one line Lab says about it in chat. `shortErr` caps that
+one line to 300 characters; the full text is logged separately, under its
+own `team/<role>` / `"error"` entry, before the short version is ever
+written, so "see the log above for the rest" is something the log actually
+does rather than something claimed and left unchecked.
+
+Verified against that same real rate-limit failure, which also showed the
+fix's own remaining rough edge honestly: gemini-cli prints a couple of
+lines of boilerplate (a color-support warning, a YOLO-mode notice) before
+the actual `429 quota exceeded` message, so the first 300 characters a
+straight truncation keeps are the boilerplate, not the useful part. Left
+as a plain cap rather than "fixed" with a pattern that guesses which line
+matters — that guess would be specific to this one error shape and wrong
+for the next one, the same reasoning finding 3's chunk-boundary spacing
+was left alone for.
+
 ## How it's wired
 
 - `internal/lab.Session` holds the one ongoing conversation. It embeds a
