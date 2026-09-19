@@ -11,11 +11,20 @@ import (
 	"github.com/google/uuid"
 )
 
+// newTestStore opens a SQLite-backed store colocated with dir, treating dir
+// as the legacy JSON history directory too — every test here already writes
+// its hand-built JSON snapshots straight into dir, and the migration path
+// picks them up from there exactly once, the same way a real upgrade would.
+func newTestStore(t *testing.T, dir string) (*RunStore, error) {
+	t.Helper()
+	return NewPersistentRunStore(filepath.Join(dir, "nanobots.db"), dir, nil)
+}
+
 func TestRunSurvivesARestart(t *testing.T) {
 	dir := t.TempDir()
 
 	// First "process": run something to completion.
-	store, err := NewPersistentRunStore(dir)
+	store, err := newTestStore(t, dir)
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
@@ -29,7 +38,7 @@ func TestRunSurvivesARestart(t *testing.T) {
 	run.SetStatus(StatusSucceeded)
 
 	// Second "process": nothing in memory, everything from disk.
-	reloaded, err := NewPersistentRunStore(dir)
+	reloaded, err := newTestStore(t, dir)
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
@@ -56,13 +65,13 @@ func TestRunSurvivesARestart(t *testing.T) {
 
 func TestFailedRunKeepsItsError(t *testing.T) {
 	dir := t.TempDir()
-	store, _ := NewPersistentRunStore(dir)
+	store, _ := newTestStore(t, dir)
 	run := NewRun("bookkeeping-assistant")
 	store.Add(run)
 	run.SetError(errors.New("build harness image: docker daemon not reachable"))
 	run.SetStatus(StatusFailed)
 
-	reloaded, _ := NewPersistentRunStore(dir)
+	reloaded, _ := newTestStore(t, dir)
 	got, err := reloaded.Get(run.ID)
 	if err != nil {
 		t.Fatalf("get: %v", err)
@@ -85,7 +94,7 @@ func TestInFlightRunIsRestoredAsFailedNotRunning(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 
-	reloaded, _ := NewPersistentRunStore(dir)
+	reloaded, _ := newTestStore(t, dir)
 	got, err := reloaded.Get(stuck.ID)
 	if err != nil {
 		t.Fatalf("get: %v", err)
@@ -101,26 +110,34 @@ func TestInFlightRunIsRestoredAsFailedNotRunning(t *testing.T) {
 	}
 }
 
+// Migration reads the whole JSON directory in one pass, so this has to be
+// proven at migration time — both files need to already be there before the
+// store (and therefore the one-shot migration) is ever constructed.
 func TestUnreadableRunDoesNotCostYouTheOthers(t *testing.T) {
 	dir := t.TempDir()
-	store, _ := NewPersistentRunStore(dir)
 	good := NewRun("content-engine")
-	store.Add(good)
 	good.SetStatus(StatusSucceeded)
-
+	if err := writeSnapshot(dir, good); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(dir, "corrupt.json"), []byte("{not json"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	reloaded, err := NewPersistentRunStore(dir)
+	store, err := newTestStore(t, dir)
 	if err != nil {
 		t.Fatalf("a corrupt file should be skipped, not fail the load: %v", err)
 	}
-	if _, err := reloaded.Get(good.ID); err != nil {
+	if _, err := store.Get(good.ID); err != nil {
 		t.Errorf("the good run was lost alongside the corrupt one: %v", err)
 	}
 }
 
+// The cap is enforced in SQLite now, not by deleting JSON files — those are
+// the one-time migration source and are never written to or pruned again
+// (see NewPersistentRunStore's doc comment). What has to stay bounded is
+// the runs table itself, or "1,000 runs" in docs/run-history.md's own
+// measurement would silently become "however many ever ran."
 func TestHistoryIsPrunedToTheCap(t *testing.T) {
 	dir := t.TempDir()
 	base := time.Now().Add(-time.Hour)
@@ -138,7 +155,7 @@ func TestHistoryIsPrunedToTheCap(t *testing.T) {
 		newest = r.ID
 	}
 
-	store, err := NewPersistentRunStore(dir)
+	store, err := newTestStore(t, dir)
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
@@ -148,8 +165,11 @@ func TestHistoryIsPrunedToTheCap(t *testing.T) {
 	if _, err := store.Get(newest); err != nil {
 		t.Error("pruning dropped the newest run; it must drop the oldest")
 	}
-	if _, err := os.Stat(filepath.Join(dir, oldest+".json")); !os.IsNotExist(err) {
-		t.Error("the oldest run's file is still on disk; the directory would grow forever")
+	if _, err := store.Get(oldest); err == nil {
+		t.Error("the oldest run is still in the store; the table would grow forever")
+	}
+	if _, err := os.Stat(filepath.Join(dir, oldest+".json")); err != nil {
+		t.Error("the oldest run's JSON file was deleted — migration must never remove the source it migrated from")
 	}
 }
 
@@ -183,12 +203,12 @@ func TestErrorPersistsWhicheverOrderItIsSetIn(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			store, _ := NewPersistentRunStore(dir)
+			store, _ := newTestStore(t, dir)
 			run := NewRun("swarm")
 			store.Add(run)
 			tc.apply(run, errors.New("docker daemon not reachable"))
 
-			reloaded, _ := NewPersistentRunStore(dir)
+			reloaded, _ := newTestStore(t, dir)
 			got, err := reloaded.Get(run.ID)
 			if err != nil {
 				t.Fatalf("get: %v", err)

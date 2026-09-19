@@ -25,6 +25,7 @@ import (
 func TestBuildRunStoreKeepsTheWorkspacesOfRunsItStillHas(t *testing.T) {
 	base := t.TempDir()
 	paths := Paths{
+		DBPath:     filepath.Join(base, "nanobots.db"),
 		HistoryDir: filepath.Join(base, "history"),
 		RunWorkDir: filepath.Join(base, "runs"),
 	}
@@ -80,6 +81,7 @@ func TestBuildRunStoreKeepsTheWorkspacesOfRunsItStillHas(t *testing.T) {
 func TestBuildRunStoreOnAFreshMachine(t *testing.T) {
 	base := t.TempDir()
 	paths := Paths{
+		DBPath:     filepath.Join(base, "nanobots.db"),
 		HistoryDir: filepath.Join(base, "history"),
 		RunWorkDir: filepath.Join(base, "runs"),
 	}
@@ -156,6 +158,7 @@ func TestResolvePathsCreatesTheWorkDirUnderHome(t *testing.T) {
 func TestBuildRunStoreKeepsBlobsAKeptRunStillShows(t *testing.T) {
 	base := t.TempDir()
 	paths := Paths{
+		DBPath:     filepath.Join(base, "nanobots.db"),
 		HistoryDir: filepath.Join(base, "history"),
 		RunWorkDir: filepath.Join(base, "runs"),
 		BlobDir:    filepath.Join(base, "blobs"),
