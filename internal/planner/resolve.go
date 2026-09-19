@@ -6,8 +6,8 @@ package planner
 import (
 	"fmt"
 	"path/filepath"
-	"strings"
 
+	"github.com/redbotster/nanobots/internal/botpkg"
 	"github.com/redbotster/nanobots/internal/schema"
 )
 
@@ -73,19 +73,13 @@ func Resolve(sw *schema.Nanoswarm, botsDir string) (*ResolvedSwarm, error) {
 	return out, nil
 }
 
-// resolveUse loads a "name@version" registry reference from
-// botsDir/name/nanobot.yaml, checking the version against what's actually on
-// disk — there is no registry yet (blueprint §4 #8), so this is the only
-// check available.
+// resolveUse loads a "name@version" registry reference through botpkg — see
+// that package for why the version check lives there now, not here.
 func resolveUse(use, botsDir, refID string) (*schema.Nanobot, error) {
-	name, version, _ := strings.Cut(use, "@")
-	nb, err := schema.LoadNanobot(filepath.Join(botsDir, name, "nanobot.yaml"))
+	name, version := botpkg.ParseRef(use)
+	nb, err := (botpkg.LocalDir{Dir: botsDir}).Resolve(name, version)
 	if err != nil {
 		return nil, fmt.Errorf("bot %q: resolving %q: %w", refID, use, err)
-	}
-	if version != "" && nb.Metadata.Version != version {
-		return nil, fmt.Errorf("bot %q: %s@%s requested but %s/nanobot.yaml is version %s",
-			refID, name, version, name, nb.Metadata.Version)
 	}
 	return nb, nil
 }

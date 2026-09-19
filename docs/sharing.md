@@ -70,7 +70,13 @@ nothing was written — add them to bots/ and import again
 
 Everything is checked before anything is written. A swarm referencing a bot
 you don't have is not importable, and finding that out at run time — after
-it has been saved and looks legitimate — is the worse order.
+it has been saved and looks legitimate — is the worse order. The version is
+checked too, not just the name: a bundle naming a newer `invoice-chaser`
+than the one installed is refused the same way, by the same message, rather
+than importing cleanly and failing later at `plan` or `run` — the two now
+agree because both go through one resolver
+([internal/botpkg](../internal/botpkg), see its package doc for the bug
+that shipped before they did).
 
 A bot referenced by local `path:` cannot be exported at all: it lives only
 on the machine that wrote it, and a bundle carrying that reference is

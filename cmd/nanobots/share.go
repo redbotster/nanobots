@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/redbotster/nanobots/internal/botpkg"
 	"github.com/redbotster/nanobots/internal/schema"
 	"github.com/redbotster/nanobots/internal/share"
 )
@@ -131,11 +132,21 @@ func runImport(args []string) error {
 	return nil
 }
 
-// catalogLookup resolves an id@version reference against bots/.
+// catalogLookup resolves an id@version reference against bots/, through the
+// same botpkg.Source the planner uses.
+//
+// It used to discard everything after the "@" and load whatever version was
+// on disk regardless — so `nanobots import` could report "you have
+// everything this bundle needs" for a bundle naming, say,
+// invoice-chaser@2.0.0 while only 0.1.0 was actually installed, and the
+// real mismatch only surfaced later, confusingly, at plan or run time. The
+// version is checked here now, so import refuses at the moment it's
+// actually knowable.
 func catalogLookup(botsDir string) func(string) (*schema.Nanobot, error) {
+	src := botpkg.LocalDir{Dir: botsDir}
 	return func(use string) (*schema.Nanobot, error) {
-		id, _, _ := strings.Cut(use, "@")
-		return schema.LoadNanobot(filepath.Join(botsDir, id, "nanobot.yaml"))
+		name, version := botpkg.ParseRef(use)
+		return src.Resolve(name, version)
 	}
 }
 
