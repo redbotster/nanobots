@@ -29,6 +29,7 @@ function withBackend(llm: string, guarded: boolean) {
     llm_guardrails: guarded,
     docker_available: true,
     docker_reason: "",
+    secrets_backend: "a local file, encrypted at rest",
   } as StatusResponse);
 }
 

@@ -17,6 +17,7 @@ const status = (llm: string): StatusResponse =>
     llm_guardrails: false,
     docker_available: true,
     docker_reason: "",
+    secrets_backend: "a local file, encrypted at rest",
   }) as StatusResponse;
 
 function stub(runs: number, anyConnected: boolean) {

@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/redbotster/nanobots/internal/secrets"
 )
 
 // Settings tells you what a key/value memory backend is costing this
@@ -73,6 +75,50 @@ func hasLine(haystack, needle string) bool {
 		}
 	}
 	return false
+}
+
+// The one line in Settings that says where a pasted GitHub/Slack/Stripe/
+// HubSpot token actually goes. Wrong or missing here is exactly the kind
+// of honesty bug this codebase cares about: two backends make very
+// different promises ("a 1Claw vault" vs. "a file protected by your OS's
+// own permissions"), and the UI used to say nothing at all about which one
+// was in play.
+func TestStatusNamesTheActiveSecretsBackend(t *testing.T) {
+	srv := &Server{Secrets: &secrets.File{Dir: t.TempDir()}}
+	rec := httptest.NewRecorder()
+	srv.handleStatus(rec, httptest.NewRequest(http.MethodGet, "/api/status", nil))
+
+	var body struct {
+		SecretsBackend string `json:"secrets_backend"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	want := (&secrets.File{}).Describe()
+	if body.SecretsBackend != want {
+		t.Errorf("secrets_backend = %q, want %q", body.SecretsBackend, want)
+	}
+}
+
+// A Server with no Secrets set (a test that never configured one, or —
+// this should never happen in production, since internal/wiring always
+// resolves a backend — a build that somehow skipped it) must say so
+// plainly rather than panic on a nil Store or silently claim a backend
+// that isn't there.
+func TestStatusReportsNotConfiguredWhenSecretsIsNil(t *testing.T) {
+	srv := &Server{}
+	rec := httptest.NewRecorder()
+	srv.handleStatus(rec, httptest.NewRequest(http.MethodGet, "/api/status", nil))
+
+	var body struct {
+		SecretsBackend string `json:"secrets_backend"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.SecretsBackend != "not configured" {
+		t.Errorf("secrets_backend = %q, want %q", body.SecretsBackend, "not configured")
+	}
 }
 
 // An empty catalog directory must not crash the status endpoint — it is

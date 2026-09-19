@@ -212,6 +212,11 @@ export interface StatusResponse {
    * PII redaction, injection screening. A direct provider key has none of
    * that, and nothing in a run looks different, so it's said here. */
   llm_guardrails: boolean;
+  /** Where a pasted Slack/GitHub/Stripe/HubSpot token actually lands: a
+   * sentence naming the backend and what it protects — "1Claw vault —
+   * encrypted, access-logged, ...", "a local file, encrypted at rest —
+   * ...", or "your OS keychain — ...". See docs/secrets.md. */
+  secrets_backend: string;
 }
 
 export interface SwarmSummary {

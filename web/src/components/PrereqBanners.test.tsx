@@ -12,6 +12,7 @@ function status(over: Partial<StatusResponse>): StatusResponse {
     memory_recall: false,
     docker_available: true,
     vault_locked: false,
+    secrets_backend: "a local file, encrypted at rest",
     ...over,
   } as StatusResponse;
 }
