@@ -165,10 +165,11 @@ is real and what is simulated](#whats-real-vs-simulated). The list first.
 - **It survives a reboot.** `nanobots service install` writes a per-user
   LaunchAgent so nanobotd keeps running, which is what makes twelve cron
   triggers more than aspiration ([scheduler.md](scheduler.md)).
-- **Run history that survives a restart.** Every finished run is kept as a
-  JSON file under `~/.nanobots/history/`, capped at 200. A run killed
-  mid-flight by a restart is restored as failed rather than sitting in the
-  list as "running" forever ([run-history.md](run-history.md)).
+- **Run history that survives a restart.** Every finished run is kept in
+  `~/.nanobots/nanobots.db` (SQLite, migrated once from the JSON files this
+  used to be), capped at 1,000. A run killed mid-flight by a restart is
+  restored as failed rather than sitting in the list as "running" forever
+  ([run-history.md](run-history.md)).
 
 ## Bots with no swarm to show them
 

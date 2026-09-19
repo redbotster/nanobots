@@ -42,9 +42,10 @@ type Paths struct {
 	BlobDir        string // content-addressed file outputs
 	RunWorkDir     string // per-run container workspaces
 	FoundryWorkDir string // foundry job worktrees
-	HistoryDir     string // persisted run history
+	HistoryDir     string // the old, pre-SQLite run history — JSON files, kept as a one-time migration source, never written to again
 	MemoryDir      string // what bots remember between runs
 	SecretsDir     string // the secrets.File backend's key and ciphertext, when that's the backend in use
+	DBPath         string // ~/.nanobots/nanobots.db — run history, and (as they migrate off their own formats) other daemon state
 }
 
 // ResolvePaths locates (and creates where needed) everything under
@@ -67,6 +68,7 @@ func ResolvePaths() (Paths, error) {
 		HistoryDir:     filepath.Join(base, "history"),
 		MemoryDir:      filepath.Join(base, "memory"),
 		SecretsDir:     filepath.Join(base, "secrets"),
+		DBPath:         filepath.Join(base, "nanobots.db"),
 	}
 	if err := os.MkdirAll(p.RunWorkDir, 0o755); err != nil {
 		return Paths{}, err
@@ -247,14 +249,14 @@ func BuildOrchestrator(
 	}
 }
 
-// BuildRunStore returns a store backed by the shared history directory, so a
-// run started from the CLI and a run started from the WebUI land in the same
-// place and both survive a restart. A history directory that can't be read
-// is worth a warning, never a refusal to start.
+// BuildRunStore returns a store backed by the shared SQLite file, so a run
+// started from the CLI and a run started from the WebUI land in the same
+// place and both survive a restart. History that can't be read is worth a
+// warning, never a refusal to start.
 func BuildRunStore(paths Paths, logf Logf) *runner.RunStore {
-	store, err := runner.NewPersistentRunStore(paths.HistoryDir)
+	store, err := runner.NewPersistentRunStore(paths.DBPath, paths.HistoryDir, logf)
 	if err != nil && logf != nil {
-		logf("some run history could not be read from %s: %v", paths.HistoryDir, err)
+		logf("some run history could not be read from %s: %v", paths.DBPath, err)
 	}
 
 	// The history directory has always been bounded. The per-run workspaces

@@ -4,13 +4,41 @@ Every run this machine has ever finished is kept on disk, so restarting `nanobot
 
 ## Where it lives
 
-`~/.nanobots/history/<run-id>.json` — one file per run, a sibling of the `blobs/` and `runs/` (container scratch) directories `nanobotd` already owns. Deliberately not a database: a run is small, self-contained, and written exactly once, so a directory of files is the whole feature. No schema, no migrations, and you can read one with `cat`:
+`~/.nanobots/nanobots.db` — one SQLite file, a `runs` table and a `run_log`
+table, a sibling of the `blobs/` and `runs/` (container scratch)
+directories `nanobotd` already owns:
 
 ```bash
-cat ~/.nanobots/history/*.json | jq -r '"\(.started_at)  \(.swarm_name)  \(.status)  \(.error // "")"'
+sqlite3 ~/.nanobots/nanobots.db \
+  "SELECT started_at, swarm_name, status, error FROM runs ORDER BY started_at DESC LIMIT 20"
 ```
 
-The file holds the run's identity (`id`, `swarm_name`, `swarm_path`, `triggered_by`), its outcome (`status`, `started_at`, `finished_at`, `error`), its full log, and every bot's outputs.
+This used to be `~/.nanobots/history/<run-id>.json`, one file per run,
+deliberately not a database — a run is small, self-contained, and written
+exactly once, so a directory of files was the whole feature. That stopped
+being true at scale, measured rather than assumed: loading 1,000 runs with
+realistic log sizes from the JSON format took **~59ms**, fine — but 1,000
+runs with heavier, more log-chatty bots took **~1.02 seconds**, entirely
+before `nanobotd` could answer its first request. The same reload from
+SQLite takes **~29ms** for the realistic case and **~294ms** for the heavy
+one (`internal/runner/scale_test.go` — these are real, measured numbers a
+test enforces, not a one-time observation). One row per run, one child row
+per log entry, so a run's log — the part most likely to be large — doesn't
+have to be parsed to answer "how many runs are there."
+
+The database holds the run's identity (`id`, `swarm_name`, `swarm_path`,
+`triggered_by`), its outcome (`status`, `started_at`, `finished_at`,
+`error`), its full log, and every bot's outputs.
+
+### Migrating from the old JSON files
+
+The first time `nanobotd` opens `nanobots.db` and finds it empty, it looks
+for `~/.nanobots/history/*.json` and imports every run it finds, once,
+logging `migrated N run(s) from .../history to .../nanobots.db`. **The JSON
+files are never deleted by this** — a storage-format change doesn't get to
+remove data as a side effect of moving it. They just stop being read again
+after that first successful import; delete them yourself once you've
+confirmed history looks right, or leave them, they cost nothing further.
 
 ## When it's written
 
@@ -18,7 +46,7 @@ Once, when the run reaches a terminal state (`succeeded` or `failed`) — `inter
 
 So: **if `nanobotd` dies mid-run, that run leaves no record.** Stated plainly rather than papered over.
 
-The write is a temp file plus a rename, so a crash mid-write can't leave a half-parsed file where a run used to be.
+The write is one transaction — the run row and every one of its log rows commit together, or none of them do, so a crash mid-write can't leave a run with a status but half a log.
 
 One ordering rule this depends on, enforced by a test (`TestErrorPersistsWhicheverOrderItIsSetIn`): the terminal status is what triggers the write, so `SetError` must come *before* `SetStatus(StatusFailed)`. It didn't originally, and failed runs persisted with a blank "why" — the one thing you come back to a failed run for. `SetError` now also re-fires the write if the run is already terminal, so either order ends up correct.
 
@@ -28,10 +56,10 @@ A run that was `running`, `pending`, or `awaiting_approval` when the process die
 
 ## Bounds and failure modes
 
-- **Capped at 200 runs** (`runner.MaxPersistedRuns`), newest kept. Pruning happens on load, so the directory can't grow for years unattended.
-- **A file that won't parse is skipped**, not fatal — one bad run must not cost you the other 199.
-- **An unreadable history directory is a warning, not a startup failure.** `NewPersistentRunStore` returns a usable store alongside the error, and `nanobotd` prints the warning and carries on.
-- **History is per-machine and unencrypted.** A run's log and outputs are written as-is, so anything a bot printed is in there. It's mode `0700`, in your home directory, and never leaves the machine — but it is not a vault. Credentials never appear in a run log (they stay in 1Claw; see `docs/oneclaw-bridge.md`), which is what makes that acceptable.
+- **Capped at 1,000 runs** (`runner.MaxPersistedRuns`), newest kept — raised from 200 now that pruning is a `DELETE ... WHERE id NOT IN (...)` against an index rather than a directory listing. The number existed to stop unbounded growth "for years," per the original design; it was never observed as an actual performance limit at 200, and isn't one at 1,000 either (see the measurements above). Pruning happens on load, so the table can't grow for years unattended.
+- **A row that won't decode is skipped**, not fatal — one bad run must not cost you the other 999. During migration, the same is true of a JSON file that won't parse.
+- **An unreadable database is a warning, not a startup failure.** `NewPersistentRunStore` returns a usable store alongside the error, and `nanobotd` prints the warning and carries on.
+- **History is per-machine and unencrypted.** A run's log and outputs are written as-is, so anything a bot printed is in there. The file is mode `0700`, in your home directory, and never leaves the machine — but it is not a vault. Credentials never appear in a run log (they stay in 1Claw or your secrets backend; see `docs/oneclaw-bridge.md` and `docs/secrets.md`), which is what makes that acceptable.
 
 ## Try it
 
@@ -74,11 +102,11 @@ next three.
 ## Three stores, one retention rule
 
 Everything under `~/.nanobots` that grows with runs is now bounded by the
-same fact: the 200 runs history keeps.
+same fact: the 1,000 runs history keeps.
 
 | store | holds | pruned |
 |---|---|---|
-| `history/` | the runs themselves | on load, to `MaxPersistedRuns` |
+| `nanobots.db` (`runs` table) | the runs themselves | on load, to `MaxPersistedRuns` |
 | `runs/` | per-run container workspaces | at startup, against the runs history kept |
 | `blobs/` | the file contents runs produced | at startup, against the digests those runs still point at |
 
