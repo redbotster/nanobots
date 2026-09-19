@@ -121,9 +121,9 @@ func (f *File) save(id *age.X25519Identity, m map[string]string) error {
 	if err := w.Close(); err != nil {
 		return fmt.Errorf("secrets: encrypt: %w", err)
 	}
-	// Written to a temp file and renamed into place, the same reason
-	// memory.Local does this: a torn write on a crash mid-save must not
-	// leave a half-written ciphertext that decrypts to garbage or nothing.
+	// Written to a temp file and renamed into place: a torn write on a
+	// crash mid-save must not leave a half-written ciphertext that
+	// decrypts to garbage or nothing.
 	path := filepath.Join(f.Dir, storeFileName)
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, buf.Bytes(), 0o600); err != nil {

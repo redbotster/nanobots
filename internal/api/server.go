@@ -419,7 +419,7 @@ func (s *Server) memoryStatus() (kind string, recall bool) {
 		// see docs/1claw-feature-requests.md #12), so this used to be an
 		// honest "no" and would now be a false one if left alone.
 		return "1claw", true
-	case *memory.Local:
+	case *memory.SQLite:
 		return "local", false
 	}
 	return "custom", recall

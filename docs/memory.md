@@ -26,7 +26,7 @@ HONCHO_WORKSPACE     defaults to "nanobots"
 HONCHO_API_KEY       omit for a self-hosted server (AUTH_USE_AUTH=false by default)
 ```
 
-**`local`** — one JSON file per namespace under `~/.nanobots/memory/`, written temp-then-rename so a torn write can't lose every key in a namespace. It's the default so memory works out of the box. A namespace is a bot-supplied string, so an unsafe one (`../../escaped`) is hashed rather than joined, and a test asserts nothing lands outside the directory.
+**`local`** — key/value in `~/.nanobots/nanobots.db`, the same shared SQLite file run history and scheduler state live in (`internal/statedb`, [run-history.md](run-history.md)). It's the default so memory works out of the box. This used to be one JSON file per namespace under `~/.nanobots/memory/`, migrated once, automatically, the first time the new table is empty — the old files are left untouched, never deleted as a side effect of the move. A namespace is a bot-supplied string; on disk it's now a plain, parameterized SQL value, not a filename, so there's no path to escape and nothing to hash — the predecessor's `../../escaped`-gets-hashed defense doesn't exist because the class of bug it defended against doesn't exist here.
 
 **`1claw`** — the previous behaviour, plus real recall as of September 2026. It implements both `Store` and `Recaller` now; `memory.recall` against it answers from what has actually been remembered, the same as any other recall-capable backend.
 
