@@ -6,83 +6,15 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
-
-func TestLocalRoundTrips(t *testing.T) {
-	l, err := NewLocal(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx := context.Background()
-
-	if _, found, err := l.Get(ctx, "competitor-watch", "last_summary"); err != nil || found {
-		t.Fatalf("empty store: found=%v err=%v", found, err)
-	}
-	if err := l.Put(ctx, "competitor-watch", "last_summary", "they shipped pricing"); err != nil {
-		t.Fatal(err)
-	}
-	got, found, err := l.Get(ctx, "competitor-watch", "last_summary")
-	if err != nil || !found || got != "they shipped pricing" {
-		t.Errorf("got %q found=%v err=%v", got, found, err)
-	}
-
-	// A second key in the same namespace must not clobber the first — the
-	// whole namespace is one file.
-	if err := l.Put(ctx, "competitor-watch", "last_run_at", "2026-09-12"); err != nil {
-		t.Fatal(err)
-	}
-	if got, _, _ := l.Get(ctx, "competitor-watch", "last_summary"); got != "they shipped pricing" {
-		t.Errorf("second Put clobbered the first key: %q", got)
-	}
-	// Namespaces are separate.
-	if _, found, _ := l.Get(ctx, "other-bot", "last_summary"); found {
-		t.Error("namespaces are leaking into each other")
-	}
-}
-
-// A namespace is a bot-supplied string, so it must not be able to write
-// outside the memory directory.
-func TestLocalNamespaceCannotEscapeItsDirectory(t *testing.T) {
-	dir := t.TempDir()
-	l, err := NewLocal(filepath.Join(dir, "mem"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := l.Put(context.Background(), "../../escaped", "k", "v"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "escaped.json")); err == nil {
-		t.Error("a namespace wrote outside the memory directory")
-	}
-	entries, _ := os.ReadDir(filepath.Join(dir, "mem"))
-	if len(entries) != 1 {
-		t.Fatalf("expected exactly one file inside the memory dir, got %d", len(entries))
-	}
-	// It still round-trips — hashing the unsafe name must not break it.
-	if got, found, _ := l.Get(context.Background(), "../../escaped", "k"); !found || got != "v" {
-		t.Errorf("hashed namespace did not round-trip: %q found=%v", got, found)
-	}
-}
-
-func TestLocalRejectsEmptyNamespaceOrKey(t *testing.T) {
-	l, _ := NewLocal(t.TempDir())
-	if err := l.Put(context.Background(), "", "k", "v"); err == nil {
-		t.Error("empty namespace should be rejected")
-	}
-	if err := l.Put(context.Background(), "ns", "", "v"); err == nil {
-		t.Error("empty key should be rejected")
-	}
-}
 
 // A key/value backend cannot answer questions, and must say so rather than
 // returning nothing — a bot behaving as if it remembered nothing is a
 // silent wrong answer.
 func TestRecallAgainstAKeyValueBackendSaysSo(t *testing.T) {
-	l, _ := NewLocal(t.TempDir())
+	l := openTestMemoryDB(t)
 	_, err := Recall(context.Background(), l, "ns", "what do they care about?")
 	if !errors.Is(err, ErrNoRecall) {
 		t.Errorf("err = %v, want ErrNoRecall", err)
@@ -95,7 +27,7 @@ func TestRecallAgainstAKeyValueBackendSaysSo(t *testing.T) {
 }
 
 func TestCompositeSplitsKeyValueFromRecall(t *testing.T) {
-	l, _ := NewLocal(t.TempDir())
+	l := openTestMemoryDB(t)
 	rich := &fakeRecaller{}
 	c := &Composite{KV: l, Rich: rich}
 	ctx := context.Background()

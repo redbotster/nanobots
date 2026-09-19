@@ -330,14 +330,16 @@ func BuildRunStore(db *sql.DB, paths Paths, logf Logf) *runner.RunStore {
 // local is the default deliberately. Memory used to require 1Claw, so the
 // two bots that use it behaved differently depending on a credential
 // unrelated to what they were remembering — competitor-watch reported
-// everything as new on every run without a key. Local files make memory
-// work out of the box.
+// everything as new on every run without a key. A local backend makes
+// memory work out of the box — key/value memory in the shared SQLite file
+// (internal/statedb) now, migrated once from the JSON-file-per-namespace
+// format it used to be (internal/memory.SQLite's doc comment).
 //
-// honcho composes rather than replaces: key/value stays on local disk,
-// because Honcho has no key/value semantics and pretending otherwise would
-// be a lie about what it does. What Honcho adds is recall — accumulate
+// honcho composes rather than replaces: key/value stays local, because
+// Honcho has no key/value semantics and pretending otherwise would be a
+// lie about what it does. What Honcho adds is recall — accumulate
 // observations, ask questions in plain language.
-func BuildMemory(paths Paths, envFilePath string, oc *oneclaw.Client, logf Logf) (memory.Store, error) {
+func BuildMemory(db *sql.DB, paths Paths, envFilePath string, oc *oneclaw.Client, logf Logf) (memory.Store, error) {
 	if logf == nil {
 		logf = func(string, ...any) {}
 	}
@@ -345,19 +347,19 @@ func BuildMemory(paths Paths, envFilePath string, oc *oneclaw.Client, logf Logf)
 	if err != nil {
 		return nil, fmt.Errorf("read NANOBOTS_MEMORY: %w", err)
 	}
-	local, err := memory.NewLocal(paths.MemoryDir)
+	local, err := memory.NewSQLite(db, paths.MemoryDir)
 	if err != nil {
 		return nil, err
 	}
 
 	switch strings.ToLower(strings.TrimSpace(kind)) {
 	case "", "local":
-		logf("memory: local files under %s", paths.MemoryDir)
+		logf("memory: key/value in the shared database (%s)", paths.DBPath)
 		return local, nil
 
 	case "1claw", "oneclaw":
 		if oc == nil || !oc.Configured() {
-			logf("memory: NANOBOTS_MEMORY=1claw but no 1Claw key is configured — falling back to local files")
+			logf("memory: NANOBOTS_MEMORY=1claw but no 1Claw key is configured — falling back to the local database")
 			return local, nil
 		}
 		// The agent id is per-bot and only known at run time, so the 1Claw
@@ -379,7 +381,7 @@ func BuildMemory(paths Paths, envFilePath string, oc *oneclaw.Client, logf Logf)
 			workspace = "nanobots"
 		}
 		apiKey, _ := oneclaw.LoadEnvValue(envFilePath, "HONCHO_API_KEY")
-		logf("memory: local files for key/value, Honcho at %s (workspace %q) for recall", url, workspace)
+		logf("memory: local database for key/value, Honcho at %s (workspace %q) for recall", url, workspace)
 		return &memory.Composite{KV: local, Rich: memory.NewHoncho(url, workspace, apiKey)}, nil
 	}
 	return nil, fmt.Errorf("NANOBOTS_MEMORY=%q is not a backend this build has (local, 1claw, honcho)", kind)

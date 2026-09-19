@@ -92,7 +92,7 @@ func runRun(args []string) error {
 	defer listener.Close()
 	_, port, _ := net.SplitHostPort(listener.Addr().String())
 
-	mem, err := wiring.BuildMemory(paths, "", oc, func(f string, a ...any) { fmt.Printf(f+"\n", a...) })
+	mem, err := wiring.BuildMemory(db, paths, "", oc, func(f string, a ...any) { fmt.Printf(f+"\n", a...) })
 	if err != nil {
 		return err
 	}

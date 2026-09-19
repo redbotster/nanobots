@@ -331,7 +331,7 @@ func TestStatusReportsOneClawMemoryAsRecallCapable(t *testing.T) {
 	srv := &Server{
 		BotsDir: t.TempDir(),
 		Orchestrator: &runner.Orchestrator{
-			Memory: &memory.DeferredOneClaw{Fallback: &memory.Local{}},
+			Memory: &memory.DeferredOneClaw{Fallback: &memory.SQLite{}},
 		},
 	}
 	rec := httptest.NewRecorder()

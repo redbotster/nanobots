@@ -161,7 +161,7 @@ func build(opts Options) (*api.Server, *scheduler.Scheduler, Options, error) {
 		return nil, nil, opts, err
 	}
 
-	mem, err := wiring.BuildMemory(paths, opts.EnvFilePath, oc, func(f string, a ...any) { log.Printf(f, a...) })
+	mem, err := wiring.BuildMemory(db, paths, opts.EnvFilePath, oc, func(f string, a ...any) { log.Printf(f, a...) })
 	if err != nil {
 		return nil, nil, opts, err
 	}
