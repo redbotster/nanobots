@@ -10,7 +10,7 @@ go build ./... && go vet ./... && go test ./... -race
 cd web && npx tsc -b && npm run test
 ```
 
-923 table-driven Go tests across every package
+930 table-driven Go tests across every package
 (`grep -rho '^func Test[A-Za-z0-9_]*' --include='*_test.go' . | sort -u | wc -l`,
 so the number stays checkable), including:
 

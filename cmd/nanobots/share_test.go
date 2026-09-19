@@ -88,6 +88,52 @@ func TestImportRefusesABundleNamingAnUnknownBot(t *testing.T) {
 	}
 }
 
+// The bug: catalogLookup used to discard everything after "@" and load
+// whatever version was on disk regardless, so import could report "you
+// have everything this bundle needs" for a bundle naming a version that
+// isn't actually installed — the mismatch only surfaced later, confusingly,
+// at plan or run time. It has to be refused here, at import, where it's
+// actually knowable.
+func TestImportRefusesABundleRequestingAVersionNotOnDisk(t *testing.T) {
+	root := repoRootFromCmd(t)
+	t.Chdir(root)
+
+	dir := t.TempDir()
+	bundle := filepath.Join(dir, "future-version.yaml")
+	if err := runExport([]string{"-f", "examples/swarms/github-digest-to-slack.yaml", "-o", bundle}); err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	raw, err := os.ReadFile(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// github-issues-digest ships at 0.1.0 today — bump the version the
+	// bundle claims to need, without touching the bot on disk. Renamed too,
+	// so the destination file this test checks for can't collide with the
+	// real github-digest-to-slack.yaml already in examples/swarms/.
+	tampered := strings.ReplaceAll(string(raw), "github-issues-digest@0.1.0", "github-issues-digest@9.9.9")
+	tampered = strings.ReplaceAll(tampered, "github-digest-to-slack", "future-version-swarm")
+	if !strings.Contains(tampered, "9.9.9") {
+		t.Fatal("test setup did not find github-issues-digest@0.1.0 to tamper with")
+	}
+	if err := os.WriteFile(bundle, []byte(tampered), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	importErr := runImport([]string{bundle})
+	if importErr == nil {
+		t.Fatal("a bundle requesting a version not on disk was imported")
+	}
+	if !strings.Contains(importErr.Error(), "github-issues-digest@9.9.9") {
+		t.Errorf("the refusal does not name the requested bot@version: %v", importErr)
+	}
+	dest := filepath.Join(root, "examples", "swarms", "future-version-swarm.yaml")
+	if _, statErr := os.Stat(dest); statErr == nil {
+		t.Error("the swarm was written anyway")
+		_ = os.Remove(dest)
+	}
+}
+
 func TestExportNeedsASwarm(t *testing.T) {
 	if err := runExport(nil); err == nil {
 		t.Error("export with no -f was accepted")
