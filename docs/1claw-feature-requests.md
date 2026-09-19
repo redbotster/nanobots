@@ -249,3 +249,50 @@ which is exactly the kind of claim this file exists to catch. `inbox-triage`,
 `support-triage` and `draft-replies` get real recall on a 1Claw-backed
 deployment now; Honcho remains the other recall-capable backend for anyone
 who wants synthesized answers over lexical retrieval.
+
+---
+
+## 13. Tool-calling through Shroud
+
+**What we need.** `internal/oneclaw.ShroudClient.Chat` calls
+`POST https://shroud.1claw.co/v1/chat/completions` — an OpenAI-completions-
+shaped endpoint, but that host carries no OpenAPI spec of its own (it isn't
+part of `api.1claw.co`'s 526 paths), so this is checked against what the
+client actually sends and receives, not a schema. Today it sends exactly
+one message, no `tools` field, no history. We need that endpoint to accept
+an OpenAI-style `tools`/`tool_choice` request and return `tool_calls`, so a
+funded key gets real multi-turn tool use through Shroud's existing billing
+and guardrails rather than nanobots needing a second, parallel LLM
+integration just for this.
+
+We could not verify live whether the endpoint would honour `tools` if sent
+— a probe against it with a placeholder agent key got a plain 404, which
+is not evidence either way (`X-Shroud-Agent-Key` needs a real agent's own
+key, which this account's api-key token doesn't stand in for). Recorded as
+unverified rather than assumed.
+
+**What it blocks.** v3 Phase 3's `agent.loop` step — the model deciding at
+run time which of a bot's declared tools to call, seeing the result, and
+deciding the next one — same wall `docs/team.md`/`docs/lab.md` already
+named for a different feature: "a single-shot, one-message-in/one-message-
+out proxy, not a multi-turn, tool-using session an external CLI agent
+could sit behind."
+
+**A second, different API that looked promising and wasn't quite.**
+`api.1claw.co` does have `POST /v1/agents/{id}/chat`, with a real
+`conversation_id` (multi-turn state, server-side) and `tool_calls`/
+`tool_results` fields on its response. Two things stopped it being the
+answer: `SendChatMessageRequest` has no `tools` field at all — nothing in
+the request schema lets a caller declare what's callable, so whatever
+populates those response fields must be configured per-agent, out of band,
+not handed in ad hoc per call — and the endpoint is locked behind
+`POST /v1/agents/{id}/chat/unlock`, which needs `X-Auth-Confirm` (a
+password or reauth token). Probed live and confirmed: a plain chat POST
+with no prior unlock returns `403 Agent chat is locked`. That's a
+reasonable gate for a human clicking through a dashboard and a hard stop
+for an unattended swarm.
+
+**What we do instead.** `agent.loop` is not built. Recorded here rather
+than shipped against a backend that can't do the one thing the feature
+needs, or built as a second bespoke integration against a different
+provider's native tool-calling API while Shroud sits unused for it.
