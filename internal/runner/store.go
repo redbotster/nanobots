@@ -32,6 +32,9 @@ type RunStore struct {
 	// DB is where run history is persisted. nil means don't persist, which
 	// is what every test that doesn't care gets by default.
 	DB *sql.DB
+
+	changedMu sync.Mutex
+	changed   map[chan string]bool
 }
 
 func NewRunStore() *RunStore {
@@ -85,6 +88,15 @@ func (s *RunStore) Add(r *Run) {
 	db := s.DB
 	s.mu.Unlock()
 
+	// A brand new run is itself a change worth telling subscribers about —
+	// the runs-list SSE stream needs to learn about it the moment it
+	// exists, not wait for its first status change. Then every later
+	// mutation the summary cares about (SetStatus, SetError,
+	// SetNothingToDo, Stop, Decide — see notifyChanged's call sites)
+	// broadcasts the same way.
+	r.onChange(func(changed *Run) { s.broadcastChanged(changed.ID) })
+	s.broadcastChanged(r.ID)
+
 	if db == nil {
 		return
 	}
@@ -118,4 +130,41 @@ func (s *RunStore) List() []*Run {
 		out = append(out, r)
 	}
 	return out
+}
+
+// SubscribeChanges returns a channel of run IDs, one value each time that
+// run's list-relevant state changes (added, or any of the fields
+// runSummaryToJSON carries). For the runs-list SSE stream
+// (internal/api.handleRunsEvents), which replaces polling GET /api/runs —
+// see docs/runs.md.
+func (s *RunStore) SubscribeChanges() chan string {
+	ch := make(chan string, 64)
+	s.changedMu.Lock()
+	if s.changed == nil {
+		s.changed = map[chan string]bool{}
+	}
+	s.changed[ch] = true
+	s.changedMu.Unlock()
+	return ch
+}
+
+func (s *RunStore) UnsubscribeChanges(ch chan string) {
+	s.changedMu.Lock()
+	defer s.changedMu.Unlock()
+	if _, ok := s.changed[ch]; !ok {
+		return
+	}
+	delete(s.changed, ch)
+	close(ch)
+}
+
+func (s *RunStore) broadcastChanged(runID string) {
+	s.changedMu.Lock()
+	defer s.changedMu.Unlock()
+	for ch := range s.changed {
+		select {
+		case ch <- runID:
+		default: // a slow subscriber never blocks a run's own goroutine
+		}
+	}
 }

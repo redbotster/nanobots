@@ -153,6 +153,13 @@ type Run struct {
 	approvals     map[string]*PendingApproval
 	subscribers   map[chan LogEntry]bool
 	onTerminalFns []func(*Run)
+	// onChangeFns fire on every mutation that changes a field the runs-list
+	// summary carries (status, error, stopped/declined, nothing-to-do, the
+	// pending approval count) — registered once by RunStore.Add so the
+	// runs-list SSE stream (internal/api.handleRunsEvents) can push a delta
+	// the moment it happens, instead of every subscriber discovering it up
+	// to two seconds later on the next poll.
+	onChangeFns []func(*Run)
 	// ctx/cancel are the run's lifetime — see Context and Stop.
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -215,6 +222,7 @@ func (r *Run) Stop() bool {
 	// human. Releasing those is what lets a run parked at a gate actually
 	// end rather than sit there until the approval times out.
 	r.releaseApprovals()
+	r.notifyChanged()
 	return true
 }
 
@@ -305,6 +313,7 @@ func (r *Run) SetStatus(s RunStatus) {
 			fn(r)
 		}
 	}
+	r.notifyChanged()
 }
 
 // onTerminal registers fn to run once this run succeeds or fails. Used by
@@ -325,6 +334,25 @@ func (r *Run) onTerminal(fn func(*Run)) {
 	}
 }
 
+// onChange registers fn to run on every subsequent change to a field the
+// runs-list summary carries. Unlike onTerminal there's no "already true"
+// case to fire immediately for: RunStore.Add calls this once, right after
+// constructing the run, before anything has had a chance to change.
+func (r *Run) onChange(fn func(*Run)) {
+	r.mu.Lock()
+	r.onChangeFns = append(r.onChangeFns, fn)
+	r.mu.Unlock()
+}
+
+func (r *Run) notifyChanged() {
+	r.mu.Lock()
+	fns := r.onChangeFns
+	r.mu.Unlock()
+	for _, fn := range fns {
+		fn(r)
+	}
+}
+
 func (r *Run) SetError(err error) {
 	r.mu.Lock()
 	r.Error = err.Error()
@@ -341,6 +369,7 @@ func (r *Run) SetError(err error) {
 	for _, fn := range fns {
 		fn(r)
 	}
+	r.notifyChanged()
 }
 
 // GetStatus/GetError/GetFinishedAt are synchronized reads of the fields
@@ -437,8 +466,9 @@ func (r *Run) AddTolerated(bot, msg string) {
 // SetNothingToDo records that this run found nothing to do, and why.
 func (r *Run) SetNothingToDo(reason string) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.NothingToDo = reason
+	r.mu.Unlock()
+	r.notifyChanged()
 }
 
 // GetNothingToDo returns why this run did no work, or "" if it did some.
@@ -611,12 +641,13 @@ func (r *Run) Decide(approvalID string, approved bool, decidedBy string) error {
 	// closed would panic. The send itself never blocks — the channel is
 	// buffered with room for exactly this one decision.
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	pa, ok := r.approvals[approvalID]
 	if !ok {
+		r.mu.Unlock()
 		return fmt.Errorf("no pending approval %s on run %s (it may have timed out, or the run may have ended)", approvalID, r.ID)
 	}
 	if pa.decided {
+		r.mu.Unlock()
 		return fmt.Errorf("approval %s on run %s was already answered", approvalID, r.ID)
 	}
 	pa.decided = true
@@ -624,6 +655,13 @@ func (r *Run) Decide(approvalID string, approved bool, decidedBy string) error {
 		r.DeclinedByUser = true
 	}
 	pa.decision <- approvalDecision{approved: approved, decidedBy: decidedBy}
+	r.mu.Unlock()
+	// Outside the lock, same reason as SetStatus's terminal callbacks:
+	// pending_approval_count already dropped here, before requestApproval's
+	// own goroutine wakes and calls SetStatus(Running) — without this, a
+	// decision the app just recorded wouldn't show up until that second,
+	// later change.
+	r.notifyChanged()
 	return nil
 }
 

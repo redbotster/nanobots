@@ -110,7 +110,10 @@ describe("GettingStarted", () => {
   // A card that appeared because a request failed would be worse than one
   // that never appeared at all.
   it("stays hidden when it cannot tell what the state is", async () => {
-    vi.spyOn(api, "listRuns").mockRejectedValue(new Error("down"));
+    // null, not a rejected mock: this is what the shared feed actually
+    // reports before its first snapshot arrives, or while nanobotd is
+    // unreachable — see useRuns's own doc comment.
+    vi.spyOn(runsFeed, "useRuns").mockReturnValue(null);
     vi.spyOn(api, "listConnections").mockRejectedValue(new Error("down"));
     const { container } = render(<GettingStarted status={null} onOpenSettings={vi.fn()} />);
     await waitFor(() => expect(container.textContent).not.toContain("Getting started"));

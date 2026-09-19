@@ -101,32 +101,55 @@ system working. Making it a fourth status would have meant every consumer —
 history, the breaker, the filters, the API — learning a new word for
 "fine".
 
-## Polling costs almost nothing now
+## The runs list is a stream now, not a poll
 
-`GET /api/runs` is polled every two seconds by the Runs page and the
+`GET /api/runs` used to be polled every two seconds by the Runs page and the
 approval notifier (through one shared loop). On a machine with 199 runs that
 response is 91KB and byte-identical between polls almost every time: 45KB/s
 to say nothing changed, about 160MB for an hour with a tab open.
 
-It now carries an ETag and answers `304` with no body when the caller
-already has that version. Measured in a browser over 14 seconds: **7 polls,
-638KB before, 2.1KB after.** The client keeps the tag itself and returns
-early on a 304, so the saving is not just bandwidth — there is no JSON
-parse, no new array, and no React re-render on those ticks.
+An ETag got that down a long way — measured in a browser over 14 seconds:
+**7 polls, 638KB before conditional GET, 2.1KB after.** But 2.1KB/14s
+idle is still a request every two seconds forever, for a list that changes
+only when a run actually starts or finishes. `GET /api/runs/events`
+(`internal/api.handleRunsEvents`) replaces the poll with a Server-Sent
+Events stream: one snapshot on connect, then one frame per run each time
+something the list renders about it changes — `RunStore.SubscribeChanges`
+and `Run.notifyChanged`'s call sites (`SetStatus`, `SetError`,
+`SetNothingToDo`, `Stop`, `Decide`) are what actually broadcasts.
 
-Two details it depends on:
+Measured the same way, in a real browser, over the same 14-second idle
+window: **zero additional requests, zero additional bytes.** The
+connection opens once (`GET /api/runs/events`, one line in the network
+log) and then sits open with nothing sent either direction until a run's
+state actually changes — there's no periodic ping keeping it alive, because
+this is a local daemon on 127.0.0.1 with no proxy in between to time out.
+Confirmed live: starting a run from a separate process while a Runs page
+tab sat idle showed up on the page with no reload and no poll, the moment
+`RunStore.Add`/`Run.notifyChanged` broadcast it.
 
-- **`Cache-Control: no-store`, not `no-cache`.** With `no-cache` the browser
-  may satisfy the revalidation from its own cache and hand JavaScript a 200
-  with a body — saving the bytes but not the parse or the re-render.
+The plan's condition for this replacement — the stream had to cost less at
+idle than the poll it replaced, not just be architecturally nicer — is met
+by more than a rounding error: 0 vs. 2.1KB/14s. The ETag path stays wired
+up on `GET /api/runs` itself (nothing else here removed it — `revalidatingList.ts`
+below still uses the same mechanism for `/api/bots` and `/api/swarms`), but
+nothing in the WebUI polls the runs list with it anymore.
+
+Two details the snapshot ordering depends on, same as the ETag body's did:
+
 - **The run list is sorted.** `RunStore.List` ranges over a map, so the
-  order was whatever Go felt like that iteration. Every client re-sorted
-  anyway, but an unstable order also means an unstable body, which would
-  have produced a fresh ETag every poll and quietly disabled the whole
-  thing.
+  order was whatever Go felt like that iteration. `sortedRuns` (shared by
+  the REST endpoint and the SSE snapshot) sorts newest-first so a fresh
+  tab's snapshot and the list `GET /api/runs` would have returned always
+  agree.
+- **Subscribe before snapshotting, not after.** `handleRunsEvents` opens
+  the change subscription before reading the current list — a run added in
+  the gap between "read the list" and "start listening" would otherwise
+  never reach that client at all.
 
-`refreshRuns()` drops the tag first, so an action you just took shows its
-effect immediately instead of confirming nothing changed.
+`refreshRuns()` is a documented no-op now: every write that used to need a
+forced refetch already broadcasts on this stream the moment it happens,
+which is faster than any poll interval could be.
 
 ### The same trick, for navigating rather than polling
 

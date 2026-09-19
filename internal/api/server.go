@@ -167,6 +167,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/connections/{service}/bots", s.handleSetProviderConnection)
 	mux.HandleFunc("POST /api/runs", s.handleStartRun)
 	mux.HandleFunc("GET /api/runs", s.handleListRuns)
+	mux.HandleFunc("GET /api/runs/events", s.handleRunsEvents)
 	mux.HandleFunc("GET /api/runs/{id}", s.handleGetRun)
 	mux.HandleFunc("GET /api/runs/{id}/events", s.handleRunEvents)
 	mux.HandleFunc("POST /api/runs/{id}/cancel", s.handleCancelRun)
