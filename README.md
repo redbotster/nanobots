@@ -3,12 +3,13 @@
 [![CI](https://github.com/redbotster/nanobots/actions/workflows/ci.yml/badge.svg)](https://github.com/redbotster/nanobots/actions/workflows/ci.yml)
 [![First run](https://github.com/redbotster/nanobots/actions/workflows/first-run.yml/badge.svg)](https://github.com/redbotster/nanobots/actions/workflows/first-run.yml)
 
-*Legos for AI. Snap micro-agents together, run them anywhere, keep the keys in 1Claw.*
+*Legos for AI. Snap micro-agents together, run them anywhere, keep the keys out of the containers.*
 
 Nanobots is a local-first system for composing single-job AI and
 deterministic containers ("nanobots") into typed, DAG-shaped workflows
-("nanoswarms"), with secrets, OAuth, LLM routing and guardrails delegated to
-[1Claw](https://docs.1claw.co).
+("nanoswarms"), with OAuth, LLM routing and guardrails delegated to
+[1Claw](https://docs.1claw.co) — though a pasted token needs no 1Claw
+account at all ([docs/secrets.md](docs/secrets.md)).
 
 One binary serves the UI and the API. Nothing runs in a second terminal, no
 account is required to start, and every bot ships answering from this repo's
@@ -77,9 +78,9 @@ More of the CLI, including `health`, `agents` and `deploy 1claw`, is in
 [docs/setup.md](docs/setup.md).
 
 Making it act on your real accounts is three optional layers — a model,
-1Claw to hold the credentials, then one account at a time:
-[docs/going-live.md](docs/going-live.md). Running it somewhere other than
-your laptop is [docs/hosting.md](docs/hosting.md).
+somewhere to hold the credentials ([docs/secrets.md](docs/secrets.md)),
+then one account at a time: [docs/going-live.md](docs/going-live.md).
+Running it somewhere other than your laptop is [docs/hosting.md](docs/hosting.md).
 
 ## Why nanobots, not one big agent
 

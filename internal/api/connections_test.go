@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/redbotster/nanobots/internal/oneclaw"
+	"github.com/redbotster/nanobots/internal/secrets"
 )
 
 // fakeOneClaw wires up just enough of the real 1Claw Human API — token
@@ -86,6 +87,11 @@ func testServerWithOneClaw(t *testing.T) *Server {
 	t.Helper()
 	srv := testServer(t)
 	srv.OneClaw = fakeOneClaw(t)
+	// Slack/GitHub/Stripe/HubSpot's static tokens go through s.Secrets now,
+	// not s.OneClaw directly — pointed at the same fake vault so these
+	// tests still exercise a real end-to-end read/write, just through the
+	// new seam. See internal/secrets and docs/secrets.md.
+	srv.Secrets = &secrets.OneClaw{Client: srv.OneClaw, VaultID: "v1"}
 	return srv
 }
 
@@ -299,6 +305,7 @@ func TestConnectionsStatusIsCachedButNeverStaleAfterConnecting(t *testing.T) {
 	srv := testServer(t)
 	oc, reads := fakeOneClawCounting(t)
 	srv.OneClaw = oc
+	srv.Secrets = &secrets.OneClaw{Client: oc, VaultID: "v1"}
 
 	get := func() []connectionStatus {
 		t.Helper()

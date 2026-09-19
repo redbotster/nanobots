@@ -1,10 +1,28 @@
 package secrets
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestKeychainDescribeNamesTheBackend(t *testing.T) {
 	if d := (Keychain{}).Describe(); d == "" {
 		t.Fatal("Describe returned an empty string")
+	}
+}
+
+// This is the regression test for a real incident: run inside this repo's
+// own `go test ./... -race`, the pre-timeout Available() hung for the full
+// ten-minute go test timeout in a session where the underlying `security`
+// call didn't fail fast — it can pop a real permission dialog and wait
+// forever for a human who isn't there. A caller (nanobotd's own startup)
+// must never hang on this, so Available bounds it — see its doc comment.
+// This asserts the bound holds with real margin, not that it holds exactly.
+func TestAvailableNeverBlocksLongerThanItsTimeout(t *testing.T) {
+	start := time.Now()
+	Available()
+	if elapsed := time.Since(start); elapsed > availabilityProbeTimeout+time.Second {
+		t.Fatalf("Available took %s, want at most ~%s", elapsed, availabilityProbeTimeout)
 	}
 }
 

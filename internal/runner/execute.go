@@ -20,6 +20,7 @@ import (
 	"github.com/redbotster/nanobots/internal/planner"
 	"github.com/redbotster/nanobots/internal/roles"
 	"github.com/redbotster/nanobots/internal/schema"
+	"github.com/redbotster/nanobots/internal/secrets"
 	"github.com/redbotster/nanobots/internal/step"
 )
 
@@ -38,6 +39,12 @@ type Orchestrator struct {
 	// Services holds every connected-service credential in one value. See
 	// step.ServiceConfigs.
 	Services step.ServiceConfigs
+	// Secrets is where GitHub/Slack/Stripe/HubSpot's static tokens actually
+	// live — a 1Claw vault, the OS keychain, or an encrypted local file.
+	// nil means no backend at all, and every one of those providers fails
+	// with "not configured" rather than reaching for a vault that isn't
+	// there. See internal/secrets.
+	Secrets secrets.Store
 	// Memory backs every memory.* step. See internal/memory.
 	Memory memory.Store
 
@@ -1006,7 +1013,7 @@ func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID str
 	if err != nil {
 		return nil, err
 	}
-	deps := BuildDeps(run, botID, nb, o.OneClaw, agentID, agentAPIKey, blobs, o.Services, batch, o.memoryFor(agentID), o.LLM, o.approvalAgent)
+	deps := BuildDeps(run, botID, nb, o.OneClaw, agentID, agentAPIKey, blobs, o.Services, o.Secrets, batch, o.memoryFor(agentID), o.LLM, o.approvalAgent)
 
 	// Watch what this bot actually gets back, so a real run can be turned
 	// into the bot's test data afterwards. Wrapping cannot change what the

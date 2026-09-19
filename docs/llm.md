@@ -64,7 +64,7 @@ A `Retry-After` longer than a minute means a quota window rather than a blip, an
 
 ## The gap worth knowing about
 
-A direct key alone is now enough to run bots live. It wasn't: `ai.generate` called Shroud directly, so a machine with an `ANTHROPIC_API_KEY` and no 1Claw account ran the entire catalog against demo fixtures — every generation returning canned text, with nothing in the log saying the key was being ignored. `BuildDeps` now treats "has an LLM" and "has 1Claw" as separate facts. 1Claw is still what adds real service calls, vault credentials and Shroud's guardrails on top.
+A direct key alone is now enough to run bots live. It wasn't: `ai.generate` called Shroud directly, so a machine with an `ANTHROPIC_API_KEY` and no 1Claw account ran the entire catalog against demo fixtures — every generation returning canned text, with nothing in the log saying the key was being ignored. `BuildDeps` now treats "has an LLM" and "has 1Claw" as separate facts. 1Claw still adds Shroud's guardrails and agent-loop tool-calling on top, plus Google/X/LinkedIn's OAuth flows — but a static-token service (GitHub, Slack, Stripe, HubSpot) no longer needs it either: see [secrets.md](secrets.md).
 
 ## What you give up with a direct key
 

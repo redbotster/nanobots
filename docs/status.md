@@ -125,9 +125,10 @@ is real and what is simulated](#whats-real-vs-simulated). The list first.
   splitting the pages nobody has navigated to out of the main chunk, takes a
   cold load to 71.1KB — and a reload asks for nothing
   ([hosting.md](hosting.md)). The slowest thing left was not bytes at all:
-  `GET /api/connections` reads eight throttled vault secrets and four
-  screens fetch it on mount, including the landing page's. A first page load
-  went from 3.5s to 0.99ms ([connections.md](connections.md)).
+  `GET /api/connections` reads eight secrets — against a throttled 1Claw
+  vault when that measurement was taken — and four screens fetch it on
+  mount, including the landing page's. A first page load went from 3.5s to
+  0.99ms ([connections.md](connections.md)).
 - **What you ask for gets scheduled.** Composing "every friday summarise my
   overdue invoices" used to produce a swarm that described itself as weekly
   and would never fire. The composer emits cron now, the builder shows it
@@ -228,7 +229,7 @@ paper over what is actually happening. So, plainly:
 | The Slack/GitHub/Stripe/HubSpot clients — real REST calls, unit-tested against fake servers; `notify`'s Slack delivery is genuinely wired once connected | Google Business Profile replies (`review-responder`) need a dedicated integration, and stay on `connection: demo` |
 | The X and LinkedIn OAuth2+PKCE clients and the shared `internal/oauth2pkce` core — real token exchange and refresh, real posting calls, wired end to end into `post-publisher` and Settings | Live end-to-end posting has not been exercised against a real X/LinkedIn developer app in this build, only against fake test servers |
 | The AI composer — a real Shroud call, a real planner validation pass, a real hydrate-into-the-builder handoff | The composer never auto-saves or auto-runs; a hallucinated bot id or type mismatch surfaces as a normal validation error for the human to see, by design |
-| The unified Connect UI (Settings) — real vault writes and reads, real Google OAuth kicked off server-side | Connections are always whole-port-to-port in the builder and the composer; a swarm's trigger/vars/deploy config has no UI yet; canvas layout is not persisted |
+| The unified Connect UI (Settings) — real writes and reads through whichever secrets backend is configured (1Claw vault, OS keychain, or encrypted local file — [secrets.md](secrets.md)), real Google OAuth kicked off server-side | Connections are always whole-port-to-port in the builder and the composer; a swarm's trigger/vars/deploy config has no UI yet; canvas layout is not persisted; Settings doesn't yet say which secrets backend is active |
 | Approvals — a run blocks, flips to `awaiting_approval`, and waits for a real decision from the WebUI, the CLI, or 1Claw's own queue, which one shared agent opens it in; first answer wins ([approvals.md](approvals.md)) | A local answer still leaves the mirrored 1Claw approval pending rather than cancelling it — 1Claw's API gained a cancel endpoint after this was first built, but nothing calls it yet; and where 1Claw delivers the question — push, email, dashboard — is your account's setting, not this repo's ([1claw-feature-requests.md](1claw-feature-requests.md)) |
 | Per-item fan-out *and* the join back — a `.*` snap runs a downstream bot once per list item with one approval covering the batch ([fan-out.md](fan-out.md)); `get-paid` uses both | `content-engine` and `thread-from-an-idea` still snap `.0` — a product decision, not a missing primitive: fanning either would publish every brainstormed idea in one run instead of "the first one, scheduled across the week" ([fan-out.md](fan-out.md)) |
 | Basic/advanced mode toggle — a real, tested UI gate | Purely a UI-visibility gate; it never changes what actually executes |

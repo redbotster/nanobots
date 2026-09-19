@@ -28,9 +28,13 @@ is [llm.md](llm.md).
 ## 2. 1Claw — holds the credentials
 
 `ONECLAW_API_KEY` does double duty: it is a model backend *and* the vault
-every connected account lands in. Without it you can still run bots against
-a model, but there is nowhere safe to put a Gmail token, so real service
-calls stay off.
+every OAuth account (Google, X, LinkedIn) lands in — those still need it,
+full stop. A static token (Slack, GitHub, Stripe, HubSpot) doesn't: without
+`ONECLAW_API_KEY`, nanobotd falls back to an encrypted local file for those
+by default (an OS keychain if you ask for one with
+`NANOBOTS_SECRETS=keychain`) — see [secrets.md](secrets.md). So "a model, no
+1Claw" is enough to run a GitHub- or Slack-backed bot for real; it's Gmail,
+Drive, X and LinkedIn that stay off without this layer.
 
 `nanobots init` writes this file for you and will enrol an agent key rather
 than asking for full account access — the difference between the two kinds

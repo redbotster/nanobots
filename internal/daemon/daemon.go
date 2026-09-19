@@ -164,6 +164,11 @@ func build(opts Options) (*api.Server, *scheduler.Scheduler, Options, error) {
 		return nil, nil, opts, err
 	}
 
+	secretsStore, err := wiring.BuildSecretsStore(oc, paths.SecretsDir, func(f string, a ...any) { log.Printf(f, a...) })
+	if err != nil {
+		return nil, nil, opts, err
+	}
+
 	// The Shroud shim lets a client that can only be handed a base URL and
 	// a bearer token — a local Honcho, say — still have its LLM spend
 	// metered and its prompts redacted. Only worth exposing when there is a
@@ -197,7 +202,7 @@ func build(opts Options) (*api.Server, *scheduler.Scheduler, Options, error) {
 		RepoRoot:     opts.RepoRoot,
 		BotsDir:      opts.BotsDir,
 		CallbackPort: portOf(opts.Addr),
-	}, paths, oc, svc, callbacks)
+	}, paths, oc, svc, secretsStore, callbacks)
 	orch.Memory = mem
 	orch.LLM = gen
 	orch.Roles = roleStore
@@ -234,6 +239,7 @@ func build(opts Options) (*api.Server, *scheduler.Scheduler, Options, error) {
 		FoundryJobs:  foundry.NewJobStore(),
 		EnvFilePath:  opts.EnvFilePath,
 		VaultID:      svc.VaultID,
+		Secrets:      secretsStore,
 		Team:         &api.TeamStore{Path: filepath.Join(paths.StateDir, "team.json")},
 		Shroud:       shroudProxy,
 		Webhook:      webhookTrigger,

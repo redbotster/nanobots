@@ -86,17 +86,8 @@ func (s *Server) handleSetBotServiceConnection(w http.ResponseWriter, r *http.Re
 			writeError(w, http.StatusBadRequest, fmt.Errorf("no live connection method known for provider %q", svc.Provider))
 			return
 		}
-		if s.OneClaw == nil || !s.OneClaw.Configured() {
-			writeError(w, http.StatusBadRequest, fmt.Errorf("1Claw isn't configured — connect an account from Settings first"))
-			return
-		}
-		vault, err := s.OneClaw.EnsureVault("nanobots-main")
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		if _, err := s.OneClaw.GetSecret(vault.ID, vaultKeyFor[svc.Provider]); err != nil {
-			writeError(w, http.StatusBadRequest, fmt.Errorf("%s isn't connected yet — connect it from Settings first", svc.Provider))
+		if err := s.requireConnectedAccount(svc.Provider); err != nil {
+			writeError(w, http.StatusBadRequest, err)
 			return
 		}
 		newConnection = live

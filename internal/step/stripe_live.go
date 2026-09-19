@@ -10,7 +10,6 @@ import (
 // provider: stripe and a non-demo connection. TokenKey defaults to
 // "stripe/secret_key" in the same 1Claw vault Google/Slack/GitHub use.
 type StripeConfig struct {
-	VaultID  string
 	TokenKey string
 }
 
@@ -19,7 +18,7 @@ func (cfg StripeConfig) tokenConfig() VaultTokenConfig {
 	if key == "" {
 		key = "stripe/secret_key"
 	}
-	return VaultTokenConfig{VaultID: cfg.VaultID, Key: key}
+	return VaultTokenConfig{Key: key}
 }
 
 // stripeAPI is the subset of *stripe.Client's methods dispatchStripe calls.
@@ -29,15 +28,12 @@ type stripeAPI interface {
 
 func (l *LiveDeps) stripeClient() (stripeAPI, error) {
 	cfg := l.Services.Stripe.tokenConfig()
-	if !cfg.configured() {
-		return nil, fmt.Errorf("stripe: not configured — connect a secret key from Settings")
-	}
 	if l.stripeTokenCache == nil {
-		l.stripeTokenCache = &vaultToken{oc: l.OneClaw, cfg: cfg}
+		l.stripeTokenCache = &vaultToken{store: l.Secrets, cfg: cfg}
 	}
 	token, err := l.stripeTokenCache.Get()
 	if err != nil {
-		return nil, err
+		return nil, wrapTokenErr("stripe", "connect a secret key from Settings", err)
 	}
 	return stripe.NewClient(token), nil
 }
