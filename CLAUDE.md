@@ -62,6 +62,15 @@ go build ./... && go vet ./... && go test ./... -race
 cd web && npx tsc -b && npm run lint && npm run format:check && npm run test
 ```
 
+Neither line rebuilds the embedded WebUI — `go build` reuses whatever is
+already sitting in `internal/webui/dist`. Before driving a real change in a
+real browser, run `make ui` (or `cd web && npm run build && cd .. && rm -rf
+internal/webui/dist && cp -R web/dist internal/webui/dist`) first, or the
+binary under test is serving yesterday's frontend and a real fix looks like
+it did nothing. Found by doing exactly that: a Settings-page fix compiled
+clean and passed every check above while the running app still showed the
+old page.
+
 Occasionally, not in CI:
 
 ```sh

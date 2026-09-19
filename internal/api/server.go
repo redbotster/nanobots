@@ -382,6 +382,13 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"memory_backend":     memKind,
 		"memory_recall":      memRecall,
 		"memory_recall_bots": recallBots,
+		// Which backend a pasted Slack/GitHub/Stripe/HubSpot token actually
+		// lands in — a 1Claw vault, the OS keychain, or an encrypted local
+		// file — and what that backend actually protects. Reported because
+		// the difference is invisible otherwise: Settings' paste-a-token
+		// form looks identical no matter which one answers it. See
+		// docs/secrets.md.
+		"secrets_backend": s.secretsStatus(),
 		// Reported separately from oneclaw because they fail independently
 		// and the fixes are unrelated: one is a key, the other is an app
 		// you have to go start.
@@ -426,6 +433,19 @@ func (s *Server) llmStatus() (kind string, guarded bool) {
 	}
 	g := s.Orchestrator.LLM
 	return g.Describe(), llm.IsDeferredShroud(g)
+}
+
+// secretsStatus names the backend behind s.Secrets in the same words
+// docs/secrets.md uses for it — what it is and what it actually protects,
+// not just its name, since "1Claw vault" and "a file protected by your OS's
+// own file permissions" are very different promises. "not configured" is
+// only reachable in a test that never set Secrets; every real deployment
+// gets one from internal/wiring.BuildSecretsStore.
+func (s *Server) secretsStatus() string {
+	if s.Secrets == nil {
+		return "not configured"
+	}
+	return s.Secrets.Describe()
 }
 
 // botsUsingRecall names the bots that ask memory a question, sorted, so

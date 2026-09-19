@@ -98,6 +98,12 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
           {status?.oneclaw_configured && <PostureRow />}
 
           <StatusRow
+            tone={status && status.secrets_backend !== "not configured" ? "ok" : "muted"}
+            label="Secrets"
+            detail={status ? status.secrets_backend : "Checking…"}
+          />
+
+          <StatusRow
             tone={
               !status || status.llm_backend === "none"
                 ? "warn"
@@ -178,70 +184,84 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
         </div>
       </section>
 
-      {status?.oneclaw_configured && (
-        <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-4">
-          <h2 className="font-display text-sm font-semibold text-ink">Connect a service</h2>
-          <p className="mt-1 text-[13px] text-muted">
-            Every credential goes straight into your 1Claw vault — never onto this machine's disk,
-            never into a bot container.
-          </p>
-          {connectionsError && <p className="mt-3 text-[13px] text-danger">{connectionsError}</p>}
-          <div className="mt-4 flex flex-col divide-y divide-edge">
-            <OAuthConnectRow
-              provider="google"
-              label="Google"
-              hint="Gmail, Drive, Sheets, Calendar — opens your browser to sign in"
-              connected={isConnected("google")}
-              onConnected={reloadConnections}
-              connectFn={api.connectGoogleStart}
-            />
-            <OAuthConnectRow
-              provider="x"
-              label="X"
-              hint="Posting to X — opens your browser to sign in"
-              connected={isConnected("x")}
-              onConnected={reloadConnections}
-              connectFn={api.connectXStart}
-            />
-            <OAuthConnectRow
-              provider="linkedin"
-              label="LinkedIn"
-              hint="Posting to LinkedIn — opens your browser to sign in"
-              connected={isConnected("linkedin")}
-              onConnected={reloadConnections}
-              connectFn={api.connectLinkedInStart}
-            />
-            <TokenConnectRow
-              service="slack"
-              label="Slack"
-              hint="A bot token (xoxb-...) from api.slack.com/apps, scoped to chat:write."
-              connected={isConnected("slack")}
-              onConnected={reloadConnections}
-            />
-            <TokenConnectRow
-              service="github"
-              label="GitHub"
-              hint="A personal access token, scoped to repo (or public_repo for public repos only)."
-              connected={isConnected("github")}
-              onConnected={reloadConnections}
-            />
-            <TokenConnectRow
-              service="stripe"
-              label="Stripe"
-              hint="A secret key from dashboard.stripe.com/apikeys."
-              connected={isConnected("stripe")}
-              onConnected={reloadConnections}
-            />
-            <TokenConnectRow
-              service="hubspot"
-              label="HubSpot"
-              hint="A private app token, scoped to crm.objects.contacts.read/.write."
-              connected={isConnected("hubspot")}
-              onConnected={reloadConnections}
-            />
-          </div>
-        </section>
-      )}
+      {/* Google/X/LinkedIn are OAuth flows and still need a 1Claw account
+          to hold the resulting refresh token — see docs/secrets.md. The
+          four pasted-token rows below don't: they write through whichever
+          secrets backend this deployment resolved (1Claw vault, OS
+          keychain, or an encrypted local file), so they render either way.
+          This used to be one block gated entirely on 1Claw being
+          configured, which hid the only UI for connecting GitHub or Slack
+          from someone who had deliberately chosen not to use 1Claw at all —
+          exactly the case internal/secrets exists for. */}
+      <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-4">
+        <h2 className="font-display text-sm font-semibold text-ink">Connect a service</h2>
+        <p className="mt-1 text-[13px] text-muted">
+          A pasted token goes straight to{" "}
+          {status?.secrets_backend ?? "your configured secrets backend"} — never onto this machine's
+          disk in the clear, never into a bot container.
+          {!status?.oneclaw_configured &&
+            " Google, X and LinkedIn are OAuth sign-ins and still need a 1Claw account; the four below don't."}
+        </p>
+        {connectionsError && <p className="mt-3 text-[13px] text-danger">{connectionsError}</p>}
+        <div className="mt-4 flex flex-col divide-y divide-edge">
+          {status?.oneclaw_configured && (
+            <>
+              <OAuthConnectRow
+                provider="google"
+                label="Google"
+                hint="Gmail, Drive, Sheets, Calendar — opens your browser to sign in"
+                connected={isConnected("google")}
+                onConnected={reloadConnections}
+                connectFn={api.connectGoogleStart}
+              />
+              <OAuthConnectRow
+                provider="x"
+                label="X"
+                hint="Posting to X — opens your browser to sign in"
+                connected={isConnected("x")}
+                onConnected={reloadConnections}
+                connectFn={api.connectXStart}
+              />
+              <OAuthConnectRow
+                provider="linkedin"
+                label="LinkedIn"
+                hint="Posting to LinkedIn — opens your browser to sign in"
+                connected={isConnected("linkedin")}
+                onConnected={reloadConnections}
+                connectFn={api.connectLinkedInStart}
+              />
+            </>
+          )}
+          <TokenConnectRow
+            service="slack"
+            label="Slack"
+            hint="A bot token (xoxb-...) from api.slack.com/apps, scoped to chat:write."
+            connected={isConnected("slack")}
+            onConnected={reloadConnections}
+          />
+          <TokenConnectRow
+            service="github"
+            label="GitHub"
+            hint="A personal access token, scoped to repo (or public_repo for public repos only)."
+            connected={isConnected("github")}
+            onConnected={reloadConnections}
+          />
+          <TokenConnectRow
+            service="stripe"
+            label="Stripe"
+            hint="A secret key from dashboard.stripe.com/apikeys."
+            connected={isConnected("stripe")}
+            onConnected={reloadConnections}
+          />
+          <TokenConnectRow
+            service="hubspot"
+            label="HubSpot"
+            hint="A private app token, scoped to crm.objects.contacts.read/.write."
+            connected={isConnected("hubspot")}
+            onConnected={reloadConnections}
+          />
+        </div>
+      </section>
 
       <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-4">
         <h2 className="font-display text-sm font-semibold text-ink">Services in use</h2>

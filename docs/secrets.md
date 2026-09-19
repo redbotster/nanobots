@@ -128,11 +128,16 @@ Google/X/LinkedIn still always go through 1Claw, as above.
 
 ## What's next
 
-A Settings-page line stating which backend holds a given credential and
-what that implies doesn't exist yet — the WebUI's connect flow works with
-any backend now, but doesn't yet say which one it just wrote to. Moving
-Google/X/LinkedIn off 1Claw, if that's ever wanted, needs a real
-OAuth-callback redesign, not a `Store` swap — see the note above.
+Settings now has a "Secrets" row in System naming the active backend and
+what it protects (from `GET /api/status`'s `secrets_backend`, `Store.Describe()`
+verbatim), and the "Connect a service" section shows the Slack/GitHub/
+Stripe/HubSpot paste-a-token rows regardless of whether 1Claw is
+configured — that section used to be hidden entirely without a 1Claw
+account, which hid the only UI for the exact case this package exists for.
+Google/X/LinkedIn's OAuth rows still only show when 1Claw is configured,
+since those still need it. Moving them off 1Claw, if that's ever wanted,
+needs a real OAuth-callback redesign, not a `Store` swap — see the note
+above.
 
 ## Run it for real
 
