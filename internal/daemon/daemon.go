@@ -46,6 +46,15 @@ func Run(opts Options) error {
 	// no graceful-shutdown story either has one yet.
 	go sched.Run(context.Background())
 
+	// Same "the gap before a human looks is free" idea as srv.Warm() below,
+	// aimed at the other cold-start cost: a harness image built lazily,
+	// inline, the first time some bot's run actually needs a container.
+	// Measured before adding this — see WarmHarnessImages — that the real
+	// cost is the one-time build, not a per-run container start.
+	if srv.Orchestrator != nil {
+		srv.Orchestrator.WarmHarnessImages()
+	}
+
 	// The seconds between binding the port and a human having a browser
 	// pointed at it are free, and /api/connections costs 3.5s cold — on an
 	// endpoint the landing page itself fetches. Background, best-effort,

@@ -100,6 +100,41 @@ Relying on people remembering that failed in practice. A 36-hour-old image made 
 
 `NANOBOTS_REBUILD_HARNESS=1` still forces a rebuild. If the source tree can't be hashed, the old "the image exists, that's good enough" rule applies rather than rebuilding on every run.
 
+## Images warm before anyone presses Run
+
+`EnsureHarnessImage` used to run for the first time on the critical path of
+whoever's run needed it first — a fresh install, or a daemon restart after
+a code change that invalidated the label. For `harness-openclaw`,
+`apt-get install`ing Chromium into the image is tens of seconds; for
+someone's first click of **Run**, that reads as the app hanging, with
+nothing in the log yet to explain why.
+
+Measured before doing anything about it: once an image is warm, `docker
+run` starts a container in well under a second regardless of size — five
+runs each against `harness-bare` (25MB) and `harness-openclaw` (1.1GB)
+landed there. The slow part was never the container start; it was the
+one-time build, paid at the wrong moment.
+
+`nanobotd` now calls `EnsureHarnessImage` for every harness the current bot
+catalog actually needs, in the background, in the seconds after it binds
+its port and before anyone has a browser open — the same "the gap is free"
+idea `Server.Warm()` already used for `/api/connections`. Only the images
+something would actually run in: a bot with no browser-needing step and no
+declared `openclaw` harness runs in-process (see above) and needs nothing
+warmed for it. Against the current catalog that's one image, `openclaw` —
+every `bare`/`llm` bot here runs in-process, so `harness-bare` is only ever
+built for the (currently nonexistent) case of a declared-`openclaw` bot
+that doesn't actually render.
+
+```
+harness image "openclaw" ready
+```
+
+Nothing here is required for correctness. A run that starts before warming
+finishes, or when Docker wasn't available at startup, still calls
+`EnsureHarnessImage` itself and pays the build inline — this only decides
+whether that cost lands before or during someone's first click.
+
 ## What openclaw's own Chromium can reach
 
 `guardrails.network_egress` is enforced for `web.fetch` — the step that
