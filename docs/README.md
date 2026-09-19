@@ -53,6 +53,7 @@ it.
 |---|---|
 | [connections.md](connections.md) | every connection method, per provider, step by step |
 | [connectors.md](connectors.md) | 1Claw's connector presets, and what they do not remove |
+| [secrets.md](secrets.md) | the pluggable secrets `Store`, its three backends, and what's still wired to 1Claw only |
 | [oneclaw-bridge.md](oneclaw-bridge.md) | vaults, agents, memory, posture, and the agent cap |
 | [browser-bridge.md](browser-bridge.md) | driving an already-authenticated browser, and where it dead-ends |
 | [llm.md](llm.md) | which model a bot actually talks to, and what it cost |
