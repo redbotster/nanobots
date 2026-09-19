@@ -58,6 +58,7 @@ A `Retry-After` longer than a minute means a quota window rather than a blip, an
 
 - **Shroud**, end to end: `competitor-watch` in a real container, `ai.generate -> ok`, against a live 1Claw agent provisioned on demand.
 - **Gemini**, end to end, same bot and same swarm, changed only by `NANOBOTS_LLM=gemini`: the substitution notice appeared in the run log, and the run succeeded.
+- **Shroud's tool-calling**, end to end: `lead-enricher@0.2.0`'s `agent.loop` step, a real Shroud agent, a real `search_crm` tool call, a real answer reasoning over the result — see `docs/agent-loop.md`. Provisioning this agent at all needed its own fix: `needsOneClawAgent` didn't know `agent.loop` exists, so a bot whose only model-calling step was a loop silently got none.
 - **Key redaction**, confirmed by a real failure rather than only a test. Gemini authenticates in the query string, and the error carries the URL — a live 503 surfaced as `...:generateContent?key=REDACTED returned 503`, with Google's own message intact.
 - **Every request shape**, against an httptest server asserting each provider's own documented format: `/v1/messages` with `x-api-key` + `anthropic-version` for Anthropic, `/chat/completions` with a bearer for OpenAI, `models/{m}:generateContent?key=` with `generationConfig.maxOutputTokens` for Gemini.
 

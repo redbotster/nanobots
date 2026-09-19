@@ -254,3 +254,92 @@ func TestAgentLoopNeedsAPositiveMaxIterations(t *testing.T) {
 		t.Fatal("expected max_iterations: 0 to be an error even without the planner catching it first")
 	}
 }
+
+// A final answer that happens to look like a JSON scalar ("4", "true")
+// must stay the plain text it is — finalAgentLoopOutput used to run every
+// answer through json.Unmarshal unconditionally, so a bot answering "how
+// many issues are there?" with "4" got the number 4 bound to a
+// `type: string` output port, which validateOutputType correctly refused.
+func TestAgentLoopDoesNotCoerceATextAnswerThatLooksLikeAJSONScalar(t *testing.T) {
+	for _, content := range []string{"4", "true", "null", "  42  "} {
+		t.Run(content, func(t *testing.T) {
+			nb := agentLoopBot(
+				[]schema.Step{{Name: "research", Type: "agent.loop", Goal: "how many?", MaxIterations: 5, Output: "answer"}},
+				nil, []schema.OutputPort{{Name: "answer", Type: "string"}},
+			)
+			deps := &fakeDeps{agentLoopTurns: []*llm.ToolCallResult{{Content: content, Done: true}}}
+			res, err := Interpret(nb, nil, nil, deps)
+			if err != nil {
+				t.Fatalf("Interpret: %v", err)
+			}
+			if res.Outputs["answer"] != content {
+				t.Errorf("outputs[answer] = %#v, want the plain text %q, unmodified", res.Outputs["answer"], content)
+			}
+		})
+	}
+}
+
+// A service tool gets the same pre-flight a fixed service.call step
+// already has — checkparams_test.go's TestADraftWithNoRecipientIsRefused
+// exists because a swarm's own snap resolved `to:` to nothing; a model
+// choosing its own arguments can leave it empty just as easily, and this
+// proves dispatchAgentTool doesn't skip the same check.
+func TestAgentLoopServiceToolGetsTheSameCheckParamsAFixedStepHas(t *testing.T) {
+	nb := agentLoopBot(
+		[]schema.Step{{
+			Name: "assistant", Type: "agent.loop", Goal: "draft a reply",
+			Tools:         []schema.AgentTool{{Name: "draft", Service: "gmail", Op: "drafts.create"}},
+			MaxIterations: 5, Output: "answer",
+		}},
+		[]schema.Service{{ID: "gmail", Provider: "google"}},
+		[]schema.OutputPort{{Name: "answer", Type: "string"}},
+	)
+	deps := &fakeDeps{
+		agentLoopTurns: []*llm.ToolCallResult{
+			{ToolCalls: []llm.ToolCall{{ID: "c1", Name: "draft", Arguments: `{"drafts":[{"to":"","subject":"Re: ","body":"x"}]}`}}},
+			{Content: "gave up, no recipient", Done: true},
+		},
+	}
+	res, err := Interpret(nb, nil, nil, deps)
+	if err != nil {
+		t.Fatalf("Interpret: %v, want the run to survive a bad tool call the same way an undeclared one does", err)
+	}
+	second := deps.gotToolMessages[1]
+	toolMsg := second[len(second)-1]
+	if toolMsg.Role != "tool" || !strings.Contains(toolMsg.Content, "recipient") {
+		t.Errorf("tool result = %+v, want checkParams's own refusal reaching the model", toolMsg)
+	}
+	if res.Outputs["answer"] == "" {
+		t.Error("expected a final answer despite the refused tool call")
+	}
+}
+
+// A final answer that genuinely is a JSON object binds its fields through
+// outputs:, the same way ai.generate's own structured responses do —
+// competitor-watch's real conversion depends on exactly this.
+func TestAgentLoopBindsStructuredFieldsFromAJSONObjectAnswer(t *testing.T) {
+	nb := agentLoopBot(
+		[]schema.Step{{
+			Name: "research", Type: "agent.loop", Goal: "what changed?", MaxIterations: 5,
+			Outputs: map[string]string{
+				"changes":    "{{steps.research.output.changes}}",
+				"summary_md": "{{steps.research.output.summary_md}}",
+			},
+		}},
+		nil, []schema.OutputPort{{Name: "changes", Type: "list<json>"}, {Name: "summary_md", Type: "string"}},
+	)
+	deps := &fakeDeps{agentLoopTurns: []*llm.ToolCallResult{
+		{Content: `{"changes":[{"url":"https://a.example","what":"new pricing"}],"summary_md":"Pricing changed."}`, Done: true},
+	}}
+	res, err := Interpret(nb, nil, nil, deps)
+	if err != nil {
+		t.Fatalf("Interpret: %v", err)
+	}
+	if res.Outputs["summary_md"] != "Pricing changed." {
+		t.Errorf("outputs[summary_md] = %v", res.Outputs["summary_md"])
+	}
+	changes, ok := res.Outputs["changes"].([]any)
+	if !ok || len(changes) != 1 {
+		t.Fatalf("outputs[changes] = %#v", res.Outputs["changes"])
+	}
+}

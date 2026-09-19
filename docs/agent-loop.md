@@ -16,8 +16,7 @@ result, and decides the next one, until it has an answer or hits its cap.
     - name: fetch_page
       builtin: web.fetch
     - name: recall_last_summary
-      service: memory_store
-      op: get
+      builtin: memory.get
     - name: send_summary
       service: slack
       op: chat.postMessage
@@ -165,15 +164,51 @@ it. Two independent live verifications now exist for
 used Anthropic; this one used Gemini through the same Shroud endpoint, on
 a different account, and got the identical shape of result.
 
+## A real bot, converted and run for real
+
+`bots/lead-enricher` (v0.2.0) was a fixed lookup-then-enrich pipeline —
+HubSpot search, then one `ai.generate` call — until it wasn't: it now
+declares one `agent.loop` step with a single tool,
+`search_crm` (HubSpot's `contacts.search`), and a goal that tells the model
+*not* to search when the lead has no email — a search with nothing to
+search by can't find anything, and the fixed version used to try anyway.
+
+Run for real against this account's own Shroud agent, HubSpot on
+`connection: demo` (a real fixture, not a real CRM — the point of this run
+was the loop and the model, not a HubSpot account this repo doesn't have):
+
+```
+[enricher/assess] search_crm({"email":"jamie@rivera-design.co"}) -> 119 bytes
+[enricher/assess] agent.loop finished after 2 of 4 max iteration(s)
+[enricher/] done
+
+outputs/enriched.json:
+{"company":"Rivera Design Co.","email":"jamie@rivera-design.co","name":"Jamie Rivera",
+ "notes":"Rivera Design Co. appears to be a small, independent design agency, which fits
+ squarely within the ICP of 2-15 person shops that bill clients and need better reporting.
+ Jamie is already in the CRM as a lead at the early lifecycle stage, so this is a warm
+ contact worth prioritising. No contradictions between the CRM record and the lead data."}
+outputs/fit_score.json: "high"
+```
+
+A real decision to call the tool, a real CRM result folded into real
+reasoning about fit against the ICP, a real structured answer bound to
+both output ports through `outputs:` — the same mechanism `ai.generate`'s
+own JSON responses already use.
+
+**A real bug this run found, that no unit test could have.**
+`internal/runner.needsOneClawAgent` decided whether a bot gets a 1Claw
+agent (and therefore Shroud) by checking for `ai.generate` or `memory.*`
+steps — written before `agent.loop` existed, and never updated. A bot
+whose only model-calling step is a loop got no agent at all, and
+`GenerateWithTools` fell back to a direct provider key with no
+tool-calling, failing immediately with `llm.ErrNoToolCalling` before a
+single tool was ever called. Every unit test in this build's own test
+suite uses a fake `Deps` that never goes near `needsOneClawAgent` — this
+was only reachable by actually running the bot. Fixed, with a test.
+
 ## What's deliberately not built yet
 
-- **No catalog bot uses `agent.loop`.** The mechanism itself is proven live
-  end to end (see above), but that was a hand-written probe against a
-  synthetic tool, not a real bot doing real work. Converting a real bot (a
-  natural candidate: `competitor-watch`, which already fetches a page and
-  reasons about what changed — exactly the shape a loop suits) is the next
-  real step, and it should happen with a live run against a funded Shroud
-  key, not merely with a passing fixture.
 - **No spend ceiling.** The original design for this feature wanted a
   `max_spend_usd` alongside `max_iterations`. It isn't here:
   `llm.ToolCallResult` carries no per-call token count or cost from any

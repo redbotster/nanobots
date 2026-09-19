@@ -159,8 +159,8 @@ credential gap the foundry's coding agent already has
 `notify`, `render-pdf`, `drive-save`, `drive-watch`, `form-to-sheet`). Each
 is versioned and a swarm pins the version it was built against, so a bot can
 change without silently changing every swarm that uses it —
-`email-drive-file@1.1.0` and `recap-emails-to-pdf@0.3.0` have moved on;
-everything else is still at `0.1.0`:
+`email-drive-file@1.1.0`, `recap-emails-to-pdf@0.3.0` and
+`lead-enricher@0.2.0` have moved on; everything else is still at `0.1.0`:
 
 | Busy-person / solo-founder story (hero path) | SMB ops story (advanced) |
 |---|---|

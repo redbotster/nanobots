@@ -1,0 +1,11 @@
+[
+  {
+    "tool_calls": [
+      { "id": "call_1", "name": "search_crm", "arguments": "{\"email\":\"jamie@rivera-design.co\"}" }
+    ]
+  },
+  {
+    "content": "{\"enriched\":{\"name\":\"Jamie Rivera\",\"email\":\"jamie@rivera-design.co\",\"company\":\"Rivera Design Co.\",\"notes\":\"A small design agency matching the target size and billing model; already a lead in the CRM, not yet a customer.\"},\"fit_score\":\"high\"}",
+    "done": true
+  }
+]
