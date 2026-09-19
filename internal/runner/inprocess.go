@@ -121,7 +121,7 @@ func interpretInProcess(
 	}
 	if got.res.Stopped {
 		// Not a failure and not an empty answer: this bot looked, found
-		// nothing new, and wrote nothing. runLevels turns it into a skip
+		// nothing new, and wrote nothing. runDAG turns it into a skip
 		// for everything downstream. See the stop.if step.
 		return &NothingToDoError{Bot: nb.Metadata.Name, Reason: got.res.StopReason}
 	}

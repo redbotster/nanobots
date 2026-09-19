@@ -40,7 +40,7 @@ it.
 | [scheduler.md](scheduler.md) | cron triggers, timezones, and the circuit breaker |
 | [webhooks.md](webhooks.md) | starting a run from outside |
 | [approvals.md](approvals.md) | the gate, what it tells you, and answering from your phone |
-| [parallelism.md](parallelism.md) | which swarms branch, and why waves are safe |
+| [parallelism.md](parallelism.md) | which swarms branch, and why running them at once is safe |
 | [fan-out.md](fan-out.md) | `.*` over a list, and joining the results back |
 | [error-policy.md](error-policy.md) | `on_error: continue`, and what gets skipped |
 | [when.md](when.md) | `when:`, and the one thing it's allowed to look at |

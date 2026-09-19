@@ -39,9 +39,9 @@ skipped**. Continuing past a bot does not mean pretending it produced
 output: without the skip, one tolerated failure cascades into a run of
 "upstream bot has no recorded outputs yet" from every bot behind it.
 Skipping is transitive, and a bot that never needed the failed one still
-runs — this is about the data, not about the wave.
+runs — this is about the data, not about proximity in the DAG.
 
-`continue` is per bot, not a mood the wave catches. A fatal failure
+`continue` is per bot, not a mood the whole run catches. A fatal failure
 alongside a tolerated one still fails the run.
 
 ## It cannot be invisible

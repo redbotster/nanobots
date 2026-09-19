@@ -7,11 +7,11 @@ import "fmt"
 //
 // An error type for a thing that is not an error, because it travels the
 // same path a failure does: runBot returns it, runOneBot passes it up, and
-// runLevels is the one place that knows the difference. Modelling it as a
+// runDAG is the one place that knows the difference. Modelling it as a
 // success instead would mean a second return value on every layer in
 // between, all of which would ignore it.
 //
-// What runLevels does with it is the point. Everything downstream is
+// What runDAG does with it is the point. Everything downstream is
 // skipped, because their inputs genuinely never arrived; the run still
 // succeeds, because looking and finding nothing is the correct outcome of a
 // watch; and nothing is recorded as tolerated, because no failure was

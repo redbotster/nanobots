@@ -17,8 +17,9 @@ import (
 	"github.com/redbotster/nanobots/internal/schema"
 )
 
-// resolvedFor builds the minimum ResolvedSwarm runLevels reads: it only
-// looks bots up by id.
+// resolvedFor builds the minimum ResolvedSwarm runDAG reads: it only looks
+// bots up by id, with no snaps — every bot here is independent of every
+// other unless a test adds its own edges via swarmWith.
 func resolvedFor(ids ...string) *planner.ResolvedSwarm {
 	refs := make([]schema.BotRef, 0, len(ids))
 	for _, id := range ids {
@@ -27,11 +28,11 @@ func resolvedFor(ids ...string) *planner.ResolvedSwarm {
 	return swarmWith(refs, nil)
 }
 
-// Bots in one wave have no path between them in the DAG, so they can run at
-// the same time — which is the entire point. If they were still serialised
-// the change would be a no-op with extra machinery, and nothing else here
-// would catch that.
-func TestBotsInAWaveRunAtTheSameTime(t *testing.T) {
+// Bots with no path between them in the DAG have nothing to wait for, so
+// they run at the same time — which is the entire point of runDAG. If
+// they were still serialised the rewrite would be a no-op with extra
+// machinery, and nothing else here would catch that.
+func TestIndependentBotsRunAtTheSameTime(t *testing.T) {
 	var running, peak int32
 	var mu sync.Mutex
 
@@ -48,68 +49,104 @@ func TestBotsInAWaveRunAtTheSameTime(t *testing.T) {
 	}}
 
 	run := NewRun("probe")
-	err := o.runLevels(run, resolvedFor("a", "b", "c"), [][]string{{"a", "b", "c"}})
+	err := o.runDAG(run, resolvedFor("a", "b", "c"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if peak < 2 {
-		t.Errorf("peak concurrency was %d — the wave ran one bot at a time", peak)
+		t.Errorf("peak concurrency was %d — independent bots ran one at a time", peak)
 	}
 }
 
-// The other half of the contract: a later wave must not start until the
-// earlier one has finished, because that is the only thing stopping a bot
-// from reading an output that doesn't exist yet.
-func TestALaterWaveWaitsForTheEarlierOne(t *testing.T) {
+// The property that actually has to hold, replacing "a later wave waits for
+// an earlier one": a bot waits only for the upstream bots a real snap:
+// names, however long those specifically take — not for anything else that
+// happens to be running.
+func TestABotWaitsOnlyForItsRealUpstream(t *testing.T) {
 	var mu sync.Mutex
 	var order []string
-	var inFlight int32
-	var overlapped bool
+	var firstStillRunning int32
+
+	rs := swarmWith(
+		[]schema.BotRef{{ID: "slow"}, {ID: "unrelated"}, {ID: "dependent"}},
+		[]schema.Snap{{From: "slow.out", To: "dependent.in"}},
+	)
 
 	o := &Orchestrator{runBotFn: func(_ *Run, _ *planner.ResolvedSwarm, id string, _ *planner.ResolvedBot) error {
-		mu.Lock()
-		order = append(order, "start:"+id)
-		mu.Unlock()
-		atomic.AddInt32(&inFlight, 1)
-		time.Sleep(20 * time.Millisecond)
-		atomic.AddInt32(&inFlight, -1)
-		return nil
-	}}
-
-	// second must never begin while either first-wave bot is still going.
-	o.runBotFn = func(run *Run, rs *planner.ResolvedSwarm, id string, rb *planner.ResolvedBot) error {
-		if id == "second" && atomic.LoadInt32(&inFlight) > 0 {
+		if id == "dependent" && atomic.LoadInt32(&firstStillRunning) > 0 {
 			mu.Lock()
-			overlapped = true
+			order = append(order, "dependent-started-too-early")
 			mu.Unlock()
 		}
-		atomic.AddInt32(&inFlight, 1)
-		time.Sleep(20 * time.Millisecond)
-		atomic.AddInt32(&inFlight, -1)
+		if id == "slow" {
+			atomic.AddInt32(&firstStillRunning, 1)
+			time.Sleep(30 * time.Millisecond)
+			atomic.AddInt32(&firstStillRunning, -1)
+		}
 		mu.Lock()
 		order = append(order, id)
 		mu.Unlock()
 		return nil
-	}
+	}}
 
-	err := o.runLevels(NewRun("probe"), resolvedFor("a", "b", "second"),
-		[][]string{{"a", "b"}, {"second"}})
-	if err != nil {
+	if err := o.runDAG(NewRun("probe"), rs); err != nil {
 		t.Fatal(err)
 	}
-	if overlapped {
-		t.Error("a second-wave bot started while the first wave was still running")
+	for _, bad := range order {
+		if bad == "dependent-started-too-early" {
+			t.Error("dependent started while its real upstream, slow, was still running")
+		}
 	}
-	if order[len(order)-1] != "second" {
-		t.Errorf("order = %v, want second last", order)
+	slowIdx, depIdx := -1, -1
+	for i, id := range order {
+		if id == "slow" {
+			slowIdx = i
+		}
+		if id == "dependent" {
+			depIdx = i
+		}
+	}
+	if slowIdx == -1 || depIdx == -1 || depIdx < slowIdx {
+		t.Errorf("order = %v, want slow before dependent", order)
 	}
 }
 
-// When two bots in a wave fail, both errors matter. A swarm's independent
-// branches usually fail for one shared reason — an expired credential, a
-// stopped Docker — and reporting whichever lost the race sends someone
-// looking for two bugs.
-func TestEveryFailureInAWaveIsReported(t *testing.T) {
+// The deliberate behaviour change this phase exists for: a bot with no
+// data dependency on another must not wait for it just because the two
+// used to land in the same numbered stage. Before this rewrite, this
+// exact scenario — "second" declares no snap: to or from "a"/"b" — would
+// still have waited, because scheduling was by wave, not by edge.
+func TestABotWithNoDependencyDoesNotWaitForUnrelatedBots(t *testing.T) {
+	const othersSleep = 40 * time.Millisecond
+	start := time.Now()
+	var secondStartedAt time.Duration
+
+	o := &Orchestrator{runBotFn: func(_ *Run, _ *planner.ResolvedSwarm, id string, _ *planner.ResolvedBot) error {
+		if id == "second" {
+			secondStartedAt = time.Since(start)
+			return nil
+		}
+		time.Sleep(othersSleep)
+		return nil
+	}}
+
+	// No snaps at all: "second" reads from nothing "a" or "b" produce. If it
+	// waited for them anyway, it would start around othersSleep in, not
+	// near zero — runDAG only returns once every bot is done either way, so
+	// total elapsed time alone can't tell the two cases apart.
+	if err := o.runDAG(NewRun("probe"), resolvedFor("a", "b", "second")); err != nil {
+		t.Fatal(err)
+	}
+	if secondStartedAt >= othersSleep/2 {
+		t.Errorf("an independent bot started %v in, want near-immediate — it waited for unrelated bots", secondStartedAt)
+	}
+}
+
+// When two independent bots fail, both errors matter. A swarm's
+// independent branches usually fail for one shared reason — an expired
+// credential, a stopped Docker — and reporting whichever lost the race
+// sends someone looking for two bugs.
+func TestEveryIndependentFailureIsReported(t *testing.T) {
 	o := &Orchestrator{runBotFn: func(_ *Run, _ *planner.ResolvedSwarm, id string, _ *planner.ResolvedBot) error {
 		if id == "ok" {
 			return nil
@@ -117,8 +154,7 @@ func TestEveryFailureInAWaveIsReported(t *testing.T) {
 		return fmt.Errorf("%s could not reach the vault", id)
 	}}
 
-	err := o.runLevels(NewRun("probe"), resolvedFor("alpha", "ok", "beta"),
-		[][]string{{"alpha", "ok", "beta"}})
+	err := o.runDAG(NewRun("probe"), resolvedFor("alpha", "ok", "beta"))
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -145,22 +181,23 @@ func TestASingleFailureReadsUnchanged(t *testing.T) {
 		return nil
 	}}
 
-	err := o.runLevels(NewRun("probe"), resolvedFor("bad"), [][]string{{"bad"}})
+	err := o.runDAG(NewRun("probe"), resolvedFor("bad"))
 	if err == nil || err.Error() != "container exited 1" {
 		t.Errorf("err = %v, want the bot's own error verbatim", err)
 	}
 
-	// And the same when it fails alongside a healthy sibling.
-	err = o.runLevels(NewRun("probe"), resolvedFor("bad", "good"), [][]string{{"bad", "good"}})
+	// And the same when it fails alongside a healthy, independent sibling.
+	err = o.runDAG(NewRun("probe"), resolvedFor("bad", "good"))
 	if err == nil || err.Error() != "container exited 1" {
 		t.Errorf("err = %v, want the bot's own error verbatim", err)
 	}
 }
 
-// Cancelling a wave half-way would orphan a container that was already
-// starting — a leak this runner has had once before. So a failing wave is
-// allowed to finish, and only then does the run stop.
-func TestAFailingWaveStillLetsItsSiblingsFinish(t *testing.T) {
+// Cancelling a failure's siblings mid-flight would orphan a container that
+// was already starting — a leak this runner has had once before. So a
+// fatal failure never cancels a bot already running, or one already past
+// its dependency wait, elsewhere in the DAG.
+func TestAFailureStillLetsUnrelatedBotsFinish(t *testing.T) {
 	var finished int32
 	o := &Orchestrator{runBotFn: func(_ *Run, _ *planner.ResolvedSwarm, id string, _ *planner.ResolvedBot) error {
 		if id == "fails" {
@@ -171,8 +208,7 @@ func TestAFailingWaveStillLetsItsSiblingsFinish(t *testing.T) {
 		return nil
 	}}
 
-	err := o.runLevels(NewRun("probe"), resolvedFor("fails", "slow1", "slow2"),
-		[][]string{{"fails", "slow1", "slow2"}})
+	err := o.runDAG(NewRun("probe"), resolvedFor("fails", "slow1", "slow2"))
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -181,12 +217,19 @@ func TestAFailingWaveStillLetsItsSiblingsFinish(t *testing.T) {
 	}
 }
 
-// A later wave must not run after an earlier one failed.
-func TestNoLaterWaveRunsAfterAFailure(t *testing.T) {
+// The other deliberate behaviour change: an unrelated bot runs regardless
+// of a fatal failure elsewhere, because it never depended on the bot that
+// failed. Before this rewrite, "later" — declared with no snap: to or from
+// "first" — would never have run once "first" failed, purely because
+// planner.BuildDAG happened to place it in the next wave.
+func TestAnUnrelatedBotRunsRegardlessOfAFatalFailureElsewhere(t *testing.T) {
 	var ranLater bool
+	var mu sync.Mutex
 	o := &Orchestrator{runBotFn: func(_ *Run, _ *planner.ResolvedSwarm, id string, _ *planner.ResolvedBot) error {
 		if id == "later" {
+			mu.Lock()
 			ranLater = true
+			mu.Unlock()
 		}
 		if id == "first" {
 			return fmt.Errorf("boom")
@@ -194,12 +237,50 @@ func TestNoLaterWaveRunsAfterAFailure(t *testing.T) {
 		return nil
 	}}
 
-	if err := o.runLevels(NewRun("probe"), resolvedFor("first", "later"),
-		[][]string{{"first"}, {"later"}}); err == nil {
+	// No snaps: "later" does not read anything "first" produces.
+	if err := o.runDAG(NewRun("probe"), resolvedFor("first", "later")); err == nil {
 		t.Fatal("expected an error")
 	}
-	if ranLater {
-		t.Error("a later wave ran after an earlier one failed")
+	if !ranLater {
+		t.Error("an unrelated bot did not run after a fatal failure elsewhere — independent work should not be blocked by it")
+	}
+}
+
+// The correctness property "no later wave runs after a failure" used to
+// prove: a bot genuinely downstream of a fatal failure — connected by a
+// real snap:, not just scheduled nearby — is still skipped. A fatal
+// failure has to mark its own bot "gone" for this to work without wave
+// boundaries: nothing else would tell a real dependent that its upstream
+// never produced anything.
+func TestABotDownstreamOfAFatalFailureIsSkipped(t *testing.T) {
+	var ranDownstream bool
+	rs := swarmWith(
+		[]schema.BotRef{{ID: "first"}, {ID: "downstream"}},
+		[]schema.Snap{{From: "first.out", To: "downstream.in"}},
+	)
+	o := &Orchestrator{runBotFn: func(_ *Run, _ *planner.ResolvedSwarm, id string, _ *planner.ResolvedBot) error {
+		if id == "downstream" {
+			ranDownstream = true
+			return nil
+		}
+		return fmt.Errorf("boom")
+	}}
+
+	run := NewRun("probe")
+	if err := o.runDAG(run, rs); err == nil {
+		t.Fatal("expected an error")
+	}
+	if ranDownstream {
+		t.Error("a bot downstream of a fatal failure ran against outputs that were never produced")
+	}
+	var said bool
+	for _, l := range run.LogEntries() {
+		if l.Bot == "downstream" && strings.Contains(l.Msg, "skipped") {
+			said = true
+		}
+	}
+	if !said {
+		t.Error("nothing in the log says why the downstream bot never ran")
 	}
 }
 
@@ -225,7 +306,7 @@ func TestConcurrencyIsCapped(t *testing.T) {
 	for i := 0; i < maxParallelBots*3; i++ {
 		wide = append(wide, fmt.Sprintf("bot%02d", i))
 	}
-	if err := o.runLevels(NewRun("probe"), resolvedFor(wide...), [][]string{wide}); err != nil {
+	if err := o.runDAG(NewRun("probe"), resolvedFor(wide...)); err != nil {
 		t.Fatal(err)
 	}
 	if int(peak) > maxParallelBots {
@@ -236,8 +317,8 @@ func TestConcurrencyIsCapped(t *testing.T) {
 	}
 }
 
-// swarmWith builds a ResolvedSwarm with real bot refs and snaps, so
-// runLevels sees the on_error values and dependency edges it reads.
+// swarmWith builds a ResolvedSwarm with real bot refs and snaps, so runDAG
+// sees the on_error values and dependency edges it reads.
 func swarmWith(bots []schema.BotRef, snaps []schema.Snap) *planner.ResolvedSwarm {
 	rs := &planner.ResolvedSwarm{
 		Swarm: &schema.Nanoswarm{Spec: schema.NanoswarmSpec{Bots: bots, Snaps: snaps}},
@@ -269,7 +350,7 @@ func TestASwarmContinuesPastABotMarkedContinue(t *testing.T) {
 		{ID: "notifier", OnError: schema.OnErrorContinue},
 	}, nil)
 
-	if err := o.runLevels(run, rs, [][]string{{"sender"}, {"notifier"}}); err != nil {
+	if err := o.runDAG(run, rs); err != nil {
 		t.Fatalf("the run failed despite on_error: continue: %v", err)
 	}
 	tol := run.GetTolerated()
@@ -290,7 +371,7 @@ func TestTheDefaultIsStillToFailTheRun(t *testing.T) {
 	for _, policy := range []string{"", schema.OnErrorStop} {
 		run := NewRun("probe")
 		rs := swarmWith([]schema.BotRef{{ID: "only", OnError: policy}}, nil)
-		if err := o.runLevels(run, rs, [][]string{{"only"}}); err == nil {
+		if err := o.runDAG(run, rs); err == nil {
 			t.Errorf("on_error=%q did not fail the run", policy)
 		}
 		if len(run.GetTolerated()) != 0 {
@@ -328,7 +409,7 @@ func TestBotsDownstreamOfAToleratedFailureAreSkipped(t *testing.T) {
 	)
 
 	run := NewRun("probe")
-	if err := o.runLevels(run, rs, [][]string{{"first"}, {"middle", "unrelated"}, {"last"}}); err != nil {
+	if err := o.runDAG(run, rs); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
 	for _, id := range ran {
@@ -337,7 +418,7 @@ func TestBotsDownstreamOfAToleratedFailureAreSkipped(t *testing.T) {
 		}
 	}
 	// A bot that never needed it still runs — skipping is about the data,
-	// not about the wave.
+	// not about proximity in the graph.
 	var sawUnrelated bool
 	for _, id := range ran {
 		if id == "unrelated" {
@@ -363,8 +444,11 @@ func TestBotsDownstreamOfAToleratedFailureAreSkipped(t *testing.T) {
 // without needing its own edge to the original failure.
 func TestSkippingIsTransitive(t *testing.T) {
 	var ran []string
+	var mu sync.Mutex
 	o := &Orchestrator{runBotFn: func(_ *Run, _ *planner.ResolvedSwarm, id string, _ *planner.ResolvedBot) error {
+		mu.Lock()
 		ran = append(ran, id)
+		mu.Unlock()
 		if id == "a" {
 			return fmt.Errorf("boom")
 		}
@@ -374,7 +458,7 @@ func TestSkippingIsTransitive(t *testing.T) {
 		[]schema.BotRef{{ID: "a", OnError: schema.OnErrorContinue}, {ID: "b"}, {ID: "c"}},
 		[]schema.Snap{{From: "a.out", To: "b.in"}, {From: "b.out", To: "c.in"}},
 	)
-	if err := o.runLevels(NewRun("probe"), rs, [][]string{{"a"}, {"b"}, {"c"}}); err != nil {
+	if err := o.runDAG(NewRun("probe"), rs); err != nil {
 		t.Fatal(err)
 	}
 	if len(ran) != 1 || ran[0] != "a" {
@@ -416,14 +500,17 @@ func whenSwarm(gateWhen string, gateAmount any) *planner.ResolvedSwarm {
 // downstream of it, because its output never arrived.
 func TestWhenFalseSkipsTheBotAndDownstream(t *testing.T) {
 	var ran []string
+	var mu sync.Mutex
 	o := &Orchestrator{runBotFn: func(_ *Run, _ *planner.ResolvedSwarm, id string, _ *planner.ResolvedBot) error {
+		mu.Lock()
 		ran = append(ran, id)
+		mu.Unlock()
 		return nil
 	}}
 	rs := whenSwarm("{{inputs.amount}} > 500", 100)
 
 	run := NewRun("probe")
-	if err := o.runLevels(run, rs, [][]string{{"gate"}, {"notify"}}); err != nil {
+	if err := o.runDAG(run, rs); err != nil {
 		t.Fatalf("when: false failed the run: %v", err)
 	}
 	if len(ran) != 0 {
@@ -442,14 +529,17 @@ func TestWhenFalseSkipsTheBotAndDownstream(t *testing.T) {
 
 func TestWhenTrueRunsTheBot(t *testing.T) {
 	var ran []string
+	var mu sync.Mutex
 	o := &Orchestrator{runBotFn: func(_ *Run, _ *planner.ResolvedSwarm, id string, _ *planner.ResolvedBot) error {
+		mu.Lock()
 		ran = append(ran, id)
+		mu.Unlock()
 		return nil
 	}}
 	rs := whenSwarm("{{inputs.amount}} > 500", 750)
 
 	run := NewRun("probe")
-	if err := o.runLevels(run, rs, [][]string{{"gate"}, {"notify"}}); err != nil {
+	if err := o.runDAG(run, rs); err != nil {
 		t.Fatalf("the run failed: %v", err)
 	}
 	if len(ran) != 2 {
@@ -459,13 +549,16 @@ func TestWhenTrueRunsTheBot(t *testing.T) {
 
 func TestNoWhenAlwaysRuns(t *testing.T) {
 	var ran []string
+	var mu sync.Mutex
 	o := &Orchestrator{runBotFn: func(_ *Run, _ *planner.ResolvedSwarm, id string, _ *planner.ResolvedBot) error {
+		mu.Lock()
 		ran = append(ran, id)
+		mu.Unlock()
 		return nil
 	}}
 	rs := whenSwarm("", 100)
 
-	if err := o.runLevels(NewRun("probe"), rs, [][]string{{"gate"}, {"notify"}}); err != nil {
+	if err := o.runDAG(NewRun("probe"), rs); err != nil {
 		t.Fatalf("the run failed: %v", err)
 	}
 	if len(ran) != 2 {
@@ -473,8 +566,8 @@ func TestNoWhenAlwaysRuns(t *testing.T) {
 	}
 }
 
-// A fatal failure alongside a tolerated one in the same wave still fails
-// the run — "continue" is per bot, not a mood the whole wave catches.
+// A fatal failure alongside a tolerated one still fails the run —
+// "continue" is per bot, not a mood the whole run catches.
 func TestOneToleratedFailureDoesNotExcuseAFatalOne(t *testing.T) {
 	o := &Orchestrator{runBotFn: func(_ *Run, _ *planner.ResolvedSwarm, id string, _ *planner.ResolvedBot) error {
 		return fmt.Errorf("boom in %s", id)
@@ -485,7 +578,7 @@ func TestOneToleratedFailureDoesNotExcuseAFatalOne(t *testing.T) {
 		{ID: "hard"},
 	}, nil)
 
-	err := o.runLevels(run, rs, [][]string{{"soft", "hard"}})
+	err := o.runDAG(run, rs)
 	if err == nil {
 		t.Fatal("the run survived a fatal failure")
 	}
@@ -719,7 +812,7 @@ func TestABotCanBeRetried(t *testing.T) {
 	rs := swarmWith([]schema.BotRef{{ID: "flaky", Retry: 3}}, nil)
 
 	run := NewRun("probe")
-	if err := o.runLevels(run, rs, [][]string{{"flaky"}}); err != nil {
+	if err := o.runDAG(run, rs); err != nil {
 		t.Fatalf("gave up on a retryable failure: %v", err)
 	}
 	if attempts != 3 {
@@ -757,7 +850,7 @@ func TestARetryWaitsItsDeclaredBackoff(t *testing.T) {
 	rs := swarmWith([]schema.BotRef{{ID: "flaky", Retry: 2, RetryBackoff: "5s"}}, nil)
 
 	run := NewRun("probe")
-	if err := o.runLevels(run, rs, [][]string{{"flaky"}}); err != nil {
+	if err := o.runDAG(run, rs); err != nil {
 		t.Fatalf("gave up on a retryable failure: %v", err)
 	}
 	if len(waited) != 1 || waited[0] != 5*time.Second {
@@ -771,8 +864,7 @@ func TestNoRetryByDefault(t *testing.T) {
 		attempts++
 		return fmt.Errorf("boom")
 	}}
-	if err := o.runLevels(NewRun("probe"), swarmWith([]schema.BotRef{{ID: "b"}}, nil),
-		[][]string{{"b"}}); err == nil {
+	if err := o.runDAG(NewRun("probe"), swarmWith([]schema.BotRef{{ID: "b"}}, nil)); err == nil {
 		t.Fatal("expected a failure")
 	}
 	if attempts != 1 {
@@ -788,8 +880,7 @@ func TestADeclinedApprovalIsNeverRetried(t *testing.T) {
 		attempts++
 		return fmt.Errorf(`step "gate": not approved (decided_by=cli)`)
 	}}
-	if err := o.runLevels(NewRun("probe"), swarmWith([]schema.BotRef{{ID: "sender", Retry: 3}}, nil),
-		[][]string{{"sender"}}); err == nil {
+	if err := o.runDAG(NewRun("probe"), swarmWith([]schema.BotRef{{ID: "sender", Retry: 3}}, nil)); err == nil {
 		t.Fatal("expected a failure")
 	}
 	if attempts != 1 {

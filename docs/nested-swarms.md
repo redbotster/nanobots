@@ -74,7 +74,7 @@ inside `refund-flow.yaml` rather than threaded through the boundary.
 
 **There is no new execution engine.** Before a swarm is resolved, every
 `swarm:` reference is replaced with the referenced swarm's own bots and
-snaps, entirely in memory — the planner's DAG, the runner's waves, retry,
+snaps, entirely in memory — the planner's DAG, the runner's per-bot scheduling, retry,
 `on_error`, `loop:`, `fallback:`, approvals, none of them ever learn that
 nesting happened, because by the time any of them run, there is no nesting
 left: `refund` becomes `refund/lookup` and `refund/writer`, two ordinary
