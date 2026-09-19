@@ -47,6 +47,12 @@ shape as 1Claw Automations' own `condition` step
 (`{{steps.balance.output.native_balance}} < 0.01`), so a swarm and an
 automation read alike.
 
+A quoted side (`== "urgent"`, `== ""`) is taken literally rather than
+resolved as a template — the only way to compare against the empty string,
+since `== ` with nothing after it is refused as a missing value. An
+unquoted side works exactly as before: `== overdue` compares to the literal
+text `overdue`.
+
 Two numbers compare as numbers even when one side arrived as a templated
 string ("500" from a snap compares fine against a literal `500`). Two
 strings only support `==`/`!=` — ordering two strings would silently answer
@@ -80,8 +86,9 @@ needs a real run's data, same as every snap's actual value.
 
 ## What this is not
 
-Not a loop, and not a way to branch a swarm's shape — every bot in the
-swarm is still planned, typed, and shown on the canvas whether its `when:`
-turns out true or false on a given run. Iterating (`loop:`, bounded) and
-nesting a whole swarm as one node (`swarm:`) are separate, larger pieces of
-the same "control flow" idea and are not built yet.
+Not a way to branch a swarm's shape — every bot in the swarm is still
+planned, typed, and shown on the canvas whether its `when:` turns out true
+or false on a given run. Bounded iteration is `loop:` (`docs/loop.md`), a
+separate primitive with its own restrictions. Nesting a whole swarm as one
+node (`swarm:`) is a separate, larger piece of the same "control flow" idea
+and is not built yet.

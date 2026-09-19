@@ -69,11 +69,11 @@ func EvalCondition(expr string, ctx map[string]any) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	left := resolveValue(parsed.Left, ctx)
+	left := resolveOperand(parsed.Left, ctx)
 	if parsed.Op == "" {
 		return truthy(left), nil
 	}
-	right := resolveValue(parsed.Right, ctx)
+	right := resolveOperand(parsed.Right, ctx)
 	lf, lok := toFloat(left)
 	rf, rok := toFloat(right)
 	if lok && rok {
@@ -105,6 +105,22 @@ func EvalCondition(expr string, ctx map[string]any) (bool, error) {
 		return false, fmt.Errorf("%q: %s compares %v to %v, and neither is a number",
 			expr, parsed.Op, left, right)
 	}
+}
+
+// resolveOperand resolves one side of a condition. A side wrapped in double
+// quotes is a literal, taken verbatim — including `""`, the empty string —
+// rather than going through template resolution. Without this, there was no
+// way to write "equals nothing": `== ` with nothing after it is refused by
+// ParseCondition as a missing value, and `== ""` compared against the
+// literal two-character text `""` instead of an actual empty string, which
+// loop.until: needs to say "stop once next_page_token is empty".
+func resolveOperand(s string, ctx map[string]any) any {
+	if rest, ok := strings.CutPrefix(s, `"`); ok {
+		if lit, ok := strings.CutSuffix(rest, `"`); ok {
+			return lit
+		}
+	}
+	return resolveValue(s, ctx)
 }
 
 // truthy is what a bare condition (no comparison) tests: the same "empty

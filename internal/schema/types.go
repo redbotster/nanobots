@@ -267,6 +267,31 @@ type BotRef struct {
 	//
 	// See docs/error-policy.md and internal/planner.CheckFallback.
 	Fallback string `json:"fallback,omitempty" yaml:"fallback,omitempty"`
+	// Loop re-runs this bot instance in place, feeding its own previous
+	// output back as its own next input, for pagination and polling: "keep
+	// fetching next_page until there isn't one, at most 20 times". nil (the
+	// default) runs once, same as everything else.
+	//
+	// See docs/loop.md and internal/planner.CheckLoop.
+	Loop *Loop `json:"loop,omitempty" yaml:"loop,omitempty"`
+}
+
+// Loop bounds a bot instance's self-repetition. See BotRef.Loop.
+type Loop struct {
+	// Max is the ceiling on iterations, required and capped (see
+	// internal/planner.maxLoop) — an unbounded "while" against someone
+	// else's API is not a thing this runs unattended.
+	Max int `json:"max" yaml:"max"`
+	// Feed maps this bot's own input port names to its own output port
+	// names: after an iteration, the named output's value becomes the
+	// named input's value for the next one. Both sides must be ports this
+	// bot itself declares — nothing else is available to feed back.
+	Feed map[string]string `json:"feed,omitempty" yaml:"feed,omitempty"`
+	// Until stops the loop once true, checked after each iteration against
+	// that iteration's own {{outputs.<port>}} — the loop's mirror of
+	// when:'s {{inputs.<port>}}, same operator set. Empty means loop
+	// exactly Max times.
+	Until string `json:"until,omitempty" yaml:"until,omitempty"`
 }
 
 // OnError values.

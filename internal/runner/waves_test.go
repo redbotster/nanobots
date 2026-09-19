@@ -244,9 +244,12 @@ func swarmWith(bots []schema.BotRef, snaps []schema.Snap) *planner.ResolvedSwarm
 		Bots:  map[string]*planner.ResolvedBot{},
 	}
 	for _, b := range bots {
-		rs.Bots[b.ID] = &planner.ResolvedBot{Nanobot: &schema.Nanobot{
-			Metadata: schema.Metadata{Name: b.ID, Version: "0.1.0"},
-		}}
+		rs.Bots[b.ID] = &planner.ResolvedBot{
+			Ref: b,
+			Nanobot: &schema.Nanobot{
+				Metadata: schema.Metadata{Name: b.ID, Version: "0.1.0"},
+			},
+		}
 	}
 	return rs
 }

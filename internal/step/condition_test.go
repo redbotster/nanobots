@@ -27,6 +27,14 @@ func TestEvalCondition(t *testing.T) {
 		{"bare-truthy-empty-is-false", "{{inputs.empty}}", false},
 		{"bare-truthy-missing-is-false", "{{inputs.nope}}", false},
 		{"literal-vs-literal-numeric", "5 > 3", true},
+		// A quoted literal is taken verbatim, empty included — the only way
+		// to write "equals nothing": `== ` with nothing after it is refused
+		// as a missing value, and an unquoted `==` against real text already
+		// worked before this existed.
+		{"quoted-empty-string-matches-empty", `{{inputs.empty}} == ""`, true},
+		{"quoted-empty-string-does-not-match-non-empty", `{{inputs.status}} == ""`, false},
+		{"quoted-literal-matches-its-text", `{{inputs.status}} == "overdue"`, true},
+		{"quoted-literal-not-equal", `{{inputs.status}} != "paid"`, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

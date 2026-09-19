@@ -369,6 +369,102 @@ func CheckFallback(rs *ResolvedSwarm) []error {
 	return out
 }
 
+// maxLoop bounds bounded iteration for the same reason maxRetry does: an
+// unbounded "while" against someone else's API is not a thing this runs
+// unattended. Twenty pages is deep enough for the catalog's own pagination
+// jobs and shallow enough that a mistaken condition fails fast rather than
+// running all night.
+const maxLoop = 20
+
+// CheckLoop rejects a loop: that can't mean anything: a max outside 1..20, a
+// feed: mapping that names a port this bot doesn't declare on either side,
+// an until: that can't parse or that reaches past this bot's own outputs, or
+// a bot that also fans out — the two mean two different multiplicities for
+// the same bot instance's outputs, and letting both apply would leave
+// downstream typed against whichever one was checked last.
+func CheckLoop(rs *ResolvedSwarm) []error {
+	var out []error
+	for _, b := range rs.Swarm.Spec.Bots {
+		if b.Loop == nil {
+			continue
+		}
+		if b.Loop.Max < 1 || b.Loop.Max > maxLoop {
+			out = append(out, fmt.Errorf("bot %q has loop.max: %d — it must be between 1 and %d",
+				b.ID, b.Loop.Max, maxLoop))
+			continue
+		}
+		rb, ok := rs.Bots[b.ID]
+		if !ok || rb.Nanobot == nil {
+			continue // an unresolved bot is reported elsewhere
+		}
+		if fo, err := FanOutFor(rs.Swarm, b.ID); err == nil && fo != nil {
+			out = append(out, fmt.Errorf(
+				"bot %q has both loop: and a fanned-out snap (%s) — they can't both decide how many"+
+					" of this bot's outputs downstream sees", b.ID, fo.Over))
+			continue
+		}
+
+		inputs := map[string]bool{}
+		for _, p := range rb.Nanobot.Spec.Ports.Inputs {
+			inputs[p.Name] = true
+		}
+		outputs := map[string]bool{}
+		for _, p := range rb.Nanobot.Spec.Ports.Outputs {
+			outputs[p.Name] = true
+		}
+		feedInputs := make([]string, 0, len(b.Loop.Feed))
+		for in := range b.Loop.Feed {
+			feedInputs = append(feedInputs, in)
+		}
+		sort.Strings(feedInputs)
+		for _, in := range feedInputs {
+			outPort := b.Loop.Feed[in]
+			if !inputs[in] {
+				out = append(out, fmt.Errorf(
+					"bot %q has loop.feed: %q is not one of its own input ports", b.ID, in))
+			}
+			if !outputs[outPort] {
+				out = append(out, fmt.Errorf(
+					"bot %q has loop.feed: %q -> %q, but %q is not one of its own output ports",
+					b.ID, in, outPort, outPort))
+			}
+		}
+
+		if b.Loop.Until == "" {
+			continue
+		}
+		parsed, err := step.ParseCondition(b.Loop.Until)
+		if err != nil {
+			out = append(out, fmt.Errorf("bot %q has loop.until: %q — %w", b.ID, b.Loop.Until, err))
+			continue
+		}
+		var badPath string
+		for _, path := range append(step.TemplatePaths(parsed.Left), step.TemplatePaths(parsed.Right)...) {
+			if !validLoopUntilPath(path, outputs) {
+				badPath = path
+				break
+			}
+		}
+		if badPath != "" {
+			out = append(out, fmt.Errorf(
+				"bot %q has loop.until: %q — %q is not one of this bot's own outputs; loop.until can"+
+					" only test a port this bot itself produces, as {{outputs.<port>}}",
+				b.ID, b.Loop.Until, badPath))
+		}
+	}
+	return out
+}
+
+// validLoopUntilPath is the one thing a loop.until condition may reference:
+// this bot's own most recent output, by the exact name it declared.
+func validLoopUntilPath(path string, outputs map[string]bool) bool {
+	port, ok := strings.CutPrefix(path, "outputs.")
+	if !ok {
+		return false
+	}
+	return outputs[port]
+}
+
 // validWhenPath is the one thing a when: condition may reference: this
 // bot's own resolved input, by the exact name it declared. Nothing else —
 // vars, trigger, another bot's id — is available at the point when: is

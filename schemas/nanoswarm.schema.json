@@ -55,6 +55,24 @@
                 "additionalProperties": true,
                 "type": "object"
               },
+              "loop": {
+                "properties": {
+                  "feed": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "max": {
+                    "type": "integer"
+                  },
+                  "until": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "max"
+                ],
+                "type": "object"
+              },
               "on_error": {
                 "type": "string"
               },

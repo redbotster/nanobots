@@ -58,6 +58,12 @@ type Orchestrator struct {
 	// real thing; only tests set it.
 	runBotFn func(*Run, *planner.ResolvedSwarm, string, *planner.ResolvedBot) error
 
+	// runBotOnceFn overrides runBotOnce when set. runBotFn's error-only
+	// signature is enough for retry and fallback, which only care whether
+	// an attempt succeeded, but loop:'s feed: and until: need the actual
+	// output values a real attempt produced. nil means the real thing.
+	runBotOnceFn func(*Run, *planner.ResolvedSwarm, string, *planner.ResolvedBot, fanIndex, int, step.Approver) (map[string]any, error)
+
 	// retryWaitFn is the seam a retry backoff sleeps through, so a test can
 	// see that the wait was requested without a real test taking up to a
 	// minute to run. nil means the real thing: sleep, cancellable by the
@@ -630,7 +636,16 @@ func (o *Orchestrator) runBot(run *Run, rs *planner.ResolvedSwarm, botID string,
 		return err
 	}
 	if fo == nil {
-		out, err := o.runBotOnce(run, rs, botID, rb, noFan, 1, nil)
+		loop := loopFor(rs, botID)
+		if loop == nil {
+			out, err := o.runBotOnce(run, rs, botID, rb, noFan, 1, nil)
+			if err != nil {
+				return err
+			}
+			run.SetBotOutputs(botID, out)
+			return nil
+		}
+		out, err := o.runBotLoop(run, rs, botID, rb, loop)
 		if err != nil {
 			return err
 		}
@@ -698,6 +713,72 @@ func (o *Orchestrator) runBot(run *Run, rs *planner.ResolvedSwarm, botID string,
 	return nil
 }
 
+// loopFor reads the bot instance's declared loop:, if any.
+func loopFor(rs *planner.ResolvedSwarm, botID string) *schema.Loop {
+	if rs.Swarm == nil {
+		return nil
+	}
+	for _, b := range rs.Swarm.Spec.Bots {
+		if b.ID == botID {
+			return b.Loop
+		}
+	}
+	return nil
+}
+
+// runBotLoop re-runs one bot instance in place, feeding its own previous
+// output back as its own next input — pagination and polling: "keep
+// fetching next_page until there isn't one, at most 20 times".
+//
+// Downstream sees exactly one of each declared output, the same as a bot
+// that never looped: this is the deliberate difference from fan-out, whose
+// outputs become lists. Accumulating anything *across* iterations (all the
+// pages' items, not just the last page) is the bot's own job via
+// memory.get/memory.put — the same primitive drive-watch already uses to
+// remember across separate runs, used here to remember across iterations of
+// one run instead. Keeping that here would mean this orchestrator inventing
+// a second, competing idea of "accumulate", with no way to know which
+// output on which bot was meant to grow versus which was meant to reset.
+func (o *Orchestrator) runBotLoop(run *Run, rs *planner.ResolvedSwarm, botID string, rb *planner.ResolvedBot, loop *schema.Loop) (map[string]any, error) {
+	iter := rb
+	var out map[string]any
+	for i := 0; i < loop.Max; i++ {
+		run.Log(botID, "", "loop %d of %d", i+1, loop.Max)
+		var err error
+		out, err = o.runBotOnce(run, rs, botID, iter, noFan, 1, nil)
+		if err != nil {
+			return nil, err
+		}
+		if loop.Until != "" {
+			stop, err := step.EvalCondition(loop.Until, map[string]any{"outputs": out})
+			if err != nil {
+				return nil, fmt.Errorf("loop.until: %w", err)
+			}
+			if stop {
+				run.Log(botID, "", "loop stopped after %d of %d: %s is true", i+1, loop.Max, loop.Until)
+				return out, nil
+			}
+		}
+		if i == loop.Max-1 || len(loop.Feed) == 0 {
+			break
+		}
+		fed := make(map[string]any, len(iter.Ref.Inputs)+len(loop.Feed))
+		for k, v := range iter.Ref.Inputs {
+			fed[k] = v
+		}
+		for inPort, outPort := range loop.Feed {
+			fed[inPort] = out[outPort]
+		}
+		next := *iter
+		next.Ref.Inputs = fed
+		iter = &next
+	}
+	if loop.Until != "" {
+		run.Log(botID, "", "loop reached its limit of %d without %s becoming true", loop.Max, loop.Until)
+	}
+	return out, nil
+}
+
 // fanOutWidth is how many items this bot will run for, and insists every
 // marker-carrying snap agrees. Two lists of different lengths feeding one
 // bot is a cross product, which is never what "for each" means.
@@ -746,6 +827,9 @@ func aggregateOutputs(nb *schema.Nanobot, perItem []map[string]any) map[string]a
 }
 
 func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID string, rb *planner.ResolvedBot, at fanIndex, total int, batch step.Approver) (map[string]any, error) {
+	if o.runBotOnceFn != nil {
+		return o.runBotOnceFn(run, rs, botID, rb, at, total, batch)
+	}
 	nb := rb.Nanobot
 	inProcess, whyContainer := runsInProcess(nb)
 

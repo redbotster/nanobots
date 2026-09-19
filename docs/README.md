@@ -40,6 +40,7 @@ it.
 | [fan-out.md](fan-out.md) | `.*` over a list, and joining the results back |
 | [error-policy.md](error-policy.md) | `on_error: continue`, and what gets skipped |
 | [when.md](when.md) | `when:`, and the one thing it's allowed to look at |
+| [loop.md](loop.md) | `loop:`, pagination, and why it isn't fan-out |
 | [hosting.md](hosting.md) | running it somewhere that is not your laptop |
 
 ## Connecting things
