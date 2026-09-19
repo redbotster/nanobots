@@ -296,6 +296,79 @@ func CheckWhen(rs *ResolvedSwarm) []error {
 	return out
 }
 
+// CheckFallback rejects a fallback: bot that cannot actually stand in for
+// the one it replaces: one that doesn't resolve, one that is the same bot
+// it's already using, one whose output ports don't match name-for-name and
+// type-for-type, or one that needs an input port this bot instance doesn't
+// already have. The fallback runs with this instance's own resolved
+// inputs — nothing is re-wired for it — and downstream snaps type-checked
+// against the primary bot's ports, so a fallback with a different shape
+// would make that type-check a lie.
+func CheckFallback(rs *ResolvedSwarm) []error {
+	var out []error
+	for _, b := range rs.Swarm.Spec.Bots {
+		if b.Fallback == "" {
+			continue
+		}
+		rb, ok := rs.Bots[b.ID]
+		if !ok || rb.Nanobot == nil {
+			continue // an unresolved primary bot is reported elsewhere
+		}
+		fb, ok := rs.Fallbacks[b.ID]
+		if !ok || fb.Nanobot == nil {
+			out = append(out, fmt.Errorf("bot %q has fallback: %q, which did not resolve", b.ID, b.Fallback))
+			continue
+		}
+		if b.Fallback == b.Use {
+			out = append(out, fmt.Errorf(
+				"bot %q has fallback: %q, the same bot it already uses — a bot cannot fall back to itself",
+				b.ID, b.Fallback))
+			continue
+		}
+
+		primaryOut := rb.Nanobot.Spec.Ports.Outputs
+		fallbackOut := fb.Nanobot.Spec.Ports.Outputs
+		if len(primaryOut) != len(fallbackOut) {
+			out = append(out, fmt.Errorf(
+				"bot %q has fallback: %q with %d output port(s), but %q declares %d — they must match"+
+					" exactly, or a downstream snap that type-checked against one would silently break"+
+					" against the other", b.ID, b.Fallback, len(fallbackOut), b.Use, len(primaryOut)))
+			continue
+		}
+		fallbackByName := make(map[string]schema.OutputPort, len(fallbackOut))
+		for _, p := range fallbackOut {
+			fallbackByName[p.Name] = p
+		}
+		for _, p := range primaryOut {
+			fp, ok := fallbackByName[p.Name]
+			switch {
+			case !ok:
+				out = append(out, fmt.Errorf(
+					"bot %q has fallback: %q, which has no output port named %q — %q needs it for"+
+						" downstream snaps to keep working", b.ID, b.Fallback, p.Name, b.Use))
+			case fp.Type != p.Type:
+				out = append(out, fmt.Errorf(
+					"bot %q has fallback: %q, whose %q output is %q, not %q like %q's",
+					b.ID, b.Fallback, p.Name, fp.Type, p.Type, b.Use))
+			}
+		}
+
+		primaryIn := map[string]bool{}
+		for _, p := range rb.Nanobot.Spec.Ports.Inputs {
+			primaryIn[p.Name] = true
+		}
+		for _, p := range fb.Nanobot.Spec.Ports.Inputs {
+			if p.Required && !primaryIn[p.Name] {
+				out = append(out, fmt.Errorf(
+					"bot %q has fallback: %q, which requires input %q that %q doesn't have — the"+
+						" fallback runs with this bot instance's own resolved inputs, so it can't ask"+
+						" for a port that was never there", b.ID, b.Fallback, p.Name, b.Use))
+			}
+		}
+	}
+	return out
+}
+
 // validWhenPath is the one thing a when: condition may reference: this
 // bot's own resolved input, by the exact name it declared. Nothing else —
 // vars, trigger, another bot's id — is available at the point when: is

@@ -248,6 +248,25 @@ type BotRef struct {
 	//
 	// See docs/when.md and internal/planner.CheckWhen.
 	When string `json:"when,omitempty" yaml:"when,omitempty"`
+	// Fallback names another catalog bot ("name@version") to run in this
+	// one's place if it still fails after Retry is exhausted — a live
+	// service call degrading to a fixture, with the run saying so rather
+	// than staying silent about it.
+	//
+	// The fallback bot must declare the exact same output ports, name for
+	// name and type for type, as this one: a downstream snap type-checked
+	// against this bot's ports, and a fallback that changed the shape would
+	// make that type-check a lie. Every required input port it declares
+	// must already be one this bot instance has, because the fallback runs
+	// with this instance's own resolved inputs — nothing is re-wired for it.
+	//
+	// Not itself retried, and not chained: a fallback that also fails ends
+	// the run (or continues past it, per on_error) exactly as if there were
+	// no fallback. A declined approval or a stopped run is never handed to
+	// a fallback either — those aren't failures a substitute bot can fix.
+	//
+	// See docs/error-policy.md and internal/planner.CheckFallback.
+	Fallback string `json:"fallback,omitempty" yaml:"fallback,omitempty"`
 }
 
 // OnError values.

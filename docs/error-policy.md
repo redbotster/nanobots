@@ -133,6 +133,45 @@ over 60s is refused too — past that, the honest answer is `on_error:
 continue` plus a notification, not a longer sleep. A run stopped mid-wait
 does not sit out the rest of it.
 
+## Falling back to another bot
+
+```yaml
+bots:
+  - id: fetch
+    use: live-price-lookup@0.1.0
+    retry: 2
+    fallback: fixture-price-lookup@0.1.0
+```
+
+`retry` rides out a blip; `fallback` is for when the service is actually
+down and the honest move is to degrade rather than stop. Once retries are
+exhausted, the fallback bot runs in the failed one's place, its outputs land
+under the same bot id, and downstream snaps never know the difference. The
+run says so either way:
+
+```
+run 30adb321: succeeded
+  falling back to fixture-price-lookup@0.1.0 after: connection reset
+  fetch recovered using fallback fixture-price-lookup@0.1.0
+```
+
+**The fallback bot has to be a real substitute, not just a bot that happens
+to exist.** `nanobots plan` refuses one whose output ports don't match the
+primary's exactly, name for name and type for type — a downstream snap
+type-checked against the primary bot's ports, and a fallback that changed
+the shape would make that type-check a lie. It also refuses a fallback that
+requires an input port the primary bot instance doesn't already have: the
+fallback runs with this instance's own resolved inputs, nothing is re-wired
+for it, so a port that was never there can never arrive.
+
+Not itself retried, and not chained to a second fallback — one substitute is
+the whole feature. A fallback that also fails ends the run exactly as if
+there had been no fallback, naming both bots that were tried. And it never
+runs in place of a declined approval or a stopped run: neither is a failure
+a substitute bot can fix, and starting a whole new container to replace one
+the user just told to stop would be exactly the kind of thing this repo
+calls dishonest.
+
 ## When to use it
 
 Use `continue` for work at the edge of a swarm that nothing else reads —

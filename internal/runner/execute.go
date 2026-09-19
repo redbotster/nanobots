@@ -324,6 +324,30 @@ func (o *Orchestrator) runLevels(run *Run, rs *planner.ResolvedSwarm, levels [][
 }
 
 func (o *Orchestrator) runOneBot(run *Run, rs *planner.ResolvedSwarm, botID string) error {
+	err := o.runOneBotWithRetries(run, rs, botID)
+	if err == nil || !worthRetrying(err) {
+		// !worthRetrying also covers a declined approval and a stopped run —
+		// neither is a failure a substitute bot can fix, so fallback doesn't
+		// apply to them either.
+		return err
+	}
+	fb, ok := rs.Fallbacks[botID]
+	if !ok || run.Context().Err() != nil {
+		return err
+	}
+	run.Log(botID, "", "falling back to %s after: %v", fb.Ref.Fallback, err)
+	runFallback := o.runBot
+	if o.runBotFn != nil {
+		runFallback = o.runBotFn
+	}
+	if fbErr := runFallback(run, rs, botID, fb); fbErr != nil {
+		return fmt.Errorf("%w (fallback %s also failed: %v)", err, fb.Ref.Fallback, fbErr)
+	}
+	run.Log(botID, "", "%s recovered using fallback %s", botID, fb.Ref.Fallback)
+	return nil
+}
+
+func (o *Orchestrator) runOneBotWithRetries(run *Run, rs *planner.ResolvedSwarm, botID string) error {
 	attempt := func() error {
 		if o.runBotFn != nil {
 			return o.runBotFn(run, rs, botID, rs.Bots[botID])
