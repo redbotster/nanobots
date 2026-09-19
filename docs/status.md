@@ -113,13 +113,15 @@ is real and what is simulated](#whats-real-vs-simulated). The list first.
   including the scheduler's circuit breaker, since five runs you stopped by
   hand are not a swarm that is broken ([runs.md](runs.md)).
 - **An idle tab costs almost nothing, and so does moving around.** `GET
-  /api/runs` was 91KB polled every two seconds and near-always identical; it
-  carries an ETag and answers 304 with no body, and the client holds the tag
-  and returns early, so there is no parse and no re-render either. Measured
-  in a browser: 7 polls over 14 seconds went from 638KB to 2.1KB. The bot
-  catalog and the swarm list are held the same way for navigating rather than
-  polling, and a five-page browse went from 335.9KB over 32 requests to
-  123.6KB over 30 ([runs.md](runs.md)). The bigger one was the app itself:
+  /api/runs` was 91KB polled every two seconds and near-always identical; an
+  ETag got 7 polls over 14 seconds down from 638KB to 2.1KB, and then the
+  poll itself was replaced with an SSE stream (`GET /api/runs/events`) that
+  sends a snapshot once and a delta only when a run's state actually
+  changes — measured the same way, in a browser: 0 requests, 0 bytes over
+  the same 14-second idle window ([runs.md](runs.md)). The bot catalog and
+  the swarm list are held the ETag'd way for navigating rather than polling,
+  and a five-page browse went from 335.9KB over 32 requests to 123.6KB over
+  30 ([runs.md](runs.md)). The bigger one was the app itself:
   the embedded UI was served uncompressed and untagged, so a cold load was
   387.7KB and a reload paid it again. Compressing and tagging it, then
   splitting the pages nobody has navigated to out of the main chunk, takes a

@@ -221,6 +221,24 @@ export function subscribeRunEvents(
   return () => source.close();
 }
 
+/** A frame from GET /api/runs/events — see internal/api.handleRunsEvents. */
+export type RunsEvent = { type: "snapshot"; runs: RunSummary[] } | { type: "run"; run: RunSummary };
+
+/** Subscribes to the runs-list SSE stream: an initial snapshot, then one
+ * frame per run each time something the list renders about it changes.
+ * Replaces polling GET /api/runs with an ETag — see docs/runs.md. */
+export function subscribeRunsEvents(onEvent: (ev: RunsEvent) => void): () => void {
+  const source = new EventSource("/api/runs/events");
+  source.onmessage = (ev) => {
+    try {
+      onEvent(JSON.parse(ev.data));
+    } catch {
+      // ignore malformed frames rather than tearing down the stream
+    }
+  };
+  return () => source.close();
+}
+
 /** Mirrors subscribeRunEvents exactly, for a foundry job's log. */
 export function subscribeFoundryEvents(
   jobId: string,

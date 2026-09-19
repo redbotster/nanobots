@@ -37,23 +37,29 @@ func (s *Server) handleStartRun(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListRuns(w http.ResponseWriter, r *http.Request) {
-	runs := s.Runs.List()
-	// Newest first, and sorted at all: RunStore.List ranges over a map, so
-	// the order was whatever Go felt like that iteration. Every client
-	// re-sorted anyway, but an unstable order also means an unstable
-	// response body — which would defeat the conditional GET below by
-	// producing a different ETag every poll for identical data.
+	runs := sortedRuns(s.Runs)
+	out := make([]any, len(runs))
+	for i, run := range runs {
+		out[i] = runSummaryToJSON(run)
+	}
+	writeJSONCached(w, r, http.StatusOK, out)
+}
+
+// sortedRuns is newest-first, and sorted at all: RunStore.List ranges over a
+// map, so the order was whatever Go felt like that iteration. Shared by the
+// ETag'd list endpoint and the SSE snapshot (handleRunsEvents) — an
+// unstable order there meant a different ETag every poll for identical
+// data, and here it would mean a fresh tab's snapshot disagreeing with the
+// one before it for no real reason.
+func sortedRuns(store *runner.RunStore) []*runner.Run {
+	runs := store.List()
 	sort.Slice(runs, func(i, j int) bool {
 		if runs[i].StartedAt.Equal(runs[j].StartedAt) {
 			return runs[i].ID < runs[j].ID // a tiebreak, so ties are stable too
 		}
 		return runs[i].StartedAt.After(runs[j].StartedAt)
 	})
-	out := make([]any, len(runs))
-	for i, run := range runs {
-		out[i] = runSummaryToJSON(run)
-	}
-	writeJSONCached(w, r, http.StatusOK, out)
+	return runs
 }
 
 // runSummaryToJSON is what the list endpoint returns: everything a run list
