@@ -24,7 +24,7 @@ snaps:
 - **The marker peels one list level**, exactly as an index does. `list<json>` + `.*` is `json`; `list<json>` + `.*.customer_email` is whatever that field is. It can only appear where there's a list to iterate, and only on the `from` side — the marker says *which list to walk*, not where to put each item.
 - **Every marker snap into one bot iterates in lockstep** on a shared index. `chaser.overdue.*` and `chaser.draft_ids.*` into the same bot means element *i* of each, together. Two lists of different lengths would be a cross product, which is never what "for each" means, so the runner refuses.
 - **A fanned-out bot's outputs become lists.** Running a bot twenty times produces twenty of each output, and `resolveEndpointType` wraps the type accordingly — so a downstream bot expecting a single value gets a type error at plan time rather than a surprise at run time. Read one back with `sender.message_id.0`, or fan the next bot out too.
-- **Each item gets its own container and its own workspace** (`<run>/<bot>/item-N`), so one item's outputs can't be mistaken for the next one's.
+- **Each item gets its own workspace** (`<run>/<bot>/item-N`), so one item's outputs can't be mistaken for the next one's — and its own container too, for the shrinking set of bots that need one at all ([docs/harnesses.md](harnesses.md)'s in-process default).
 - **An empty list is a successful no-op**, not a failure — a week with no overdue invoices shouldn't be a red run. Downstream sees an empty list rather than a missing output.
 
 ## Approvals: one gate for the batch
@@ -42,28 +42,40 @@ This was a deliberate choice over one-approval-per-item. Twenty prompts means no
 
 ## Verified
 
-Against real data, not fixtures. `content-ideas` generated 10 ideas from a live Shroud call; `post-writer` fanned out over them and produced 10 distinct posts, each tracking its own idea, in 10 separate containers. Before this, that swarm wrote one post and discarded nine ideas — which its own header comment admitted.
+Against real data, not fixtures. `content-ideas` generated 10 ideas from a live Shroud call; `post-writer` fanned out over them and produced 10 distinct posts, each tracking its own idea, in 10 separate runs of the interpreter — in-process, not 10 containers, since both bots are `llm` harness and neither renders anything (docs/harnesses.md). Before this, that swarm wrote one post and discarded nine ideas — which its own header comment admitted.
 
 ## Which catalog swarms use it
 
-Three are converted, and their header comments no longer apologise:
+Four are converted, and their header comments no longer apologise:
 
 | swarm | what it does now |
 |---|---|
 | `never-drop-a-thread` | nudges **every** stale thread, not the first |
 | `inbox-autopilot` | replies to **every** urgent thread |
 | `support-desk-lite` | alerts on **every** escalation and replies to **every** ticket |
+| `get-paid` | sends **every** overdue reminder, joined back into one Slack summary |
 
-All three share a shape that makes the conversion safe: the fanned-out bot is *terminal*. Nothing reads its outputs, so nothing has to cope with them becoming lists.
+The first three share a shape that makes the conversion straightforward: the fanned-out bot is *terminal*. Nothing reads its outputs, so nothing has to cope with them becoming lists. `get-paid` is the other shape — a fanned-out bot feeding one downstream of it — which is what `join:` (below) exists for.
 
-## Two that are deliberately left alone
+## One that is deliberately left alone
 
-`get-paid` and `content-engine` both feed a bot **downstream** of the one that would fan out, and each needs a product decision the syntax cannot make:
+`get-paid` used to belong in this section too — `sender.message_id ->
+notifier.message` had no way to become one Slack message instead of twenty,
+which was blocked on a join primitive that didn't exist yet. It does now
+(see "Joining: the way back" below), and `get-paid.yaml`'s own header
+comment says so: "This chased only the first overdue invoice until `join:`
+existed." Fanning `sender` and joining its `acted_on` into `notifier` is
+what it does today.
 
-- **`get-paid`**: `sender.message_id -> notifier.message`. Fan `sender` out over twenty overdue invoices and `notifier` either fans too — twenty Slack messages — or reads `.0` and confirms only the first of twenty sends, which is worse than not confirming at all. What it wants is one notification summarising the batch, and there is no join or aggregate step to build that with.
-- **`content-engine`**: its own comment says the catalog intent is "scheduled across the week". Fanning `post-writer` and `post-publisher` would write ten posts and publish all ten at once, which is not "across the week" — it's a burst. Per-item scheduling doesn't exist, so `.0` remains the closer approximation.
-
-Both are blocked on the same missing primitive: a way to **join** a fanned-out bot's list back into one value. That's the natural next piece of this feature, and it isn't built.
+`content-engine` stays on `.0`, and this is not the same gap — a join gets
+you from "twenty of these" to "one summary of them", but content-engine's
+own comment says the catalog intent is "scheduled across the week". Fanning
+`post-writer` and `post-publisher` over every brainstormed idea would write
+ten posts and publish all ten at once in a single run, which is a burst,
+not "across the week" — a *product* decision a join can't make for it, not
+a missing primitive. `thread-from-an-idea.yaml` documents the identical
+reasoning for the same reason: "several model calls to produce work you
+asked for one of."
 
 ## Two lists in lockstep
 

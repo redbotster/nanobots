@@ -24,15 +24,17 @@ import (
 // connection in a swarm draft — a small, JSON-friendly subset of
 // schema.BotRef/schema.Snap (no `path:` local-bot support here; the builder
 // only places bots from the catalog, via `use:`).
-// OnError is carried for the same reason as builderSnap.Join: the builder
-// round-trips a whole swarm on every save, so a field it doesn't know about
-// is a field it deletes.
+// OnError and Execution are carried for the same reason as builderSnap.Join:
+// the builder round-trips a whole swarm on every save, so a field it doesn't
+// know about is a field it deletes — true even for one, like Execution, with
+// no UI control yet (v3 Phase 1).
 type builderBotRef struct {
-	ID      string         `json:"id"`
-	Use     string         `json:"use"`
-	Inputs  map[string]any `json:"inputs,omitempty"`
-	OnError string         `json:"on_error,omitempty"`
-	Retry   int            `json:"retry,omitempty"`
+	ID        string         `json:"id"`
+	Use       string         `json:"use"`
+	Inputs    map[string]any `json:"inputs,omitempty"`
+	OnError   string         `json:"on_error,omitempty"`
+	Retry     int            `json:"retry,omitempty"`
+	Execution string         `json:"execution,omitempty"`
 }
 
 type builderSnap struct {
@@ -50,7 +52,7 @@ type builderSnap struct {
 }
 
 func (b builderBotRef) toSchema() schema.BotRef {
-	return schema.BotRef{ID: b.ID, Use: b.Use, Inputs: b.Inputs, OnError: b.OnError, Retry: b.Retry}
+	return schema.BotRef{ID: b.ID, Use: b.Use, Inputs: b.Inputs, OnError: b.OnError, Retry: b.Retry, Execution: b.Execution}
 }
 
 func (s builderSnap) toSchema() schema.Snap {
@@ -473,7 +475,7 @@ func (s *Server) handleGetSwarmFull(w http.ResponseWriter, r *http.Request) {
 		Path: relPath, Name: sw.Metadata.Name, Description: sw.Metadata.Description, Owner: sw.Metadata.Owner,
 	}
 	for _, b := range sw.Spec.Bots {
-		resp.Bots = append(resp.Bots, builderBotRef{ID: b.ID, Use: b.Use, Inputs: b.Inputs, OnError: b.OnError, Retry: b.Retry})
+		resp.Bots = append(resp.Bots, builderBotRef{ID: b.ID, Use: b.Use, Inputs: b.Inputs, OnError: b.OnError, Retry: b.Retry, Execution: b.Execution})
 	}
 	for _, sn := range sw.Spec.Snaps {
 		resp.Snaps = append(resp.Snaps, builderSnap{From: sn.From, To: sn.To, Join: sn.Join})

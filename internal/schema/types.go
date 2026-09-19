@@ -65,6 +65,18 @@ type Harness struct {
 	Type       string `json:"type" yaml:"type"`
 	Version    string `json:"version,omitempty" yaml:"version,omitempty"`
 	Entrypoint string `json:"entrypoint,omitempty" yaml:"entrypoint,omitempty"`
+	// Execution forces this bot into a container on every swarm that runs
+	// it, overriding the runner's own in-process-by-default heuristic
+	// (internal/runner.runsInProcess). Two values: "" (the default — the
+	// runner decides) or "container".
+	//
+	// Deliberately one-directional. The heuristic already picks in-process
+	// whenever nothing needs isolating and a container whenever something
+	// does (a real headless browser); an "inprocess" override could only
+	// ever mean forcing a browser-driving bot out of the one sandbox that
+	// isolation argument actually applies to, which is not a knob this
+	// build offers. CheckExecution rejects anything else written here.
+	Execution string `json:"execution,omitempty" yaml:"execution,omitempty"`
 }
 
 // Model is the default LLM configuration for ai.generate steps.
@@ -289,6 +301,13 @@ type BotRef struct {
 	//
 	// See docs/loop.md and internal/planner.CheckLoop.
 	Loop *Loop `json:"loop,omitempty" yaml:"loop,omitempty"`
+	// Execution forces this bot instance into a container in this swarm
+	// specifically, overriding both the runner's heuristic and the bot's
+	// own Harness.Execution — the swarm author's call on a bot they know
+	// is fine in-process everywhere else but not for what this swarm feeds
+	// it. Same two values and the same one-way restriction as
+	// Harness.Execution; see its doc comment and internal/planner.CheckExecution.
+	Execution string `json:"execution,omitempty" yaml:"execution,omitempty"`
 }
 
 // Loop bounds a bot instance's self-repetition. See BotRef.Loop.

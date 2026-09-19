@@ -71,7 +71,7 @@ func harnessTypesInUse(botsDir string) []string {
 		if err != nil {
 			continue
 		}
-		if inProcess, _ := runsInProcess(nb); inProcess {
+		if inProcess, _ := runsInProcess(nb, ""); inProcess {
 			continue
 		}
 		t := "bare"

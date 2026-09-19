@@ -198,6 +198,17 @@ actually applying:
   The moment behaviour stops being a declared list, the sandbox matters
   again.
 
+**A third way to get one, deliberately: `execution: container`.** On a
+bot's own `harness:` block (every swarm that runs it) or on one swarm's
+`bots:` entry (this swarm only), forcing a bot the heuristic above would
+otherwise run in-process into a container anyway — belt and suspenders for
+a bot an operator wants isolated regardless of what its steps actually do.
+One-directional on purpose: there is no `execution: inprocess` to force a
+browser-driving bot *out* of the one container the isolation argument
+actually applies to, and `internal/planner.CheckExecution` rejects anything
+written here besides `container` or leaving the field out. See
+`schema.Harness.Execution`'s and `schema.BotRef.Execution`'s doc comments.
+
 **One honest difference.** `docker kill` ends a hung bot outright and the
 in-process path cannot: `step.Interpret` takes no context, so a
 `max_runtime_secs` timeout stops the run *waiting* without stopping the
@@ -210,9 +221,21 @@ machine this was built on.
 
 **Measured.** `morning-brief` went from a median of 35.3s across 14
 container runs to 21-27s, and that swarm still puts two of its four bots in
-containers, so most of what remains is model latency rather than startup.
-The headline is not the seconds: `github-digest-to-slack` was run to success
-with `docker` removed from the daemon's PATH entirely.
+containers (`meeting-prep` and `render-pdf` both render), so most of what
+remains is model latency rather than startup. Re-run for v3 Phase 1: 34.4s
+end to end, in the same range — not a regression, just one data point
+against a documented spread rather than a new median. The headline is not
+the seconds: `github-digest-to-slack` was run to success with `docker`
+removed from the daemon's PATH entirely.
+
+**`get-paid` genuinely hits zero container starts.** All three of its bots
+— `invoice-chaser` (`llm`), `email-send-approved` (`bare`), `notify`
+(`bare`) — run in-process, fan-out included: `sender` ran once per overdue
+invoice with no container line in the log at all. v3 Phase 1's own
+acceptance bar asked for the same of `morning-brief`, which is not
+achievable for the current catalog without a false claim — two of its four
+bots do real, necessary browser rendering, and that is the isolation
+argument actually applying, not overhead left to trim.
 
 ## A container that needs nothing gets nothing
 

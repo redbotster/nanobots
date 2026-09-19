@@ -348,7 +348,7 @@ spec:
 // This is the round trip end to end: a real swarm file in, through the
 // endpoint the builder loads from, back out through the endpoint it saves
 // to, and read again.
-func TestABuilderRoundTripPreservesJoinAndOnError(t *testing.T) {
+func TestABuilderRoundTripPreservesJoinOnErrorAndExecution(t *testing.T) {
 	srv := testServer(t)
 	dir := t.TempDir()
 	srv.SwarmsDir = dir
@@ -370,6 +370,7 @@ spec:
       inputs:
         to: me@example.com
       on_error: continue
+      execution: container
   snaps:
     - from: recap.drive_file_id
       to: mailer.file_id
@@ -402,6 +403,9 @@ spec:
 	if mailer.OnError != "continue" {
 		t.Errorf("on_error lost on load: %+v", mailer)
 	}
+	if mailer.Execution != "container" {
+		t.Errorf("execution lost on load: %+v", mailer)
+	}
 
 	// Save it straight back, changing only the description — the shape of
 	// a human opening a swarm, touching one field, and pressing save.
@@ -419,7 +423,7 @@ spec:
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"join: first", "on_error: continue", "0 8 * * 1"} {
+	for _, want := range []string{"join: first", "on_error: continue", "execution: container", "0 8 * * 1"} {
 		if !strings.Contains(string(saved), want) {
 			t.Errorf("a builder save dropped %q:\n%s", want, saved)
 		}
