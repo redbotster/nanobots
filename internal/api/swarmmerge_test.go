@@ -158,6 +158,74 @@ func TestMergedSwarmStillParses(t *testing.T) {
 	}
 }
 
+// retry_backoff, when, fallback, loop and swarm all reached schema.BotRef
+// before builderBotRef caught up to them (v3 Phase 8) — the same class of
+// loss on_error and join were once one line from, on the same wholesale
+// bot-rebuild this file exists to guard. A swarm using one of these,
+// opened in the builder and saved without ever touching it, must come
+// back out with the field intact.
+func TestMergePreservesTheNewerPerBotFields(t *testing.T) {
+	existing := []byte(`apiVersion: nanobots.dev/v1
+kind: Nanoswarm
+metadata:
+  name: s
+  description: d
+spec:
+  bots:
+    - id: poller
+      use: watch-the-competition@0.1.0
+`)
+	out, err := mergeIntoExistingSwarm(existing, "s", "d",
+		[]builderBotRef{
+			{
+				ID: "poller", Use: "watch-the-competition@0.1.0",
+				RetryBackoff: "5s",
+				When:         "{{inputs.amount}} > 500",
+				Fallback:     "fixture-fetch@0.1.0",
+				Loop:         &schema.Loop{Max: 20, Until: "{{outputs.done}}"},
+			},
+			{ID: "refund", Swarm: "refund-flow.yaml"},
+		},
+		nil, nil, "")
+	if err != nil {
+		t.Fatalf("merge: %v", err)
+	}
+	got := string(out)
+	for _, want := range []string{
+		`retry_backoff: 5s`,
+		`when: '{{inputs.amount}} > 500'`,
+		`fallback: fixture-fetch@0.1.0`,
+		`max: 20`,
+		`until: '{{outputs.done}}'`,
+		`swarm: refund-flow.yaml`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("save dropped %q\n--- result ---\n%s", want, got)
+		}
+	}
+
+	// And it has to still parse as a real swarm, not just look right.
+	path := filepath.Join(t.TempDir(), "merged.yaml")
+	if werr := os.WriteFile(path, out, 0o644); werr != nil {
+		t.Fatal(werr)
+	}
+	sw, err := schema.LoadNanoswarm(path)
+	if err != nil {
+		t.Fatalf("merged output no longer parses as a swarm: %v\n%s", err, out)
+	}
+	poller := sw.Spec.Bots[0]
+	if poller.RetryBackoff != "5s" || poller.When != "{{inputs.amount}} > 500" ||
+		poller.Fallback != "fixture-fetch@0.1.0" {
+		t.Errorf("poller = %+v, want the fields preserved", poller)
+	}
+	if poller.Loop == nil || poller.Loop.Max != 20 || poller.Loop.Until != "{{outputs.done}}" {
+		t.Errorf("poller.Loop = %+v, want max 20 until {{outputs.done}}", poller.Loop)
+	}
+	if sw.Spec.Bots[1].Swarm != "refund-flow.yaml" {
+		t.Errorf("refund.Swarm = %q, want refund-flow.yaml", sw.Spec.Bots[1].Swarm)
+	}
+}
+
 func TestMergeRejectsGarbage(t *testing.T) {
 	if _, err := mergeIntoExistingSwarm([]byte("\x00not yaml: ["), "n", "d", nil, nil, nil, ""); err == nil {
 		t.Error("expected an error rather than a silently mangled file")

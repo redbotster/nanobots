@@ -266,6 +266,51 @@ func TestHandleGetSwarmFullRoundTripsWhatWasSaved(t *testing.T) {
 	}
 }
 
+// retry_backoff, when, fallback, loop and swarm all reached schema.BotRef
+// before builderBotRef caught up (v3 Phase 8) — proven end to end here,
+// through the real save and load HTTP handlers, the same way
+// TestHandleGetSwarmFullRoundTripsWhatWasSaved already proves it for the
+// older fields.
+func TestHandleGetSwarmFullRoundTripsTheNewerPerBotFields(t *testing.T) {
+	srv := testServerWithTempSwarms(t)
+	// No Fallback here — CheckFallback validates it names a real catalog
+	// bot with matching output ports, which would make this about picking
+	// a compatible pair rather than about the round-trip. That's already
+	// covered directly, bypassing validation, by
+	// TestMergePreservesTheNewerPerBotFields.
+	var created saveSwarmResponse
+	json.Unmarshal(postJSON(t, srv, "/api/swarms", saveSwarmRequest{
+		Name: "Newer Fields", Description: "d",
+		Bots: []builderBotRef{
+			{
+				ID: "recap", Use: "recap-emails-to-pdf@0.3.0",
+				RetryBackoff: "5s", When: "{{inputs.amount}} > 500",
+				Loop: &schema.Loop{Max: 20, Until: "{{outputs.done}}"},
+			},
+		},
+	}).Body.Bytes(), &created)
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/swarms/full?path="+created.Path, nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var full swarmFullResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &full); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(full.Bots) != 1 {
+		t.Fatalf("full.Bots = %+v", full.Bots)
+	}
+	got := full.Bots[0]
+	if got.RetryBackoff != "5s" || got.When != "{{inputs.amount}} > 500" {
+		t.Errorf("got = %+v, want retry_backoff/when preserved", got)
+	}
+	if got.Loop == nil || got.Loop.Max != 20 || got.Loop.Until != "{{outputs.done}}" {
+		t.Errorf("got.Loop = %+v, want max 20 until {{outputs.done}}", got.Loop)
+	}
+}
+
 func TestHandleGetSwarmFullRejectsPathTraversal(t *testing.T) {
 	srv := testServerWithTempSwarms(t)
 	rec := httptest.NewRecorder()

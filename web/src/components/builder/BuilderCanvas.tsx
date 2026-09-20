@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { BotSummary, SnapCheck } from "../../lib/types";
+import type { BotSummary, DraftLoop, SnapCheck } from "../../lib/types";
 
 export interface PlacedBot {
   instanceId: string;
@@ -9,6 +9,22 @@ export interface PlacedBot {
   /** "continue" keeps this bot's failure from ending the run — see
    * docs/error-policy.md. Undefined means the default, "stop". */
   onError?: string;
+  /** retry, retryBackoff, when, fallback, loop, swarm, execution: none of
+   * these have a builder control yet, and are carried opaquely through
+   * load and save for the same reason onError is — see DraftBot in
+   * ../../lib/types and docs/builder.md. */
+  retry?: number;
+  retryBackoff?: string;
+  when?: string;
+  fallback?: string;
+  loop?: DraftLoop;
+  /** Set instead of botId/use for a nested-swarm bot — a path to another
+   * swarm's YAML, not a catalog bot. See schema.BotRef.Swarm. The canvas
+   * has no dedicated rendering for this yet (botId is "" for one, so it
+   * renders unlabeled) — preserving the field on save is what matters
+   * until it does. */
+  swarm?: string;
+  execution?: string;
 }
 
 export interface CanvasSnap {
