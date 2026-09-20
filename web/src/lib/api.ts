@@ -59,14 +59,33 @@ export async function getIfChanged<T>(
   return { data: (await res.json()) as T, etag: res.headers.get("ETag") };
 }
 
+// Every error this backend ever sends is `{"error": "..."}`
+// (internal/api/json.go's writeError, the one place any handler builds an
+// error response) — but a caller that just wrapped the raw body showed a
+// user the literal JSON, quotes and all: submitting to the composer with
+// no model configured read `Error: 400 Bad Request:
+// {"error":"the composer needs a model — set ONECLAW_API_KEY..."}` on
+// screen. The message itself was right; only the wrapper was raw debug
+// output nobody meant to ship. Falls back to the raw body if it isn't that
+// shape — a proxy error or an unhandled panic recovery won't be.
+async function errorMessageFrom(res: Response): Promise<string> {
+  const body = await res.text();
+  try {
+    const parsed = JSON.parse(body) as { error?: unknown };
+    if (typeof parsed.error === "string" && parsed.error) return parsed.error;
+  } catch {
+    // Not JSON — fall through to the raw body below.
+  }
+  return body ? `${res.status} ${res.statusText}: ${body}` : `${res.status} ${res.statusText}`;
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`${res.status} ${res.statusText}: ${body}`);
+    throw new Error(await errorMessageFrom(res));
   }
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
