@@ -76,12 +76,30 @@ export function LastRunLine({ swarm: s }: { swarm: SwarmSummary }) {
   if (!s.last_run_status) {
     return <div className="mt-1 text-[11px] text-muted/60">never run yet</div>;
   }
+  // A succeeded run that finished without one of its bots still reports
+  // last_run_status "succeeded" — correctly, the run did finish — but
+  // "last ran 2h ago" in plain green looked identical whether every step
+  // ran or one silently didn't. warn (amber), same rule as RunsPage's own
+  // RunRow, and the same "cannot be invisible" promise
+  // runner.ToleratedFailure's own doc comment makes.
+  const tolerated = s.last_run_status === "succeeded" && (s.last_run_tolerated ?? 0) > 0;
   return (
     <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted">
-      <StatusDot tone={RUN_TONE[s.last_run_status] ?? "muted"} />
+      <StatusDot tone={tolerated ? "warn" : (RUN_TONE[s.last_run_status] ?? "muted")} />
       last ran {relativeTime(s.last_run_at!)}
       {s.last_run_trigger === "schedule" && " · scheduled"}
       {s.last_run_trigger === "webhook" && " · by webhook"}
+      {tolerated && (
+        <span
+          className="text-warn"
+          title={`${s.last_run_tolerated} bot${s.last_run_tolerated === 1 ? "" : "s"} finished without running — open the run for details`}
+        >
+          ·{" "}
+          {s.last_run_tolerated === 1
+            ? "1 step didn't run"
+            : `${s.last_run_tolerated} steps didn't run`}
+        </span>
+      )}
     </div>
   );
 }

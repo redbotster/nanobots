@@ -219,12 +219,18 @@ function RunRow({ run, onOpen }: { run: RunSummary; onOpen: () => void }) {
       {/* Muted for a run that did nothing: it succeeded, and a green dot
           claiming work happened is the same small lie as calling a stopped
           run failed. Declining is the third of these — you answered the
-          question, and a red dot says you broke something. */}
+          question, and a red dot says you broke something. A tolerated
+          failure is different from all three: nothing here was decided or
+          settled, a step just didn't run, so it gets warn (amber) rather
+          than muted — the same "cannot be invisible" rule
+          runner.ToleratedFailure's own doc comment states. */}
       <StatusDot
         tone={
           run.stopped_by_user || run.declined_by_user || run.nothing_to_do
             ? "muted"
-            : tone[run.status]
+            : run.tolerated_count
+              ? "warn"
+              : tone[run.status]
         }
       />
       <div className="min-w-0 flex-1">
@@ -266,6 +272,24 @@ function RunRow({ run, onOpen }: { run: RunSummary; onOpen: () => void }) {
             {run.nothing_to_do}
           </div>
         )}
+        {/* A succeeded run that finished without one of its bots — see
+            RunDetail's ToleratedBanner for the full "which bot, why, and
+            what to do about it" (this is a list row, not the place for
+            that much detail). Gated on the other three being absent so a
+            row never carries two competing explanations at once. */}
+        {!!run.tolerated_count &&
+          !run.stopped_by_user &&
+          !run.declined_by_user &&
+          !run.nothing_to_do && (
+            <div
+              className="truncate text-[11px] text-warn"
+              title={`${run.tolerated_count} bot${run.tolerated_count === 1 ? "" : "s"} finished without running — open the run for details`}
+            >
+              {run.tolerated_count === 1
+                ? "1 step didn't run"
+                : `${run.tolerated_count} steps didn't run`}
+            </div>
+          )}
       </div>
       <div className="shrink-0 text-xs text-muted">
         {run.stopped_by_user

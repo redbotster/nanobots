@@ -108,6 +108,15 @@ func runSummaryToJSON(run *runner.Run) map[string]any {
 	if why := run.GetNothingToDo(); why != "" {
 		out["nothing_to_do"] = why
 	}
+	// A count, same shape as pending_approval_count above — the full
+	// ToleratedFailure list (bot, error, remedy) is what GET /api/runs/{id}
+	// already returns and RunDetail's own banner already renders; the list
+	// only needs to know there's something to say. Without this, a run
+	// that finished with a step silently skipped rendered exactly like one
+	// that didn't — the "0/4 live" shape of bug, on a different field.
+	if n := len(run.GetTolerated()); n > 0 {
+		out["tolerated_count"] = n
+	}
 	return out
 }
 

@@ -79,6 +79,38 @@ describe("the swarm card's run line", () => {
     expect(screen.getByText(/scheduled/i)).toBeTruthy();
   });
 
+  // The gap the live UI audit found: a run that finished with a tolerated
+  // failure (get-paid's reminders went out, notify didn't) reported
+  // last_run_status "succeeded" and rendered in plain green, identical to
+  // a run where nothing was skipped.
+  it("warns when the last run succeeded but skipped a step", () => {
+    const { container } = render(
+      <LastRunLine
+        swarm={swarm({
+          last_run_status: "succeeded",
+          last_run_at: new Date(Date.now() - 3600_000).toISOString(),
+          last_run_tolerated: 1,
+        })}
+      />,
+    );
+    expect(screen.getByText(/last ran/i)).toBeTruthy();
+    expect(screen.getByText(/1 step didn't run/i)).toBeTruthy();
+    expect(container.querySelector("span")?.className).toContain("bg-warn");
+  });
+
+  it("stays plain green when the last run succeeded with nothing tolerated", () => {
+    const { container } = render(
+      <LastRunLine
+        swarm={swarm({
+          last_run_status: "succeeded",
+          last_run_at: new Date(Date.now() - 3600_000).toISOString(),
+        })}
+      />,
+    );
+    expect(screen.queryByText(/didn't run/i)).toBeNull();
+    expect(container.querySelector("span")?.className).toContain("bg-ok");
+  });
+
   it("says nothing has run yet when nothing has", () => {
     render(<LastRunLine swarm={swarm({})} />);
     expect(screen.getByText(/never run yet/i)).toBeTruthy();
