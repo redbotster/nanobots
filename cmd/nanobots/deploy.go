@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/redbotster/nanobots/internal/oneclaw"
@@ -19,22 +20,34 @@ import (
 // Two honest limits, both reported by the command itself rather than
 // discovered afterwards:
 //
-// There is no `nanobots` runtime template. `GET /v1/runtimes/templates`
-// returns nine — python, node, hermes, openclaw, openclaude, opencode,
-// claude-code, codex, amp — and they are language runtimes and agent
-// frameworks, none of which runs a Go binary. So this deploys from a
-// container image instead, which POST /v1/runtimes accepts.
+// There was no `nanobots` runtime template for a long time. `GET
+// /v1/runtimes/templates` used to return nine — python, node, hermes,
+// openclaw, openclaude, opencode, claude-code, codex, amp — language
+// runtimes and agent frameworks, none of which runs a Go binary. There is a
+// tenth now, `binary` ("run a compiled program: a release asset from
+// BINARY_URL, or a startup command after cloning a repo"), which is
+// exactly the gap this comment used to describe as unclosed
+// (docs/1claw-feature-requests.md #11). --template picks it (or any other
+// template CreateRuntimeRequest.template accepts); the default with no
+// flags at all is still --image, unchanged.
 //
 // --image used to be required, because there was no published image and
 // guessing one would have failed at pull time. There is one now, built by
 // .github/workflows/release.yml on every tag, so that is the default and
-// --image overrides it.
+// --image overrides it. It stays the default when neither --image nor
+// --template is given.
 //
-// It cannot push your local swarms. The image carries the catalog and the
-// example swarms it was built with, and 1Claw has no file-transfer API for
-// a runtime, so a swarm you wrote here does not travel. Filed in
-// docs/1claw-feature-requests.md; the workaround is to build your own image
-// from this repo with your swarms in it.
+// It still cannot push your local swarms with any confidence. `--template
+// binary` plus `--binary-url`/`--runtime-env` can point a runtime at a
+// release asset or feed it env vars, using the one field name
+// (`BINARY_URL`) 1Claw's own template description names and the
+// `env_public` field CreateRuntimeRequest's schema confirms accepts
+// arbitrary keys — but the binary template's *own* full contract (the
+// checksum field's real name, whether the repo-clone path takes your
+// swarms with it) has not been tried against a real deploy, and this
+// command does not pretend otherwise. The image path — building your own
+// image from this repo with your swarms already in it — is still the
+// verified way to make a swarm you wrote here travel.
 
 // DefaultImage is what a deploy runs when told nothing else: the image this
 // repo publishes on every tag. Pinned to a tag rather than :latest, because
@@ -44,11 +57,19 @@ const DefaultImage = "ghcr.io/redbotster/nanobots:v0.1.0"
 
 type deployOptions struct {
 	Image       string
+	Template    string
 	Slug        string
 	AgentName   string
 	Environment string
 	Yes         bool
 	EnvFilePath string
+	// RuntimeEnv becomes CreateRuntimeRequest.env_public — public
+	// (non-vault) env vars for the runtime process itself, the mechanism a
+	// template like `binary` reads its own configuration from. --binary-url
+	// sets BINARY_URL here specifically, since that's the one field name
+	// 1Claw's own template description already names; --runtime-env is the
+	// general escape hatch for whatever else a given template needs.
+	RuntimeEnv map[string]string
 }
 
 func runDeploy(args []string) error {
@@ -57,7 +78,18 @@ func runDeploy(args []string) error {
 		return fmt.Errorf("the only deploy target is 1claw")
 	}
 	opts := deployOptions{AgentName: "nanobots", Environment: "production"}
-	for i := 1; i < len(args); i++ {
+	if err := parseDeployFlags(&opts, args[1:]); err != nil {
+		return err
+	}
+	return deployTo1Claw(opts, os.Stdin, os.Stdout)
+}
+
+// parseDeployFlags fills opts from the flags following `1claw`. Separate
+// from runDeploy so the flag shapes (repeatable --runtime-env, the
+// --binary-url alias, the KEY=VALUE split) can be checked without a 1Claw
+// credential or a live deploy.
+func parseDeployFlags(opts *deployOptions, args []string) error {
+	for i := 0; i < len(args); i++ {
 		next := func() (string, error) {
 			i++
 			if i >= len(args) {
@@ -69,6 +101,28 @@ func runDeploy(args []string) error {
 		switch args[i] {
 		case "--image":
 			opts.Image, err = next()
+		case "--template":
+			opts.Template, err = next()
+		case "--binary-url":
+			var v string
+			if v, err = next(); err == nil {
+				if opts.RuntimeEnv == nil {
+					opts.RuntimeEnv = map[string]string{}
+				}
+				opts.RuntimeEnv["BINARY_URL"] = v
+			}
+		case "--runtime-env":
+			var kv string
+			if kv, err = next(); err == nil {
+				k, v, ok := strings.Cut(kv, "=")
+				if !ok {
+					return fmt.Errorf("--runtime-env wants KEY=VALUE, got %q", kv)
+				}
+				if opts.RuntimeEnv == nil {
+					opts.RuntimeEnv = map[string]string{}
+				}
+				opts.RuntimeEnv[k] = v
+			}
 		case "--slug":
 			opts.Slug, err = next()
 		case "--agent":
@@ -86,7 +140,7 @@ func runDeploy(args []string) error {
 			return err
 		}
 	}
-	return deployTo1Claw(opts, os.Stdin, os.Stdout)
+	return nil
 }
 
 func deployTo1Claw(opts deployOptions, in *os.File, out *os.File) error {
@@ -120,7 +174,6 @@ func deployTo1Claw(opts deployOptions, in *os.File, out *os.File) error {
 	body := map[string]any{
 		"name":     opts.AgentName,
 		"agent_id": agentID,
-		"image":    opts.Image,
 		// The WebUI is the reason to host this at all.
 		"expose_http": true,
 		"http_port":   7474,
@@ -130,18 +183,46 @@ func deployTo1Claw(opts deployOptions, in *os.File, out *os.File) error {
 		// only this machine could reach it. Exposing that to the internet
 		// would be the single worst thing this command could do.
 		"inbound_auth": "jwt",
-		// Env vars resolve from the vault rather than being passed here, so
-		// no credential travels through this process or this repo.
+		// Secrets resolve from the vault rather than being passed here, so
+		// no credential travels through this process or this repo. Separate
+		// from RuntimeEnv below, which is CreateRuntimeRequest's own
+		// env_public — deliberately non-secret, and named that in the
+		// schema for exactly this reason.
 		"environment": opts.Environment,
+	}
+	// Exactly one of these, matching withDeployDefaults: a template-based
+	// runtime (e.g. --template binary) doesn't pull an image, and sending
+	// both would claim two different ways to start the same runtime.
+	if opts.Image != "" {
+		body["image"] = opts.Image
+	}
+	if opts.Template != "" {
+		body["template"] = opts.Template
+	}
+	if len(opts.RuntimeEnv) > 0 {
+		body["env_public"] = opts.RuntimeEnv
 	}
 
 	fmt.Fprintln(out, "This will create a 1Claw Cloud Runtime, which bills against your account:")
-	fmt.Fprintf(out, "\n  image        %s\n", opts.Image)
+	if opts.Template != "" {
+		fmt.Fprintf(out, "\n  template     %s\n", opts.Template)
+	} else {
+		fmt.Fprintf(out, "\n  image        %s\n", opts.Image)
+	}
 	fmt.Fprintf(out, "  agent        %s (%s)\n", opts.AgentName, agentID)
 	fmt.Fprintf(out, "  url          https://%s.run.1claw.co\n", opts.Slug)
 	fmt.Fprintf(out, "  inbound auth jwt (never public — see the comment in deploy.go)\n")
 	fmt.Fprintf(out, "  env from     vault environment %q\n", opts.Environment)
-	fmt.Fprintln(out, "\nYour locally-written swarms do not travel; the image carries its own.")
+	for _, k := range sortedKeys(opts.RuntimeEnv) {
+		fmt.Fprintf(out, "  runtime env  %s=%s\n", k, opts.RuntimeEnv[k])
+	}
+	if opts.Template != "" {
+		fmt.Fprintln(out, "\nThe binary template's own contract (checksum field, whether a repo clone")
+		fmt.Fprintln(out, "carries your swarms) has not been verified against a real deploy — see the")
+		fmt.Fprintln(out, "comment atop deploy.go before relying on it.")
+	} else {
+		fmt.Fprintln(out, "\nYour locally-written swarms do not travel; the image carries its own.")
+	}
 
 	if !opts.Yes {
 		fmt.Fprint(out, "\nCreate it? [y/N]: ")
@@ -178,23 +259,31 @@ func deployTo1Claw(opts deployOptions, in *os.File, out *os.File) error {
 // deployUsage is printed by `nanobots deploy` with no target.
 const deployUsage = `usage: nanobots deploy 1claw [flags]
 
-  --image <ref>        container image to run (default "ghcr.io/redbotster/nanobots:v0.1.0")
-  --slug <name>        hostname under run.1claw.co (default "nanobots")
-  --agent <name>       1Claw agent to run as (default "nanobots")
-  --environment <env>  vault environment for env vars (default "production")
-  --yes                skip the confirmation
+  --image <ref>          container image to run (default "ghcr.io/redbotster/nanobots:v0.1.0")
+  --template <name>       1Claw runtime template instead of an image (e.g. "binary")
+  --binary-url <url>      sets the BINARY_URL env var a "binary" template reads
+  --runtime-env KEY=VALUE  another public env var for the runtime (repeatable)
+  --slug <name>           hostname under run.1claw.co (default "nanobots")
+  --agent <name>          1Claw agent to run as (default "nanobots")
+  --environment <env>     vault environment for secrets (default "production")
+  --yes                   skip the confirmation
 
-No 1Claw runtime template runs a Go binary, so this deploys from a
-container image. The default is the one published on every tag; pass
---image to run your own build, which is what you want if your swarms need
-to travel with it.`
+With no --template, this deploys from a container image — the default is
+the one published on every tag; pass --image to run your own build, which
+is what you want if your swarms need to travel with it. --template picks a
+1Claw runtime template instead (e.g. "binary", which runs a compiled
+program rather than pulling an image) — its own full contract has not been
+verified against a real deploy; see the comment atop deploy.go.`
 
 // withDeployDefaults fills in what the user did not say. Separate from the
 // command so the defaults can be checked without a 1Claw account: they are
 // what decides which image a runtime pulls, and that should not be
 // something only a live deploy can tell you.
 func withDeployDefaults(opts deployOptions) deployOptions {
-	if opts.Image == "" {
+	// Only when neither is set — --template opts out of the image default
+	// entirely, rather than sending both and letting 1Claw decide which
+	// startup mechanism wins.
+	if opts.Image == "" && opts.Template == "" {
 		opts.Image = DefaultImage
 	}
 	if opts.Slug == "" {
@@ -227,4 +316,16 @@ func findAgentID(client *oneclaw.Client, name string) (string, error) {
 	return "", fmt.Errorf(
 		"no 1Claw agent named %q. Create one first:\n    1claw agent create %s\nor pass --agent with the name of one you have",
 		name, name)
+}
+
+// sortedKeys is only for the confirmation printout — a map has no order of
+// its own, and a deploy prompt that lists the same env vars in a different
+// order each run would be a strange thing to have to re-read carefully.
+func sortedKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }

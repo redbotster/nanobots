@@ -204,24 +204,31 @@ time, and poll by id. Loses only the runs whose history was already lost.
 
 ## 11. A runtime template that runs a plain binary, and a way to get files into a runtime
 
-**First half resolved.** `GET /v1/runtimes/templates` returned nine
-language-runtime and agent-framework templates when this was written.
-Re-probed live: there are now ten, and the new one is `binary` — "Run a
-compiled program: a release asset from `BINARY_URL` (SHA-256 pinned) or a
-startup command after cloning a repo. 1Claw CLI and sidecar included." That
-is exactly the gap named here.
+**First half resolved, and now wired in.** `GET /v1/runtimes/templates`
+returned nine language-runtime and agent-framework templates when this was
+written. Re-probed live: there are now ten, and the new one is `binary` —
+"Run a compiled program: a release asset from `BINARY_URL` (SHA-256
+pinned) or a startup command after cloning a repo. 1Claw CLI and sidecar
+included." `nanobots deploy 1claw` now takes `--template <name>` (opting
+out of the `--image` default entirely — `CreateRuntimeRequest.template`
+and `.image` are independent fields, and sending both would claim two
+different ways to start the same runtime), `--binary-url` (the one field
+name, `BINARY_URL`, 1Claw's own template description names), and a general
+`--runtime-env KEY=VALUE` escape hatch onto `CreateRuntimeRequest`'s
+confirmed `env_public` map for whatever else a given template reads.
+
+**What this still doesn't cover.** The binary template's *own* full
+contract — the checksum field's real name, whether the repo-clone path
+carries this repo's swarms with it — has not been tried against a real
+deploy, and neither the command nor this entry claims otherwise; see the
+comment atop `cmd/nanobots/deploy.go`. The image path remains the verified
+way to make a locally-written swarm travel.
 
 **Second half, still open.** No dedicated file-transfer API for a running
-runtime exists yet — `binary`'s own "clone a repo" path is the closest
-thing, and covers the same need a different way (push to a repo the
-runtime clones, rather than push files to a running one), but it hasn't
-been tried against a real deploy.
-
-**What this still blocks.** `nanobots deploy 1claw` doesn't use either yet.
-Wiring the CLI to offer `binary` as a template, and to push this repo's own
-swarms via a clone rather than `--image`, is real work that hasn't started.
-Recorded here as a platform gap now half-closed; the CLI change is ordinary
-backlog.
+runtime exists yet — `binary`'s "clone a repo" path is the closest thing,
+and covers the same need a different way (push to a repo the runtime
+clones, rather than push files to a running one), but it hasn't been tried
+against a real deploy either.
 
 ---
 
