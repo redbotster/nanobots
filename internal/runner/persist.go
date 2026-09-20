@@ -184,16 +184,6 @@ func loadSnapshots(dir string) ([]*Run, error) {
 	return runs, nil
 }
 
-// prune deletes all but the newest keep runs from disk. Called after a load
-// so history is bounded without anyone having to think about it; runs are a
-// few KB each, so the cap is about not letting a directory grow unbounded
-// for years, not about disk pressure.
-func prune(dir string, runs []*Run, keep int) {
-	for _, r := range runs[min(keep, len(runs)):] {
-		os.Remove(filepath.Join(dir, r.ID+".json"))
-	}
-}
-
 // maxCapturedFixture bounds one recorded fixture on disk. A fixture is
 // meant to be readable test data someone commits; a megabyte of scraped
 // HTML from a web.fetch is neither, and would bloat every run snapshot in

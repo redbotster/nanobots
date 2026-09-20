@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useRun } from "../lib/useRun";
-import { refreshRuns } from "../lib/runsFeed";
 import { api } from "../lib/api";
 import { Tabs } from "../components/Tabs";
 import { RunLog } from "../components/RunLog";
@@ -236,7 +235,6 @@ export function RunDetail({
     setStopError(null);
     try {
       await api.cancelRun(run.id);
-      refreshRuns();
     } catch (e) {
       setStopError(e instanceof Error ? e.message : String(e));
     } finally {

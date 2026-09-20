@@ -86,10 +86,3 @@ export function useRuns(): RunSummary[] | null {
   useEffect(() => subscribe(setRuns), []);
   return runs;
 }
-
-/** No longer does anything: every write that used to need a forced
- * refetch (starting a run, deciding an approval) already broadcasts to
- * this stream the moment it happens, on the same connection every
- * subscriber already has open. Kept so callers written for the old
- * poll-and-refetch behavior don't need to change. */
-export function refreshRuns() {}
