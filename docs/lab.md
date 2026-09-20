@@ -138,6 +138,34 @@ matters — that guess would be specific to this one error shape and wrong
 for the next one, the same reasoning finding 3's chunk-boundary spacing
 was left alone for.
 
+**5. Opening (or reloading) the Lab tab mid-request showed an idle input,
+even while a real delegation was still running.** `busy` (finding 3's own
+fix) started `false` on mount and only ever flipped `true` from *this
+tab's* `send()` call — never derived from the history `GET /api/lab/events`
+replays on connect. So a tab that opened after a delegation had already
+started saw the whole transcript so far and judged it finished, with
+nothing stopping a second message from firing alongside a Team agent still
+working — doubling load on whatever quota or budget the first request was
+already spending, which is exactly what finding 4 above was about. Fixed
+by deriving `busy` from every entry the same way, replayed or live: a turn
+is open until the final bare `"lab"` line, exactly the rule finding 3
+already established for the live case — replay just needed to run it
+through the same rule instead of starting from an assumed "nothing is
+happening" default.
+
+**6. The rate limit itself had no way to be seen or worked around.**
+Finding 4's real failure was a Gemini free-tier quota
+(`generativelanguage.googleapis.com/generate_content_free_tier_requests`,
+limits as low as 5-20 requests) exhausted by `designer`'s own normal
+"read a few files before writing anything" pattern — one delegation, one
+quota window, gone. There was no way to see which engine would answer
+before sending a message, or to switch to Claude instead, short of editing
+`~/.secrets/nanobots.env` and restarting. Settings now shows both engines'
+status and a live-updatable default plus per-role override — see
+`docs/team.md`'s "Choosing which engine, live". That page also covers the
+credential itself moving off a local-only dotenv file, which independently
+was blocking Team from working on a 1Claw Cloud Runtime deployment at all.
+
 ## How it's wired
 
 - `internal/lab.Session` holds the one ongoing conversation. It embeds a
@@ -154,6 +182,10 @@ was left alone for.
 - There is exactly one session per server process, matching this build's
   single-tenant shape everywhere else. No persistence across a restart
   yet, and no multi-session story.
+- Which engine a delegation runs on is `lab.Config.Engines`
+  (`*team.Preferences`) — the same live pointer `GET/POST /api/lab/engines*`
+  read and write from Settings, so a change reaches the very next
+  `delegate()` call. See `docs/team.md`'s "Choosing which engine, live".
 
 ## What's deliberately not built yet
 

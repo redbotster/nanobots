@@ -600,3 +600,25 @@ export interface PostureResponse {
   tier?: string;
   error?: string;
 }
+
+/** Which coding-agent CLI a Lab delegation actually runs — see
+ * internal/team.Engine. "" (only ever DefaultEngine) means neither
+ * ANTHROPIC_API_KEY nor GEMINI_API_KEY is configured at all. */
+export type TeamEngine = "claude" | "gemini" | "";
+
+export interface LabEngineRole {
+  role: string;
+  /** Effective engine: the role's own override, or the default. */
+  engine: TeamEngine;
+  overridden: boolean;
+}
+
+export interface LabEnginesResponse {
+  default_engine: TeamEngine;
+  claude_configured: boolean;
+  gemini_configured: boolean;
+  /** Every role that has ever been delegated to — there's no fixed
+   * catalog, a role exists exactly when internal/team has given it a
+   * workspace once. */
+  roles: LabEngineRole[];
+}

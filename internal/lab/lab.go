@@ -38,11 +38,14 @@ var labModel = schema.Model{Provider: "anthropic", Name: "claude-sonnet-4-6", Ma
 // Config is what a Session needs that doesn't change message to message.
 type Config struct {
 	Team team.Config
-	// DefaultEngine is which Team engine a delegation uses. Chosen once,
-	// by whoever wires up the daemon, from which key is actually
-	// configured — see wiring.go's doc comment for why this isn't the
-	// model's own decision to make.
-	DefaultEngine team.Engine
+	// Engines resolves which Team engine a delegation uses — a global
+	// default plus any per-role override, live-updatable from Settings
+	// with no daemon restart. A human's choice, not the routing model's:
+	// each engine spends a different real, metered API key, and Lab's
+	// router already runs on a single-shot Generate with no memory of
+	// what it decided last time — nothing here should let a model pick
+	// which paid credential a request burns through.
+	Engines *team.Preferences
 }
 
 // turn is one exchange in the conversation, restated into every routing
@@ -130,10 +133,11 @@ func (s *Session) HandleMessage(ctx context.Context, message string) {
 // something to go on — Generate still has no memory of the delegated
 // run's outputs otherwise.
 func (s *Session) delegate(ctx context.Context, role, task string) {
-	if s.cfg.DefaultEngine == "" {
-		s.appendLab("I'd delegate that, but no Team engine is configured — set ANTHROPIC_API_KEY or GEMINI_API_KEY in ~/.secrets/nanobots.env (see docs/team.md).")
+	if s.cfg.Engines == nil || s.cfg.Engines.Default() == "" {
+		s.appendLab("I'd delegate that, but no Team engine is configured — set ANTHROPIC_API_KEY or GEMINI_API_KEY in ~/.secrets/nanobots.env, or paste one in Settings (see docs/team.md).")
 		return
 	}
+	engine := s.cfg.Engines.EngineFor(role)
 	// step "delegating" marks this as an interim status line, not Lab's
 	// answer — the WebUI treats a bare "lab"-authored entry (no step) as
 	// the signal a message is fully answered (see LabPage.tsx), and this
@@ -146,7 +150,7 @@ func (s *Session) delegate(ctx context.Context, role, task string) {
 	events := make(chan foundry.Event)
 	done := make(chan error, 1)
 	go func() {
-		done <- team.Run(ctx, s.cfg.Team, team.TaskInput{Role: role, Task: task, Engine: s.cfg.DefaultEngine}, events)
+		done <- team.Run(ctx, s.cfg.Team, team.TaskInput{Role: role, Task: task, Engine: engine}, events)
 	}()
 
 	summary, err := consumeDelegation(role, events, done, func(bot, phase, msg string) { s.run.Log(bot, phase, "%s", msg) })

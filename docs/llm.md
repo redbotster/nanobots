@@ -85,9 +85,10 @@ claims them.
 
 ## Anything else that talks to a model
 
-Two things in this repo generate text without being a bot, and both go through the same layer:
+Three things in this repo generate text without being a bot, and all three go through the same layer:
 
 - **The composer** (`POST /api/compose`) — the "describe what you want automated" box. It used to build its own Shroud client and demand `ONECLAW_API_KEY` specifically, so someone with a Gemini key had a working catalog, working bots, and a compose box that returned 400 from the product's primary entry point. It now uses whatever backend is configured, resolving Shroud against its own agent.
+- **Lab** (`docs/lab.md`) — its routing decision ("delegate, report status, or just answer") is the exact same `llm.Generator` `daemon.go` builds for everything else, so `NANOBOTS_LLM`/`NANOBOTS_LLM_MODEL` cover it with no separate setting. Delegated work itself does not: once Lab hands a task to a Team role, that role runs on its own coding-agent CLI (`docs/team.md`), a different thing from an `ai.generate` call entirely.
 - **Honcho**, the recall-capable memory backend — see below.
 
 ## Routing Honcho through Shroud
