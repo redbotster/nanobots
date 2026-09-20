@@ -77,22 +77,20 @@ func runWebhook(args []string) error {
 // findSwarmByName resolves a swarm by its metadata name or its filename,
 // the same two ways the webhook endpoint accepts.
 func findSwarmByName(dir, name string) (string, *schema.Nanoswarm, error) {
-	entries, err := os.ReadDir(dir)
+	var foundPath string
+	var found *schema.Nanoswarm
+	err := schema.ForEachSwarmFile(dir, func(path string, sw *schema.Nanoswarm) bool {
+		if sw.Metadata.Name == name || strings.TrimSuffix(filepath.Base(path), ".yaml") == name {
+			foundPath, found = path, sw
+			return false
+		}
+		return true
+	})
 	if err != nil {
 		return "", nil, err
 	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
-			continue
-		}
-		path := filepath.Join(dir, e.Name())
-		sw, err := schema.LoadNanoswarm(path)
-		if err != nil {
-			continue
-		}
-		if sw.Metadata.Name == name || strings.TrimSuffix(e.Name(), ".yaml") == name {
-			return path, sw, nil
-		}
+	if found == nil {
+		return "", nil, fmt.Errorf("no swarm called %q in %s", name, dir)
 	}
-	return "", nil, fmt.Errorf("no swarm called %q in %s", name, dir)
+	return foundPath, found, nil
 }
