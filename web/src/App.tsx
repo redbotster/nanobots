@@ -261,7 +261,7 @@ function Dashboard({ onLeave }: { onLeave: () => void }) {
       </aside>
 
       <main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-        <PrereqBanners status={status} onOpenSettings={() => setPage("settings")} />
+        <PrereqBanners status={status} onOpenSettings={() => goTo("settings")} />
         <div className="min-h-0 flex-1 overflow-hidden">
           {openFoundryJobId ? (
             <Suspense fallback={<LazyFallback />}>
@@ -285,7 +285,7 @@ function Dashboard({ onLeave }: { onLeave: () => void }) {
                 <SwarmsPage
                   uiMode={uiMode}
                   status={status}
-                  onOpenSettings={() => setPage("settings")}
+                  onOpenSettings={() => goTo("settings")}
                 />
               )}
               <Suspense fallback={<LazyFallback />}>
@@ -294,7 +294,7 @@ function Dashboard({ onLeave }: { onLeave: () => void }) {
                 {page === "lab" && <LabPage />}
                 {page === "runs" && (
                   <RunsPage
-                    onOpenSettings={() => setPage("settings")}
+                    onOpenSettings={() => goTo("settings")}
                     pendingFoundryJobs={pendingFoundryJobs}
                     onOpenFoundryJob={setOpenFoundryJobId}
                   />
