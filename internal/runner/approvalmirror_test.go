@@ -1,7 +1,11 @@
 package runner
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -119,6 +123,136 @@ func TestAMirrorThatCannotResolveItsAgentSaysSo(t *testing.T) {
 		t.Error("the log did not carry the reason")
 	}
 	_ = run.Decide(id, true, "cli")
+}
+
+// docs/1claw-feature-requests.md #3: cancelling a 1Claw approval didn't
+// exist when the mirror was written, so a question answered locally left
+// its remote copy to expire on its own thirty minutes later — a stale
+// question sitting in a real person's queue for the rest of that timeout.
+// This is the fix, as a test.
+func TestAnsweringLocallyCancelsTheMirror(t *testing.T) {
+	orig := mirrorPoll
+	mirrorPoll = 10 * time.Millisecond
+	t.Cleanup(func() { mirrorPoll = orig })
+
+	var mu sync.Mutex
+	var canceled string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/auth/agent-token"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "agent-tok", "token_type": "Bearer", "expires_in": 86400,
+			})
+		case strings.HasSuffix(r.URL.Path, "/approvals/request"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "remote-1", "status": "pending"})
+		case strings.HasSuffix(r.URL.Path, "/approvals/remote-1/status"):
+			// Never resolves on its own — the local decision has to be
+			// what ends this, same as a real person answering elsewhere.
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "pending"})
+		case strings.HasSuffix(r.URL.Path, "/approvals/remote-1/cancel"):
+			mu.Lock()
+			canceled = "remote-1"
+			mu.Unlock()
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	origBaseURL := oneclaw.DefaultBaseURL
+	oneclaw.DefaultBaseURL = srv.URL
+	t.Cleanup(func() { oneclaw.DefaultBaseURL = origBaseURL })
+	client := oneclaw.NewAgentClient("ocv_test-key")
+
+	run := NewRun("probe")
+	a := &RunQueueApprover{
+		Run: run, Bot: "sender", Step: "approve",
+		Mirror: func() (*oneclaw.Client, string, error) { return client, "agent-1", nil },
+	}
+	done := make(chan bool, 1)
+	go func() {
+		ok, _, _ := a.Approve("Send it", "high")
+		done <- ok
+	}()
+
+	id := waitForPending(t, run)
+	waitForLog(t, run, "also asked on 1Claw")
+	_ = run.Decide(id, true, "cli")
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the local decision never arrived")
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		got := canceled
+		mu.Unlock()
+		if got == "remote-1" {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Error("answering locally never cancelled the 1Claw mirror")
+}
+
+// A cancel that fails must not be fatal to anything — the local answer
+// already stands, and this is best-effort tidying of a queue on another
+// service. It has to reach the log, though, same as every other failure in
+// this function.
+func TestACancelThatFailsIsLoggedNotFatal(t *testing.T) {
+	orig := mirrorPoll
+	mirrorPoll = 10 * time.Millisecond
+	t.Cleanup(func() { mirrorPoll = orig })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/auth/agent-token"):
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "agent-tok", "token_type": "Bearer", "expires_in": 86400,
+			})
+		case strings.HasSuffix(r.URL.Path, "/approvals/request"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "remote-1", "status": "pending"})
+		case strings.HasSuffix(r.URL.Path, "/approvals/remote-1/status"):
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "pending"})
+		case strings.HasSuffix(r.URL.Path, "/approvals/remote-1/cancel"):
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	origBaseURL := oneclaw.DefaultBaseURL
+	oneclaw.DefaultBaseURL = srv.URL
+	t.Cleanup(func() { oneclaw.DefaultBaseURL = origBaseURL })
+	client := oneclaw.NewAgentClient("ocv_test-key")
+
+	run := NewRun("probe")
+	a := &RunQueueApprover{
+		Run: run, Bot: "sender", Step: "approve",
+		Mirror: func() (*oneclaw.Client, string, error) { return client, "agent-1", nil },
+	}
+	done := make(chan bool, 1)
+	go func() {
+		ok, _, _ := a.Approve("Send it", "high")
+		done <- ok
+	}()
+
+	id := waitForPending(t, run)
+	waitForLog(t, run, "also asked on 1Claw")
+	_ = run.Decide(id, true, "cli")
+
+	select {
+	case ok := <-done:
+		if !ok {
+			t.Error("a failed remote cancel must not affect the local decision")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the local decision never arrived")
+	}
+	waitForLog(t, run, "could not withdraw the 1Claw copy")
 }
 
 var errAgentUnavailable = errTest("1Claw approvals agent: its api_key was only ever shown once")

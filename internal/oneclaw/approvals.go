@@ -64,6 +64,18 @@ func (c *Client) ApprovalStatus(id string) (string, error) {
 	return resp.Status, nil
 }
 
+// CancelApproval withdraws a pending approval this agent opened.
+//
+// docs/1claw-feature-requests.md #3: this endpoint didn't exist when
+// RunQueueApprover.mirror was written, so a question answered locally left
+// its 1Claw mirror to expire on its own thirty minutes later — a stale
+// question sitting in a real person's queue for half an hour after it no
+// longer meant anything. 1Claw shipped the same resource family as decide
+// (POST /v1/approvals/{id}/decide) for this.
+func (c *Client) CancelApproval(id string) error {
+	return c.do("POST", "/v1/approvals/"+id+"/cancel", nil, nil)
+}
+
 // WaitForApproval polls until the approval leaves "pending" or timeout
 // elapses. Returns (approved bool, terminalStatus string, error).
 func (c *Client) WaitForApproval(id string, poll, timeout time.Duration) (bool, string, error) {

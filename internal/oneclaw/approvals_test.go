@@ -60,6 +60,39 @@ func TestWaitForApprovalPollsUntilDecided(t *testing.T) {
 	}
 }
 
+func TestCancelApprovalHitsTheCancelEndpoint(t *testing.T) {
+	var gotMethod, gotPath string
+	srv := newTestServer(t, map[string]http.HandlerFunc{
+		"/v1/auth/api-key-token": tokenHandler(t),
+		"/v1/approvals/appr-1/cancel": func(w http.ResponseWriter, r *http.Request) {
+			gotMethod, gotPath = r.Method, r.URL.Path
+			w.WriteHeader(http.StatusOK)
+		},
+	})
+	c := NewClient("1ck_test")
+	c.BaseURL = srv.URL
+	if err := c.CancelApproval("appr-1"); err != nil {
+		t.Fatalf("CancelApproval: %v", err)
+	}
+	if gotMethod != http.MethodPost || gotPath != "/v1/approvals/appr-1/cancel" {
+		t.Errorf("request = %s %s, want POST /v1/approvals/appr-1/cancel", gotMethod, gotPath)
+	}
+}
+
+func TestCancelApprovalReturnsTheServerError(t *testing.T) {
+	srv := newTestServer(t, map[string]http.HandlerFunc{
+		"/v1/auth/api-key-token": tokenHandler(t),
+		"/v1/approvals/appr-1/cancel": func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+		},
+	})
+	c := NewClient("1ck_test")
+	c.BaseURL = srv.URL
+	if err := c.CancelApproval("appr-1"); err == nil {
+		t.Error("expected an error for a 404")
+	}
+}
+
 func TestWaitForApprovalTimesOut(t *testing.T) {
 	srv := newTestServer(t, map[string]http.HandlerFunc{
 		"/v1/auth/api-key-token": tokenHandler(t),
