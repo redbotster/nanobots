@@ -69,4 +69,26 @@ describe("the bot Inspector's guardrails panel", () => {
     );
     await waitFor(() => expect(screen.getByText(/enforced by the runner/)).toBeTruthy());
   });
+
+  // daily_budget_usd was real config sent to Shroud that nothing in the UI
+  // ever showed — a bot with an actual spend cap looked identical to one
+  // with none at all.
+  it("shows a bot's declared daily budget when guardrails are enforced", async () => {
+    withBackend("1claw shroud (token billing)", true);
+    render(<Inspector bot={{ ...bot, guardrails: { ...bot.guardrails, daily_budget_usd: 5 } }} />);
+    await waitFor(() => expect(screen.getByText("$5.00")).toBeTruthy());
+  });
+
+  it("says plainly when a bot declares no daily budget at all", async () => {
+    withBackend("1claw shroud (token billing)", true);
+    render(<Inspector bot={bot} />);
+    await waitFor(() => expect(screen.getByText("Not declared by this bot")).toBeTruthy());
+  });
+
+  it("does not claim a declared budget is enforced on a direct provider", async () => {
+    withBackend("gemini (direct)", false);
+    render(<Inspector bot={{ ...bot, guardrails: { ...bot.guardrails, daily_budget_usd: 5 } }} />);
+    await waitFor(() => expect(screen.getAllByText(/nothing is applying it/).length).toBe(3));
+    expect(screen.queryByText("$5.00")).toBeNull();
+  });
 });
