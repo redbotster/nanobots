@@ -176,11 +176,47 @@ func inspectSwarm(sw *schema.Nanoswarm, botsDir string) (live, total int, needsA
 	return live, total, needsApproval
 }
 
+type inspectResult struct {
+	live, total   int
+	needsApproval bool
+}
+
+// swarmInspectTTL bounds how stale a swarm's live/total/needsApproval count
+// can be, the same tradeoff and the same number as recallBotsTTL.
+//
+// inspectSwarm's planner.Resolve is real work — it parses and validates
+// every bot a swarm references — and its answer depends only on the
+// swarm's own YAML and the bots it uses, never on run state. GET
+// /api/swarms is polled every four seconds by every open tab, so without
+// this every poll re-resolved all 18 swarms' bot graphs (measured: ~20ms)
+// to answer a request that, the overwhelming majority of the time, changed
+// nothing about any of them. Ten seconds is short enough that editing a
+// swarm or a bot's service connection and reloading shows the change, long
+// enough that idle polling mostly hits a warm cache instead of the disk.
+const swarmInspectTTL = 10 * time.Second
+
+func (s *Server) inspectedSwarms() (map[string]inspectResult, error) {
+	return s.swarmInspectCache.do(swarmInspectTTL, func() (map[string]inspectResult, error) {
+		out := map[string]inspectResult{}
+		err := schema.ForEachSwarmFile(s.swarmsDir(), func(path string, sw *schema.Nanoswarm) bool {
+			live, total, needsApproval := inspectSwarm(sw, s.BotsDir)
+			out[path] = inspectResult{live, total, needsApproval}
+			return true
+		})
+		return out, err
+	})
+}
+
 // handleListSwarms scans examples/swarms/*.yaml — there's no swarm registry
 // yet (blueprint §4 #8), so "every .yaml file in this one directory" is the
 // whole discovery mechanism for now.
 func (s *Server) handleListSwarms(w http.ResponseWriter, r *http.Request) {
 	dir := s.swarmsDir()
+	inspected, err := s.inspectedSwarms()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
 	var allRuns []*runner.Run
 	if s.Runs != nil {
 		allRuns = s.Runs.List()
@@ -200,15 +236,15 @@ func (s *Server) handleListSwarms(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var swarms []SwarmSummary
-	err := schema.ForEachSwarmFile(dir, func(path string, sw *schema.Nanoswarm) bool {
+	err = schema.ForEachSwarmFile(dir, func(path string, sw *schema.Nanoswarm) bool {
 		relPath, err := filepath.Rel(filepath.Dir(s.BotsDir), path)
 		if err != nil {
 			relPath = path
 		}
-		live, total, needsApproval := inspectSwarm(sw, s.BotsDir)
+		insp := inspected[path]
 		summary := SwarmSummary{
 			Path: relPath, Name: sw.Metadata.Name, Description: sw.Metadata.Description,
-			ServicesLive: live, ServicesTotal: total, NeedsApproval: needsApproval,
+			ServicesLive: insp.live, ServicesTotal: insp.total, NeedsApproval: insp.needsApproval,
 		}
 		describeSchedule(&summary, sw.Spec.Trigger, time.Now())
 		mine := bySwarm[sw.Metadata.Name]

@@ -200,6 +200,27 @@ to compute one boolean, "has anything ever run here". It reads the shared
 
 What is left is one full copy of each list per tab, which is the floor.
 
+### The server side of `GET /api/swarms` also got faster to compute
+
+Everything above is bytes on the wire — a 304 still costs nothing to send.
+It did not cost nothing to *build*: answering `services_live`/
+`services_total` resolves every swarm's full bot graph
+(`inspectSwarm` → `planner.Resolve`), and that ran on every request, 304 or
+not, because the body has to exist before its hash can be compared.
+Measured against the 18-swarm catalog: ~18-22ms per request, paid by every
+open tab every four seconds, whether or not anything had actually changed.
+
+That work depends only on a swarm's own YAML and the bots it references —
+never on run state — so `internal/api.inspectedSwarms` now caches it for
+`swarmInspectTTL` (10s, the same number and the same reasoning as
+`recallBotsTTL` above). The same measurement's warm requests dropped to
+~7-8ms. The four handlers that write a swarm file or a bot's service
+connection (`handleSaveSwarm`, `handleImportSwarm`,
+`handleSetBotServiceConnection`, `handleSetProviderConnection`) invalidate
+it immediately rather than waiting out the TTL — a freshly saved swarm
+reading back as `0/4 live` until a cache happened to expire would be
+exactly the honesty bug this codebase already names once.
+
 ## An error is a sentence, not an envelope
 
 Seen on the Runs page, on a swarm whose Slack account was never connected:

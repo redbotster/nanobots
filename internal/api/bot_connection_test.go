@@ -171,6 +171,68 @@ func TestHandleSetBotServiceConnectionGoesLiveOnceConnected(t *testing.T) {
 	}
 }
 
+// A swarm's ServicesLive count is cached (swarmInspectTTL, see
+// inspectedSwarms) because computing it re-resolves every swarm's whole bot
+// graph — but toggling a bot's own service connection must be reflected in
+// that count the moment the toggle returns, not up to ten seconds later.
+// Anything less is the "0/4 live, reading as everything is broken" bug
+// CLAUDE.md documents, just delayed instead of permanent.
+func TestSwarmsServicesLiveReflectsAConnectionToggleImmediately(t *testing.T) {
+	srv := testServerWithBotsCopy(t)
+	srv.SwarmsDir = t.TempDir()
+	swarmYAML := `apiVersion: nanobots.dev/v1alpha1
+kind: Nanoswarm
+metadata:
+  name: uses-receipt-filer
+spec:
+  trigger: { type: manual }
+  bots:
+    - id: receipts
+      use: receipt-filer@0.1.0
+`
+	if err := os.WriteFile(filepath.Join(srv.SwarmsDir, "uses-receipt-filer.yaml"), []byte(swarmYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	liveCountOf := func() int {
+		rec := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/swarms", nil))
+		var swarms []SwarmSummary
+		if err := json.Unmarshal(rec.Body.Bytes(), &swarms); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		for _, s := range swarms {
+			if s.Name == "uses-receipt-filer" {
+				return s.ServicesLive
+			}
+		}
+		t.Fatal("uses-receipt-filer not found in the list")
+		return -1
+	}
+
+	if got := liveCountOf(); got != 0 {
+		t.Fatalf("ServicesLive before connecting = %d, want 0 (demo)", got)
+	}
+
+	vault, err := srv.OneClaw.EnsureVault("nanobots-main")
+	if err != nil {
+		t.Fatalf("EnsureVault: %v", err)
+	}
+	if err := srv.OneClaw.PutSecret(vault.ID, "google/refresh_token", "tok"); err != nil {
+		t.Fatalf("PutSecret: %v", err)
+	}
+	body, _ := json.Marshal(setBotServiceConnectionRequest{Live: true})
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/bots/receipt-filer/services/gmail/connection", bytes.NewReader(body)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", rec.Code, rec.Body.String())
+	}
+
+	if got := liveCountOf(); got == 0 {
+		t.Error("ServicesLive after connecting = 0, want > 0 — the swarmInspectCache was not invalidated by the connection toggle")
+	}
+}
+
 func TestHandleSetBotServiceConnectionUnknownBot(t *testing.T) {
 	srv := testServerWithBotsCopy(t)
 	body, _ := json.Marshal(setBotServiceConnectionRequest{Live: false})

@@ -214,6 +214,43 @@ func TestHandleSaveSwarmTwiceWithSameNameGetsDistinctFiles(t *testing.T) {
 	}
 }
 
+// The swarm list caches each swarm's resolved service count for
+// swarmInspectTTL, keyed by file path (see inspectedSwarms) — a freshly
+// saved swarm isn't in that cached map yet, so without an explicit
+// invalidation on save it would read back as 0 services, indistinguishable
+// from "everything is broken" until the cache happened to expire.
+func TestSavedSwarmsServiceCountIsNotStaleFromTheInspectCache(t *testing.T) {
+	srv := testServerWithTempSwarms(t)
+
+	// Warm the cache the same way an open Swarms tab would, before the
+	// save this test cares about ever happens.
+	srv.Handler().ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/swarms", nil))
+
+	var created saveSwarmResponse
+	json.Unmarshal(postJSON(t, srv, "/api/swarms", saveSwarmRequest{
+		Name: "Freshly Saved", Bots: []builderBotRef{{ID: "recap", Use: "recap-emails-to-pdf@0.3.0"}},
+	}).Body.Bytes(), &created)
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/swarms", nil))
+	var swarms []SwarmSummary
+	if err := json.Unmarshal(rec.Body.Bytes(), &swarms); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	var found *SwarmSummary
+	for i := range swarms {
+		if swarms[i].Path == created.Path {
+			found = &swarms[i]
+		}
+	}
+	if found == nil {
+		t.Fatalf("freshly saved swarm %q not found in the list", created.Path)
+	}
+	if found.ServicesTotal == 0 {
+		t.Error("ServicesTotal = 0 immediately after saving — a stale swarmInspectCache read")
+	}
+}
+
 func TestHandleSaveSwarmWithPathOverwritesExistingFile(t *testing.T) {
 	srv := testServerWithTempSwarms(t)
 	var created saveSwarmResponse

@@ -130,6 +130,11 @@ func (s *Server) handleSetProviderConnection(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	if len(resp.Changed) > 0 {
+		// Every swarm using any of these bots has a live/total count that
+		// just changed — same reasoning as the single-bot toggle.
+		s.swarmInspectCache.invalidate()
+	}
 	sort.Strings(resp.Changed)
 	writeJSON(w, http.StatusOK, resp)
 }

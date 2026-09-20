@@ -180,6 +180,11 @@ func (s *Server) handleImportSwarm(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	// See handleSaveSwarm's identical call: a freshly imported swarm isn't
+	// in the cached inspect map yet, and a stale-cold-cache read of a
+	// missing key defaults to 0/0 — the "everything is broken" bug, not a
+	// harmless delay.
+	s.swarmInspectCache.invalidate()
 	out.Imported, out.Path = true, dest
 	writeJSON(w, http.StatusOK, out)
 }

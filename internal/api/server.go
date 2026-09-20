@@ -122,6 +122,10 @@ type Server struct {
 	// costs a read of every nanobot.yaml in the catalog. /api/status is
 	// polled by every open tab; see recallBotsTTL.
 	recallCache ttlCache[[]string]
+
+	// swarmInspectCache holds every swarm's resolved (live, total,
+	// needsApproval) triple, keyed by its file path. See swarmInspectTTL.
+	swarmInspectCache ttlCache[map[string]inspectResult]
 }
 
 func (s *Server) swarmsDir() string {
