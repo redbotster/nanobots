@@ -43,6 +43,34 @@ the next page until there isn't one" all reach the model's prompt. What it
 produces still has no visual editor once it lands in the builder for
 review — the fields above are why.
 
+## What a save does to the file's own formatting
+
+Field preservation is one half of "a save doesn't destroy what it doesn't
+model" — the other half is the file's own comments and layout. Comments
+attached to the swarm as a whole (a header block between `metadata:` and
+`spec:`, the kind explaining a real simplification the author made)
+survive a save byte for byte, because `mergeIntoExistingSwarm` edits a
+`yaml.Node` tree in place rather than round-tripping through a struct.
+
+Two things don't, both confirmed against a real catalog file
+(`get-paid.yaml`), not assumed:
+
+- **Comments attached to an individual bot or snap entry.** The builder
+  rebuilds the whole `bots:`/`snaps:` list on every save — that list *is*
+  what it edits — so a comment sitting on one entry inside it has nothing
+  to reattach to. `get-paid.yaml`'s own `notifier` bot has one explaining
+  why it's set to `on_error: continue`; it does not survive a save that
+  touches any other bot.
+- **Blank lines between `spec:`'s own sections** (`defaults`, `vars`,
+  `trigger`, `bots`, `snaps`, `deploy`) — restored by `restoreSectionSpacing`
+  as a separate pass over the finished bytes, since yaml.v3 has nowhere to
+  record "there was a blank line here" on either write path (the node tree
+  or a brand-new swarm's plain struct marshal), so there was nothing
+  upstream to preserve in the first place. Without it, a save that changed
+  nothing about a swarm's own formatting still visibly wrecked it — every
+  section from `defaults` through `deploy` ran on with no separation, and
+  the header comment above `spec:` landed glued to `metadata`'s last line.
+
 ## Zoom, and fitting the graph
 
 Opening a five-bot swarm used to land you at 0,0 at 100% with the last two

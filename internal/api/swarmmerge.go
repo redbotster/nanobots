@@ -203,3 +203,94 @@ func ensureMapping(m *yaml.Node, key string) *yaml.Node {
 	setNode(m, key, child)
 	return child
 }
+
+// restoreSectionSpacing re-inserts the blank line every hand-written
+// catalog swarm has before spec: and before each of spec's own top-level
+// keys (vars, trigger, bots, snaps, deploy — whichever are present) after
+// the first one.
+//
+// yaml.v3's node-based encoder (mergeIntoExistingSwarm) tracks comments,
+// which is how this file's whole "byte for byte" claim above holds for
+// them — but it has nowhere to put "there was a blank line here" on a
+// node, so there is nothing upstream to preserve. Confirmed against a
+// real catalog file (get-paid.yaml), unchanged except one added bot: the
+// header comment above spec: survived intact but landed glued to
+// metadata's last line with no gap, and every section from defaults
+// through deploy ran on with no separation at all — a save that edited
+// nothing about the swarm's own formatting still visibly wrecked it.
+// marshalSwarmYAML (a brand-new swarm, no yaml.Node involved at all) has
+// the identical gap, for the same underlying reason: yaml.v3's plain
+// struct marshaling doesn't emit blank lines either.
+//
+// A line-based pass over the finished bytes, not something tracked
+// through the tree itself, since the tree has nothing to track. This
+// restores the convention every catalog swarm already follows, not
+// necessarily the original file's exact gaps elsewhere in the document —
+// idempotent by construction (each insertion checks the preceding line
+// isn't already blank), so running it twice never double-spaces.
+func restoreSectionSpacing(raw []byte) []byte {
+	lines := strings.Split(string(raw), "\n")
+
+	specIdx := -1
+	for i, line := range lines {
+		if line == "spec:" {
+			specIdx = i
+			break
+		}
+	}
+	if specIdx == -1 {
+		return raw
+	}
+
+	// Walk back over any head-comment block attached to the spec node, so
+	// the blank line lands before the comment rather than wedged between
+	// it and spec: itself.
+	insertBeforeSpec := specIdx
+	for insertBeforeSpec > 0 && strings.HasPrefix(strings.TrimSpace(lines[insertBeforeSpec-1]), "#") {
+		insertBeforeSpec--
+	}
+
+	blankBefore := map[int]bool{}
+	if insertBeforeSpec > 0 && strings.TrimSpace(lines[insertBeforeSpec-1]) != "" {
+		blankBefore[insertBeforeSpec] = true
+	}
+	// A head-comment block sits directly adjacent to spec: with no gap —
+	// yaml.v3 emits HeadComment immediately before the node it's attached
+	// to. Every catalog swarm with one also has a blank line separating it
+	// from spec: itself, same as before the block starts.
+	if insertBeforeSpec < specIdx {
+		blankBefore[specIdx] = true
+	}
+
+	specChildKeys := map[string]bool{
+		"defaults:": true, "vars:": true, "trigger:": true,
+		"bots:": true, "snaps:": true, "deploy:": true,
+	}
+	firstChildSeen := false
+	for i := specIdx + 1; i < len(lines); i++ {
+		line := lines[i]
+		if line != "" && !strings.HasPrefix(line, " ") {
+			break // a line at column 0 means we've left spec: entirely
+		}
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+		if indent != 2 || !specChildKeys[strings.TrimSpace(line)] {
+			continue
+		}
+		if !firstChildSeen {
+			firstChildSeen = true // no blank line before the first section
+			continue
+		}
+		if strings.TrimSpace(lines[i-1]) != "" {
+			blankBefore[i] = true
+		}
+	}
+
+	out := make([]string, 0, len(lines)+len(blankBefore))
+	for i, line := range lines {
+		if blankBefore[i] {
+			out = append(out, "")
+		}
+		out = append(out, line)
+	}
+	return []byte(strings.Join(out, "\n"))
+}

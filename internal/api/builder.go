@@ -394,6 +394,13 @@ func (s *Server) handleSaveSwarm(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Neither path above produces the blank lines every hand-written
+	// catalog swarm has between spec:'s own sections — yaml.v3 doesn't
+	// track them at all, on either the node-based merge or a plain struct
+	// marshal, so there was nothing to preserve upstream. See
+	// restoreSectionSpacing's own comment for what a save looked like
+	// without this.
+	raw = restoreSectionSpacing(raw)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
