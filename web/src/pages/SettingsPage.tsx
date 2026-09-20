@@ -14,6 +14,7 @@ import { StatusDot } from "../components/StatusDot";
 import { AppearanceSection } from "../components/settings/AppearanceSection";
 import { OneClawKeySetup } from "../components/settings/OneClawKeySetup";
 import { OAuthConnectRow, TokenConnectRow } from "../components/settings/ConnectRows";
+import { TeamEngineSection } from "../components/settings/TeamEngineSection";
 
 const CONNECTION_LABEL: Record<string, string> = {
   demo: "Demo data",
@@ -262,6 +263,8 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
           />
         </div>
       </section>
+
+      <TeamEngineSection />
 
       <section className="mt-4 rounded-lg border border-edge-strong bg-panel p-4">
         <h2 className="font-display text-sm font-semibold text-ink">Services in use</h2>

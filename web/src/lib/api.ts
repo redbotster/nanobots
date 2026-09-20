@@ -23,6 +23,9 @@ import type {
   ImportResult,
   SpendResponse,
   PostureResponse,
+  LabEnginesResponse,
+  LabEngineRole,
+  TeamEngine,
 } from "./types";
 
 async function reqText(path: string): Promise<string> {
@@ -193,6 +196,22 @@ export const api = {
     req<{ ok: boolean }>("/api/lab/messages", {
       method: "POST",
       body: JSON.stringify({ message }),
+    }),
+  labEngines: () => req<LabEnginesResponse>("/api/lab/engines"),
+  setDefaultLabEngine: (engine: TeamEngine) =>
+    req<{ default_engine: TeamEngine }>("/api/lab/engines/default", {
+      method: "POST",
+      body: JSON.stringify({ engine }),
+    }),
+  setRoleLabEngine: (role: string, engine: TeamEngine) =>
+    req<LabEngineRole>(`/api/lab/engines/roles/${encodeURIComponent(role)}`, {
+      method: "POST",
+      body: JSON.stringify({ engine }),
+    }),
+  setLabEngineKey: (engine: "claude" | "gemini", token: string) =>
+    req<{ saved: string; notice: string }>(`/api/lab/engines/keys/${engine}`, {
+      method: "POST",
+      body: JSON.stringify({ token }),
     }),
   startFoundryJob: (
     request: string,

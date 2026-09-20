@@ -132,10 +132,14 @@ func TestHandleMessageDelegateWithNoEngineConfiguredSaysSo(t *testing.T) {
 // here would silently break that distinction without any Go test failing
 // to say so, since nothing else reads Step.
 func TestDelegatingLogsAnInterimStepDistinctFromTheFinalAnswer(t *testing.T) {
+	prefs, err := team.NewPreferences(filepath.Join(t.TempDir(), "team-engines.json"), team.EngineClaude)
+	if err != nil {
+		t.Fatal(err)
+	}
 	gen := &fakeGenerator{answers: []string{`{"action":"delegate","role":"backend-engineer","task":"add a bot"}`}}
 	s := NewSession(gen, Config{
-		Team:          team.Config{RepoRoot: t.TempDir(), TeamDir: t.TempDir(), AnthropicAPIKey: "sk-test"},
-		DefaultEngine: team.EngineClaude,
+		Team:    team.Config{RepoRoot: t.TempDir(), TeamDir: t.TempDir(), AnthropicAPIKey: "sk-test"},
+		Engines: prefs,
 	})
 	s.HandleMessage(context.Background(), "add a stripe bot")
 

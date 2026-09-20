@@ -24,6 +24,7 @@ import (
 	"github.com/redbotster/nanobots/internal/schema"
 	"github.com/redbotster/nanobots/internal/secrets"
 	"github.com/redbotster/nanobots/internal/step"
+	"github.com/redbotster/nanobots/internal/team"
 )
 
 // Server holds everything the HTTP handlers need.
@@ -109,6 +110,24 @@ type Server struct {
 	// shape every other optional integration here uses.
 	Lab *lab.Session
 
+	// LabEngines resolves which internal/team engine (Claude Code or
+	// Gemini CLI) a Lab delegation actually runs on — the global default
+	// plus any per-role override — and is the same pointer lab.Config.Engines
+	// holds, so a write here reaches Lab's very next delegation with no
+	// restart. nil disables the engine-config endpoints rather than
+	// panicking.
+	LabEngines *team.Preferences
+	// LabTeamDir lists which roles have ever been delegated to (internal/team.Roles
+	// scans it) — a role exists exactly when it has a persistent workspace,
+	// not from any fixed catalog.
+	LabTeamDir string
+	// LabClaudeConfigured / LabGeminiConfigured say whether each engine
+	// actually has a credential right now, so the engine-picker can refuse
+	// to select one with nothing behind it instead of failing on the next
+	// real delegation instead.
+	LabClaudeConfigured bool
+	LabGeminiConfigured bool
+
 	// connCache holds the last /api/connections answer. Zero value is a
 	// cold cache, so nothing has to construct it. See connections.go for
 	// why an eight-round-trip read is worth caching at all.
@@ -184,6 +203,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/foundry/{id}/approvals/{approvalID}/decide", s.handleDecideFoundryReview)
 	mux.HandleFunc("POST /api/lab/messages", s.handleLabMessage)
 	mux.HandleFunc("GET /api/lab/events", s.handleLabEvents)
+	mux.HandleFunc("GET /api/lab/engines", s.handleLabEnginesStatus)
+	mux.HandleFunc("POST /api/lab/engines/default", s.handleSetDefaultLabEngine)
+	mux.HandleFunc("POST /api/lab/engines/roles/{role}", s.handleSetRoleLabEngine)
+	mux.HandleFunc("POST /api/lab/engines/keys/{engine}", s.handleSetLabEngineKey)
 	mux.HandleFunc("GET /api/blobs/{uri}", s.handleGetBlob)
 
 	// Token-authenticated, unlike everything above: this one spends money,

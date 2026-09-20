@@ -116,13 +116,12 @@ func build(opts Options) (*api.Server, *scheduler.Scheduler, Options, error) {
 
 	// Independent of 1Claw entirely — the foundry's sandboxed coding agent
 	// needs its own Anthropic credential (see internal/foundry/agent_claude.go's
-	// doc comment on why Shroud can't back this).
+	// doc comment on why Shroud can't back this). The log line about it
+	// waits until after the secrets-store fallback below, since the key
+	// might come from there instead of this env read.
 	anthropicKey, err := oneclaw.LoadEnvValue(opts.EnvFilePath, "ANTHROPIC_API_KEY")
 	if err != nil {
 		return nil, nil, opts, fmt.Errorf("load Anthropic API key: %w", err)
-	}
-	if anthropicKey != "" {
-		log.Println("foundry: ANTHROPIC_API_KEY configured — the composer can escalate a real gap to a coding agent")
 	}
 
 	// Same reasoning, for internal/team's second engine — see
@@ -131,24 +130,9 @@ func build(opts Options) (*api.Server, *scheduler.Scheduler, Options, error) {
 	if err != nil {
 		return nil, nil, opts, fmt.Errorf("load Gemini API key: %w", err)
 	}
-	// Claude preferred when both are configured — context/TEAM-LAB-DESIGN.md
-	// named it as the first Team harness; Gemini is the fallback this
-	// machine actually had credit for, not the default going forward.
-	var labEngine team.Engine
-	switch {
-	case anthropicKey != "":
-		labEngine = team.EngineClaude
-	case geminiKey != "":
-		labEngine = team.EngineGemini
-	}
 	teamDir, err := team.DefaultTeamDir()
 	if err != nil {
 		return nil, nil, opts, err
-	}
-	if labEngine != "" {
-		log.Printf("lab: Team engine %q configured", labEngine)
-	} else {
-		log.Println("lab: no Team engine configured — Lab will chat but can't delegate (see docs/team.md)")
 	}
 
 	paths, err := wiring.ResolvePaths()
@@ -180,6 +164,47 @@ func build(opts Options) (*api.Server, *scheduler.Scheduler, Options, error) {
 	secretsStore, err := wiring.BuildSecretsStore(oc, paths.SecretsDir, func(f string, a ...any) { log.Printf(f, a...) })
 	if err != nil {
 		return nil, nil, opts, err
+	}
+
+	// A Team engine's key used to be loadable only from the env file — no
+	// story at all for a 1Claw Cloud Runtime deployment, which has no local
+	// dotenv to edit. The env var still wins when both are present, so an
+	// existing local install's behavior doesn't change; this only fills in
+	// what would otherwise be empty, the same "paste it once in Settings"
+	// path GitHub/Slack/Stripe/HubSpot's tokens already use.
+	if anthropicKey == "" && secretsStore != nil {
+		if v, found, _ := secretsStore.Get("anthropic/api_key"); found {
+			anthropicKey = v
+		}
+	}
+	if geminiKey == "" && secretsStore != nil {
+		if v, found, _ := secretsStore.Get("gemini/api_key"); found {
+			geminiKey = v
+		}
+	}
+	if anthropicKey != "" {
+		log.Println("foundry: ANTHROPIC_API_KEY configured — the composer can escalate a real gap to a coding agent")
+	}
+	// Claude preferred when both are configured — context/TEAM-LAB-DESIGN.md
+	// named it as the first Team harness; Gemini is the fallback this
+	// machine actually had credit for, not the default going forward. Only
+	// the *fallback* a fresh install starts from — team.Preferences persists
+	// whatever a human later picks in Settings, live, with no restart.
+	var labEngine team.Engine
+	switch {
+	case anthropicKey != "":
+		labEngine = team.EngineClaude
+	case geminiKey != "":
+		labEngine = team.EngineGemini
+	}
+	enginePrefs, err := team.NewPreferences(filepath.Join(paths.StateDir, "team-engines.json"), labEngine)
+	if err != nil {
+		return nil, nil, opts, fmt.Errorf("load Team engine preferences: %w", err)
+	}
+	if enginePrefs.Default() != "" {
+		log.Printf("lab: Team engine %q configured", enginePrefs.Default())
+	} else {
+		log.Println("lab: no Team engine configured — Lab will chat but can't delegate (see docs/team.md)")
 	}
 
 	// The Shroud shim lets a client that can only be handed a base URL and
@@ -239,27 +264,31 @@ func build(opts Options) (*api.Server, *scheduler.Scheduler, Options, error) {
 			AnthropicAPIKey: anthropicKey,
 			GeminiAPIKey:    geminiKey,
 		},
-		DefaultEngine: labEngine,
+		Engines: enginePrefs,
 	})
 
 	srv := &api.Server{
-		Orchestrator: orch,
-		Runs:         runs,
-		Callbacks:    callbacks,
-		OneClaw:      oc,
-		BotsDir:      opts.BotsDir,
-		Blobs:        blobs,
-		Foundry:      foundryOrch,
-		FoundryJobs:  foundry.NewJobStore(),
-		EnvFilePath:  opts.EnvFilePath,
-		VaultID:      svc.VaultID,
-		Secrets:      secretsStore,
-		Team:         &api.TeamStore{Path: filepath.Join(paths.StateDir, "team.json")},
-		Shroud:       shroudProxy,
-		Webhook:      webhookTrigger,
-		Roles:        roleStore,
-		UI:           webui.Handler(),
-		Lab:          labSession,
+		Orchestrator:        orch,
+		Runs:                runs,
+		Callbacks:           callbacks,
+		OneClaw:             oc,
+		BotsDir:             opts.BotsDir,
+		Blobs:               blobs,
+		Foundry:             foundryOrch,
+		FoundryJobs:         foundry.NewJobStore(),
+		EnvFilePath:         opts.EnvFilePath,
+		VaultID:             svc.VaultID,
+		Secrets:             secretsStore,
+		Team:                &api.TeamStore{Path: filepath.Join(paths.StateDir, "team.json")},
+		Shroud:              shroudProxy,
+		Webhook:             webhookTrigger,
+		Roles:               roleStore,
+		UI:                  webui.Handler(),
+		Lab:                 labSession,
+		LabEngines:          enginePrefs,
+		LabTeamDir:          teamDir,
+		LabClaudeConfigured: anthropicKey != "",
+		LabGeminiConfigured: geminiKey != "",
 	}
 
 	// The breaker is shared with the API rather than made twice, so the app

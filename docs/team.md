@@ -1,12 +1,13 @@
 # Team: a persistent, role-scoped coding agent
 
 `context/TEAM-LAB-DESIGN.md` proposed a tier above the swarm model: `Human
--> Lab Agent -> Team agents -> nanobots and nanoswarms`. This page is that
-design's own "Proposed next step," item 2 — one Team harness against one
-role at a time, with no Lab tab yet. The point of building it this narrow
-first is to prove a Team agent can do real work without a shortcut around
-the ordinary approval gate, before anything gets built on top of that
-assumption.
+-> Lab Agent -> Team agents -> nanobots and nanoswarms`. This page
+documents that hierarchy's lower half — one Team harness (Claude Code or
+Gemini CLI) against one role at a time. `docs/lab.md` documents the layer
+above it: the chat surface that decides whether to delegate here at all.
+The point of building Team this narrow first was to prove a Team agent can
+do real work without a shortcut around the ordinary approval gate, before
+anything got built on top of that assumption — which Lab now is.
 
 ## What it is
 
@@ -77,18 +78,59 @@ key or any live credential — only its own separate `ANTHROPIC_API_KEY`.
 
 ## The one real, disclosed gap: its own credential
 
-A Team member needs its engine's own key in `~/.secrets/nanobots.env` —
-`ANTHROPIC_API_KEY` for Claude, `GEMINI_API_KEY` for Gemini — the same
-prerequisite the foundry's coding agent already has. Not because Shroud
-lacks tool-calling — verified live, it doesn't
-(`docs/1claw-feature-requests.md` #13) — but because a Team engine is a
-real external CLI binary (`claude`, `gemini`) that speaks its vendor's own
-API protocol directly, not a request `internal/oneclaw.ShroudClient` ever
-builds; there's no proxy-shaped seam in either CLI to route through Shroud
-even where Shroud itself could carry the traffic. So token spend is
-metered by wall-clock and tool restrictions on the sandbox itself, not a
-Shroud daily budget. See `internal/foundry/job.go`'s package doc for the
-same trade-off, made once and pointed to rather than re-argued here.
+A Team member needs its engine's own key — `ANTHROPIC_API_KEY` for Claude,
+`GEMINI_API_KEY` for Gemini — the same prerequisite the foundry's coding
+agent already has. Not because Shroud lacks tool-calling — verified live,
+it doesn't (`docs/1claw-feature-requests.md` #13) — but because a Team
+engine is a real external CLI binary (`claude`, `gemini`) that speaks its
+vendor's own API protocol directly, not a request
+`internal/oneclaw.ShroudClient` ever builds; there's no proxy-shaped seam
+in either CLI to route through Shroud even where Shroud itself could carry
+the traffic. So token spend is metered by wall-clock and tool restrictions
+on the sandbox itself, not a Shroud daily budget. See
+`internal/foundry/job.go`'s package doc for the same trade-off, made once
+and pointed to rather than re-argued here.
+
+The key itself has two homes now, checked in this order: `~/.secrets/nanobots.env`
+(unchanged — an existing local install needs nothing new), then a
+`secrets.Store` entry (`anthropic/api_key` / `gemini/api_key`) paste-able
+from Settings. The env file is local-only; a 1Claw Cloud Runtime
+(`docs/oneclaw-bridge.md`) has no dotenv to edit, so before this, Team
+delegation simply could not work on a cloud deployment — the daemon would
+start, Lab would chat, and every delegation would fail on a missing key
+with no way to supply one short of rebuilding the image. Settings' paste
+path goes through whatever secrets backend actually resolved (a 1Claw
+vault on a cloud runtime, a local encrypted file otherwise — see
+[secrets.md](secrets.md)), so it works the same way in both places. It
+still needs a restart to take effect: the key is read once at daemon
+startup, same as every other credential this build reads at boot.
+
+## Choosing which engine, live
+
+Which engine a delegation actually uses used to be one field
+(`lab.Config.DefaultEngine`), picked once at daemon startup from whichever
+key was present — Claude preferred if both — with no way to see it or
+change it short of editing the env file and restarting. Found live: a real
+request silently ran on a Gemini free-tier key with a five-to-twenty-request
+quota (`generativelanguage.googleapis.com/generate_content_free_tier_requests`)
+and burned through it before failing, with nothing in the app saying it
+would, or offering a way to pick differently.
+
+Settings now shows both keys' status, a global default engine, and — since
+a role is not a fixed catalog, only ever a directory `internal/team.Roles`
+finds under `~/.nanobots/team/` for a role that has been delegated to at
+least once — a per-role override for each one that exists, appearing the
+first time Lab hands it a task. `team.Preferences` (`internal/team/preferences.go`)
+holds this: a small JSON file next to the other state this daemon owns
+(`~/.nanobots/state/team-engines.json`, the same override-file shape
+`internal/roles.Store` already uses), and a pointer to the one live
+instance is shared between the API's write handlers and Lab's own
+`delegate()` call — so a change reaches the very next message, no restart,
+unlike the key itself above.
+
+`nanobots team run <role> "<task>" --engine gemini` still works exactly as
+before — an explicit `--engine` flag on the CLI always wins over whatever
+Settings has configured.
 
 ## What's verified, and what isn't yet
 
@@ -136,10 +178,6 @@ engine specifically.
 
 ## What's deliberately not built yet
 
-- **No Lab tab.** `context/TEAM-LAB-DESIGN.md`'s own sequencing holds:
-  design Lab's chat surface once this and the recall-before-work step
-  below have actually run, informed by what they required rather than
-  guessed in advance.
 - **No cross-agent memory.** The design doc's Honcho-based
   "recall-before-work, remember-after-work" pattern (step 3 of its
   "Proposed next step") isn't wired in — this is one role, one task at a
