@@ -131,3 +131,88 @@ describe("the connector between two adjacent bots", () => {
     );
   });
 });
+
+// Before wiringByInstance existed, every input dot was plain-muted and
+// every output dot was plain-bright regardless of whether *that specific*
+// port was actually fed by a real snap — a fixed styling convention, not a
+// reflection of the swarm. This is the full pipeline: plan.snaps and
+// plan.unfed, through SwarmView's own wiring map, into the dot each real
+// BotBrick renders.
+describe("a bot's port dots reflect the real plan, end to end", () => {
+  function stubTwoBotPlan() {
+    vi.spyOn(api, "plan").mockResolvedValue({
+      swarm: "two-bot-chain",
+      order: ["chaser", "sender"],
+      bots: [
+        {
+          instance_id: "chaser",
+          bot_id: "invoice-chaser",
+          name: "invoice-chaser",
+          version: "0.1.0",
+        },
+        {
+          instance_id: "sender",
+          bot_id: "email-send-approved",
+          name: "email-send-approved",
+          version: "0.1.0",
+        },
+      ],
+      snaps: [{ From: "chaser.drafted", To: "sender.draft_id" }],
+      unfed: [{ bot: "sender", port: "summary", reason: "nothing supplies it" }],
+      ok: true,
+    } as never);
+    vi.spyOn(botsCacheModule, "listBotsCached").mockResolvedValue([
+      {
+        id: "invoice-chaser",
+        name: "invoice-chaser",
+        version: "0.1.0",
+        description: "",
+        tags: [],
+        harness: "bare",
+        services: [],
+        inputs: [],
+        outputs: [
+          { name: "overdue", type: "list<json>" },
+          { name: "drafted", type: "list<json>" },
+        ],
+        guardrails: {},
+      },
+      {
+        id: "email-send-approved",
+        name: "email-send-approved",
+        version: "0.1.0",
+        description: "",
+        tags: [],
+        harness: "bare",
+        services: [],
+        inputs: [
+          { name: "draft_id", type: "string", required: true },
+          { name: "summary", type: "string", required: true },
+        ],
+        outputs: [],
+        guardrails: {},
+      },
+    ] as never);
+  }
+
+  it("marks only the specific wired and unfed ports, not every port on that side", async () => {
+    stubTwoBotPlan();
+    vi.spyOn(useRunModule, "useRun").mockReturnValue({ run: null, isTerminal: false } as never);
+
+    const { container } = render(
+      <SwarmView swarm={swarm({ name: "two-bot-chain" })} onBack={() => {}} />,
+    );
+    await waitFor(() => expect(screen.queryAllByText("invoice-chaser").length).toBeGreaterThan(0));
+
+    // One output wrap per bot, in render order: chaser's is first.
+    const outputWraps = [...container.querySelectorAll('[class*="-right-1.5"]')];
+    const chaserOutputs = [...outputWraps[0].querySelectorAll("span")];
+    expect(chaserOutputs[0].className).toContain("border-muted"); // overdue: not read by anything
+    expect(chaserOutputs[1].className).toContain("border-tron"); // drafted: feeds sender.draft_id
+
+    const inputWraps = [...container.querySelectorAll('[class*="-left-1.5"]')];
+    const senderInputs = [...inputWraps[1].querySelectorAll("span")];
+    expect(senderInputs[0].className).toContain("border-tron"); // draft_id: wired
+    expect(senderInputs[1].className).toContain("border-danger"); // summary: required, unfed
+  });
+});
