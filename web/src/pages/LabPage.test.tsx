@@ -61,3 +61,51 @@ describe("Lab's empty state", () => {
     expect(screen.queryByRole("button", { name: "What can you help me with?" })).toBeNull();
   });
 });
+
+// GET /api/lab/events replays the whole history before this tab ever calls
+// send() — busy used to start false and only ever flip true from this
+// tab's own send(), so opening (or reloading) mid-request replayed a
+// transcript that plainly was not finished while showing an idle input
+// with nothing on screen saying so.
+describe("opening Lab mid-request", () => {
+  it("shows busy from a replayed transcript, not just this tab's own send", () => {
+    const onEntry: { current: ((e: LogEntry) => void) | null } = { current: null };
+    vi.spyOn(apiModule, "subscribeLabEvents").mockImplementation((cb) => {
+      onEntry.current = cb;
+      return () => {};
+    });
+    vi.spyOn(api, "sendLabMessage").mockResolvedValue({ ok: true });
+
+    render(<LabPage />);
+    // Replay of a request that was still running when the tab connected:
+    // the human's message and the delegation, but no final "lab" answer.
+    act(() => {
+      onEntry.current?.({ time: new Date().toISOString(), bot: "you", msg: "Build an example" });
+      onEntry.current?.({
+        time: new Date().toISOString(),
+        bot: "lab",
+        step: "delegating",
+        msg: "delegating to designer: ...",
+      });
+      onEntry.current?.({
+        time: new Date().toISOString(),
+        bot: "team/designer",
+        step: "tool",
+        msg: "read_file CLAUDE.md",
+      });
+    });
+
+    expect(screen.getByText("thinking")).toBeTruthy();
+    expect(screen.getByPlaceholderText("Waiting on Lab's answer…")).toBeTruthy();
+
+    // The real, final answer arrives — busy clears same as always.
+    act(() =>
+      onEntry.current?.({
+        time: new Date().toISOString(),
+        bot: "lab",
+        msg: "Done. See bots/example.",
+      }),
+    );
+    expect(screen.queryByText("thinking")).toBeNull();
+  });
+});
