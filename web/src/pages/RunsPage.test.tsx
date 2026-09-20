@@ -127,6 +127,54 @@ describe("a run that found nothing to do", () => {
     // The run that did work is not swallowed into the group.
     expect(screen.getByText("succeeded")).toBeTruthy();
   });
+
+  // Two watch bots on interleaved hourly crons never produce two
+  // consecutive quiet runs from the same swarm — the other swarm's quiet
+  // run always sits between them. Consecutive-only grouping collapsed
+  // nothing here, which is the wall-of-noise problem this feature exists to
+  // prevent, back again for a second swarm.
+  it("collapses across an interleaved different swarm's own quiet runs", () => {
+    withRuns([
+      run({
+        id: "a1",
+        status: "succeeded",
+        swarm_name: "meeting-to-action",
+        error: undefined,
+        started_at: "2026-09-13T14:00:00Z",
+        nothing_to_do: "no new file in this folder since the last run",
+      }),
+      run({
+        id: "b1",
+        status: "succeeded",
+        swarm_name: "repurpose-everything",
+        error: undefined,
+        started_at: "2026-09-13T13:30:00Z",
+        nothing_to_do: "no new file in this folder since the last run",
+      }),
+      run({
+        id: "a2",
+        status: "succeeded",
+        swarm_name: "meeting-to-action",
+        error: undefined,
+        started_at: "2026-09-13T13:00:00Z",
+        nothing_to_do: "no new file in this folder since the last run",
+      }),
+      run({
+        id: "b2",
+        status: "succeeded",
+        swarm_name: "repurpose-everything",
+        error: undefined,
+        started_at: "2026-09-13T12:30:00Z",
+        nothing_to_do: "no new file in this folder since the last run",
+      }),
+    ]);
+    render(<RunsPage />);
+
+    // One visible row per swarm, not four.
+    expect(screen.getAllByText("meeting-to-action")).toHaveLength(1);
+    expect(screen.getAllByText("repurpose-everything")).toHaveLength(1);
+    expect(screen.getAllByText(/and 1 more with nothing to do/)).toHaveLength(2);
+  });
 });
 
 // Declining an approval is answering the question, not breaking anything.

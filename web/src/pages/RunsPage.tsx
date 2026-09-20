@@ -26,15 +26,22 @@ type Filter = "all" | "needs-you" | "failed" | "succeeded";
  * saying "and 42 more like this", it reads as what it is: one fact. */
 type Group = { head: RunSummary; repeats: RunSummary[] };
 
-/** Groups only *consecutive* identical rows, so a different run in the
- * middle splits the group. The list is a story in order; collapsing across
- * one would rewrite it.
+/** Failures group only *consecutive* identical rows, so a different run in
+ * the middle splits the group. The list is a story in order; collapsing a
+ * failure across one would rewrite it — something else happened in between,
+ * which is itself worth knowing before the next occurrence of the same
+ * failure.
  *
- * Two kinds collapse: identical failures, and a watch finding nothing. The
- * second arrived with watch bots — `drive-watch` on an hourly cron produces
- * a run every hour that correctly does nothing, and twenty-four rows saying
- * "succeeded" bury the one row that acted just as effectively as a wall of
- * red buried the two failures that were different. */
+ * A "found nothing" run carries no story of its own — it has one fact
+ * ("polled, nothing changed") that is exactly as true regardless of what
+ * any other swarm did in between. So it collapses across the *whole* list
+ * per swarm, not just consecutively. That distinction is not cosmetic: a
+ * real machine with two watch bots on interleaved hourly crons
+ * (meeting-to-action, repurpose-everything) never produces two consecutive
+ * quiet runs from the same swarm at all — every quiet run has the other
+ * swarm's quiet run sitting right before it — so consecutive-only grouping
+ * collapsed nothing, and the wall of alternating "nothing to do" rows this
+ * feature exists to prevent came right back. */
 function groupRuns(sorted: RunSummary[]): Group[] {
   const key = (r: RunSummary) => {
     if (r.status === "failed") return `failed ${r.swarm_name} ${shortRunError(r.error ?? "")}`;
@@ -43,9 +50,21 @@ function groupRuns(sorted: RunSummary[]): Group[] {
   };
 
   const out: Group[] = [];
+  const quietGroupByKey = new Map<string, Group>();
   for (const run of sorted) {
-    const last = out[out.length - 1];
     const k = key(run);
+    if (run.nothing_to_do && k !== null) {
+      const existing = quietGroupByKey.get(k);
+      if (existing) {
+        existing.repeats.push(run);
+        continue;
+      }
+      const group: Group = { head: run, repeats: [] };
+      out.push(group);
+      quietGroupByKey.set(k, group);
+      continue;
+    }
+    const last = out[out.length - 1];
     if (last && k !== null && key(last.head) === k) {
       last.repeats.push(run);
       continue;
