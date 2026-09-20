@@ -21,6 +21,11 @@ web/dist/
 # fresh clone still compiles the //go:embed in internal/webui.
 internal/webui/dist/*
 !internal/webui/dist/.gitkeep
+
+# Copied from bots/, examples/swarms/ and roles/roles.yaml by `make
+# catalog`; only .gitkeep is committed, for the same reason.
+internal/catalog/data/*
+!internal/catalog/data/.gitkeep
 web/*.tsbuildinfo
 node_modules/
 npm-debug.log*

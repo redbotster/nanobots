@@ -82,6 +82,46 @@ it at all; `index.html` is the file that *names* the hashed ones, so it is
 uncompressed copy, because a range into compressed bytes is not the range
 that was asked for.
 
+### The catalog is in the binary too, not just the UI
+
+A single binary with the WebUI baked in still had nothing to show it: `up`
+resolved `bots/` and `examples/swarms/` relative to the working directory,
+which is empty air anywhere but this repo's own root. `brew install`,
+`npx nanobots`, and a GitHub release binary run from `~/Downloads` all hit
+this the same way — the UI would load and the Runs page would be real, but
+the bot library and Swarms page would be empty.
+
+`make catalog` copies `bots/`, `examples/swarms/` and `roles/roles.yaml`
+into `internal/catalog/data`, and `//go:embed` carries them into the binary
+next to the UI (`internal/catalog`). `nanobots up` checks for a `bots/`
+directory next to where it was run first — a git checkout, the normal dev
+case — and only reaches for the embedded copy when that's not there:
+
+```
+$ cd /tmp/anywhere && nanobots up
+no git checkout found here — running this binary's own built-in catalog from ~/.nanobots/catalog
+```
+
+Extracted once to `~/.nanobots/catalog`, laid out exactly like a checkout's
+root (`bots/`, `examples/swarms/`, `roles/roles.yaml`) — so every place that
+already reads those relative to a resolved root needed no separate code
+path, and a run started this way behaves identically to one started from
+this repo's own directory. A content hash gates re-extraction, so a second
+`nanobots up` against an unchanged binary is one file read, not a copy of
+39 bots. Confirmed live: built the binary, ran it from an empty `/tmp`
+directory with a fresh `$HOME`, and it served all 39 bots and 18 swarms and
+ran `morning-brief` to completion, in-process, with no checkout anywhere on
+the machine.
+
+**What this does not yet cover**: the five bots that need Docker
+(`meeting-prep`, `quote-builder`, `recap-emails-to-pdf`, `render-pdf`,
+`sheet-reporter`) still need `harness/*/Dockerfile` to build their images,
+and those aren't embedded — `EnsureHarnessImage` looks for them relative to
+`RepoRoot`, which is the extracted catalog directory here, not a real
+checkout. Building a harness image from a standalone binary fails with a plain "no
+such file" until the images ship over a registry instead — the thirty-four bots
+that run in the daemon's own process already work fully standalone.
+
 ## In a container
 
 ```
