@@ -505,6 +505,7 @@ export function SwarmsPage({
       <Suspense fallback={<LazyFallback />}>
         <FoundryJobPage
           jobId={mode.jobId}
+          backLabel="Swarms"
           onDone={() => setMode({ kind: "list" })}
           onPromoted={() => {
             // The gap is filled — retry the exact same request with zero

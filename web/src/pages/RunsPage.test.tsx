@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RunsPage } from "./RunsPage";
-import type { RunSummary } from "../lib/types";
+import type { FoundryJob, RunSummary } from "../lib/types";
 import * as runsFeed from "../lib/runsFeed";
 
 function run(over: Partial<RunSummary> & { id: string }): RunSummary {
@@ -12,6 +12,20 @@ function run(over: Partial<RunSummary> & { id: string }): RunSummary {
     triggered_by: "schedule",
     ...over,
   } as RunSummary;
+}
+
+function foundryJob(over: Partial<FoundryJob> & { id: string }): FoundryJob {
+  return {
+    status: "awaiting_approval",
+    started_at: "2026-09-13T12:00:00Z",
+    request: "watch competitor pricing pages",
+    missing_capability: "no bot reads a pricing page",
+    iterations: 1,
+    conform_ok: true,
+    log: [],
+    pending_approvals: [],
+    ...over,
+  } as FoundryJob;
 }
 
 function withRuns(runs: RunSummary[]) {
@@ -219,5 +233,53 @@ describe("a run that finished with a tolerated failure", () => {
 
     expect(screen.queryByText(/didn't run/i)).toBeNull();
     expect(container.querySelector("span.inline-block")?.className).toContain("bg-ok");
+  });
+});
+
+// The nav badge counts swarm runs awaiting approval plus pending foundry
+// jobs (see useApprovalNotifications), but this page used to have no idea
+// foundry jobs existed at all — the badge said one number, this page
+// silently showed a smaller one, and once you navigated away from the
+// exact composer-gap screen that first opened a job there was nowhere left
+// to click through to it. This is what closes that gap.
+describe("a foundry job waiting on your review", () => {
+  it("renders its own banner, distinct from the swarm-run one, naming the request", () => {
+    withRuns([]);
+    const onOpen = vi.fn();
+    render(<RunsPage pendingFoundryJobs={[foundryJob({ id: "f1" })]} onOpenFoundryJob={onOpen} />);
+
+    expect(screen.getByText(/needs your review/i)).toBeTruthy();
+    expect(screen.getByText("watch competitor pricing pages")).toBeTruthy();
+  });
+
+  it("opens the job when clicked", () => {
+    withRuns([]);
+    const onOpen = vi.fn();
+    render(<RunsPage pendingFoundryJobs={[foundryJob({ id: "f1" })]} onOpenFoundryJob={onOpen} />);
+
+    fireEvent.click(screen.getByText(/needs your review/i));
+    expect(onOpen).toHaveBeenCalledWith("f1");
+  });
+
+  it("renders one row per job when more than one is pending", () => {
+    withRuns([]);
+    render(
+      <RunsPage
+        pendingFoundryJobs={[
+          foundryJob({ id: "f1", request: "watch competitor pricing pages" }),
+          foundryJob({ id: "f2", request: "summarise support tickets weekly" }),
+        ]}
+        onOpenFoundryJob={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText(/needs your review/i)).toHaveLength(2);
+    expect(screen.getByText("summarise support tickets weekly")).toBeTruthy();
+  });
+
+  it("shows nothing when there is nothing pending", () => {
+    withRuns([]);
+    render(<RunsPage pendingFoundryJobs={[]} onOpenFoundryJob={vi.fn()} />);
+    expect(screen.queryByText(/needs your review/i)).toBeNull();
   });
 });

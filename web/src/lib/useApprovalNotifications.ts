@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { useRuns } from "./runsFeed";
+import type { FoundryJob } from "./types";
 
 /** Foundry jobs are a rare escalation path, not an everyday surface, and a
  * job runs for minutes — polling them as hard as swarm runs bought nothing. */
@@ -19,7 +20,15 @@ const FOUNDRY_POLL_MS = 6000;
  * unrelated one still pending. */
 export function useApprovalNotifications() {
   const runs = useRuns();
-  const [foundryPending, setFoundryPending] = useState(0);
+  // The jobs themselves, not just a count — the nav badge used to add this
+  // to the swarm-run count while nothing on the Runs page it points to
+  // could show a foundry job at all: the badge said "2", the page you
+  // landed on said "1", and the second thing waiting on you had no way to
+  // reach it once you'd navigated away from the exact escalation screen
+  // that first opened it. RunsPage renders these in their own banner now
+  // (see pendingFoundryJobs there) so the badge's count and what clicking
+  // it shows agree.
+  const [pendingFoundryJobs, setPendingFoundryJobs] = useState<FoundryJob[]>([]);
   const [permission, setPermission] = useState<NotificationPermission | "unsupported">(
     "Notification" in window ? Notification.permission : "unsupported",
   );
@@ -32,7 +41,7 @@ export function useApprovalNotifications() {
         .listFoundryJobs()
         .then((jobs) => {
           if (alive) {
-            setFoundryPending(jobs.filter((j) => j.status === "awaiting_approval").length);
+            setPendingFoundryJobs(jobs.filter((j) => j.status === "awaiting_approval"));
           }
         })
         .catch(() => {});
@@ -45,7 +54,7 @@ export function useApprovalNotifications() {
   }, []);
 
   const count =
-    (runs ?? []).filter((r) => r.status === "awaiting_approval").length + foundryPending;
+    (runs ?? []).filter((r) => r.status === "awaiting_approval").length + pendingFoundryJobs.length;
 
   useEffect(() => {
     if (count > prevCount.current && permission === "granted") {
@@ -61,5 +70,5 @@ export function useApprovalNotifications() {
     Notification.requestPermission().then(setPermission);
   };
 
-  return { count, permission, requestPermission };
+  return { count, pendingFoundryJobs, permission, requestPermission };
 }
