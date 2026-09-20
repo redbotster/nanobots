@@ -23,7 +23,7 @@ it.
 | [bot-contract.md](bot-contract.md) | the whole interface a bot has to honor, and every step type |
 | [bot-packages.md](bot-packages.md) | how `use: name@version` resolves, and what "no registry yet" means |
 | [agent-loop.md](agent-loop.md) | `agent.loop`, tool-calling, and the one gate a write-capable tool goes through |
-| [builder.md](builder.md) | the visual canvas, zoom, and how a layout stays honest |
+| [builder.md](builder.md) | the visual canvas, what it can edit vs. only preserve, zoom |
 | [foundry.md](foundry.md) | what happens when the catalog genuinely cannot do it |
 | [team.md](team.md) | a persistent, role-scoped coding agent, and why it needs no new approval gate |
 | [lab.md](lab.md) | talking to your Team from one chat tab, and two real bugs found verifying it |

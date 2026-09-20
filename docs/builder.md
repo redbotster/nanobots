@@ -1,5 +1,48 @@
 # The visual builder
 
+## What it can edit, and what it only preserves
+
+The builder round-trips a *whole* swarm on every save — the request it
+sends fully replaces the file's bots and snaps (`internal/api/swarmmerge.go`),
+so a field it doesn't carry through its own load/save state is a field a
+save silently deletes. That is not hypothetical: it once removed a swarm's
+cron trigger and its guardrails, then separately dropped `on_error` and
+`join` before either had an editor.
+
+Per bot instance, today:
+
+| Field | Editable in the Inspector | Preserved if already set |
+|---|---|---|
+| inputs | yes | yes |
+| `on_error` | yes (a select) | yes |
+| `join` (on a snap) | yes (a dropdown) | yes |
+| `retry`, `execution` | no | yes |
+| `retry_backoff`, `when`, `fallback`, `loop` | no | yes |
+| `swarm` (nests another swarm as this bot) | no | yes — see below |
+
+"Preserved" means exactly that: open a swarm that already sets `when:` on
+a bot, change nothing about that bot, save, and it comes back out with the
+same `when:`. There is no control to add one from scratch, and no way to
+see its value without switching to the swarm's own YAML. Building or
+editing one of these requires hand-editing the file — see
+[anatomy.md](anatomy.md) for what the raw YAML looks like.
+
+A nested-swarm bot (`swarm:` set instead of `use:`) is the one case worth
+naming specifically: it has no catalog bot id at all, so the canvas has no
+icon or name for it — it renders as a blank node. Saving it is still safe
+(`use:` is never reconstructed for one; see `toDraftBot` in
+`web/src/components/builder/hydrate.ts`), just not yet visually
+represented. The composer never proposes one either, for the same reason
+it can't invent a path to a swarm file that doesn't exist yet from a single
+sentence (`internal/api/compose.go`'s prompt says so explicitly).
+
+The composer, unlike the builder, *can* generate `retry`, `retry_backoff`,
+`when`, `fallback` and `loop` in a swarm it drafts from a request — "retry
+up to 3 times", "only notify if the amount is over $500", "keep fetching
+the next page until there isn't one" all reach the model's prompt. What it
+produces still has no visual editor once it lands in the builder for
+review — the fields above are why.
+
 ## Zoom, and fitting the graph
 
 Opening a five-bot swarm used to land you at 0,0 at 100% with the last two

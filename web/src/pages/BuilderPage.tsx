@@ -17,7 +17,7 @@ import {
   type CanvasSnap,
   type PlacedBot,
 } from "../components/builder/BuilderCanvas";
-import { placeBots, toCanvasSnaps } from "../components/builder/hydrate";
+import { placeBots, toCanvasSnaps, toDraftBot } from "../components/builder/hydrate";
 import { BuilderPalette } from "../components/builder/BuilderPalette";
 import { BuilderInspector } from "../components/builder/BuilderInspector";
 import { Button } from "../components/Button";
@@ -192,12 +192,7 @@ export function BuilderPage({
     const t = setTimeout(() => {
       api
         .validateSwarm({
-          bots: bots.map((b) => ({
-            id: b.instanceId,
-            use: `${b.botId}@${botDefs[b.botId]?.version ?? "0.0.0"}`,
-            inputs: inputValues[b.instanceId],
-            on_error: b.onError,
-          })),
+          bots: bots.map((b) => toDraftBot(b, botDefs, inputValues[b.instanceId])),
           snaps,
         })
         .then(setValidation)
@@ -273,14 +268,15 @@ export function BuilderPage({
         path: existing?.path,
         name,
         description,
-        bots: bots.map((b) => ({
-          id: b.instanceId,
-          use: `${b.botId}@${botDefs[b.botId]?.version ?? "0.0.0"}`,
-          inputs: Object.fromEntries(
-            Object.entries(inputValues[b.instanceId] ?? {}).filter(([, v]) => v.trim() !== ""),
+        bots: bots.map((b) =>
+          toDraftBot(
+            b,
+            botDefs,
+            Object.fromEntries(
+              Object.entries(inputValues[b.instanceId] ?? {}).filter(([, v]) => v.trim() !== ""),
+            ),
           ),
-          on_error: b.onError,
-        })),
+        ),
         snaps,
         // Only on create. undefined on an edit is what tells the server to
         // keep the existing trigger.

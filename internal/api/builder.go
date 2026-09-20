@@ -24,17 +24,26 @@ import (
 // connection in a swarm draft — a small, JSON-friendly subset of
 // schema.BotRef/schema.Snap (no `path:` local-bot support here; the builder
 // only places bots from the catalog, via `use:`).
-// OnError and Execution are carried for the same reason as builderSnap.Join:
-// the builder round-trips a whole swarm on every save, so a field it doesn't
-// know about is a field it deletes — true even for one, like Execution, with
-// no UI control yet (v3 Phase 1).
+//
+// Every field below but ID/Use/Inputs is carried for the same reason as
+// builderSnap.Join: the builder round-trips a whole swarm on every save, so
+// a field it doesn't know about is a field it deletes. RetryBackoff, When,
+// Fallback, Loop and Swarm have no builder UI yet — the same gap Execution
+// already had (v3 Phase 1) before this comment named it too — but a swarm
+// using one, opened in the builder and saved without ever touching it, must
+// come back out unchanged, not with the field silently gone.
 type builderBotRef struct {
-	ID        string         `json:"id"`
-	Use       string         `json:"use"`
-	Inputs    map[string]any `json:"inputs,omitempty"`
-	OnError   string         `json:"on_error,omitempty"`
-	Retry     int            `json:"retry,omitempty"`
-	Execution string         `json:"execution,omitempty"`
+	ID           string         `json:"id"`
+	Use          string         `json:"use"`
+	Inputs       map[string]any `json:"inputs,omitempty"`
+	OnError      string         `json:"on_error,omitempty"`
+	Retry        int            `json:"retry,omitempty"`
+	RetryBackoff string         `json:"retry_backoff,omitempty"`
+	When         string         `json:"when,omitempty"`
+	Fallback     string         `json:"fallback,omitempty"`
+	Loop         *schema.Loop   `json:"loop,omitempty"`
+	Swarm        string         `json:"swarm,omitempty"`
+	Execution    string         `json:"execution,omitempty"`
 }
 
 type builderSnap struct {
@@ -52,7 +61,12 @@ type builderSnap struct {
 }
 
 func (b builderBotRef) toSchema() schema.BotRef {
-	return schema.BotRef{ID: b.ID, Use: b.Use, Inputs: b.Inputs, OnError: b.OnError, Retry: b.Retry, Execution: b.Execution}
+	return schema.BotRef{
+		ID: b.ID, Use: b.Use, Inputs: b.Inputs, OnError: b.OnError,
+		Retry: b.Retry, RetryBackoff: b.RetryBackoff,
+		When: b.When, Fallback: b.Fallback, Loop: b.Loop, Swarm: b.Swarm,
+		Execution: b.Execution,
+	}
 }
 
 func (s builderSnap) toSchema() schema.Snap {
@@ -475,7 +489,12 @@ func (s *Server) handleGetSwarmFull(w http.ResponseWriter, r *http.Request) {
 		Path: relPath, Name: sw.Metadata.Name, Description: sw.Metadata.Description, Owner: sw.Metadata.Owner,
 	}
 	for _, b := range sw.Spec.Bots {
-		resp.Bots = append(resp.Bots, builderBotRef{ID: b.ID, Use: b.Use, Inputs: b.Inputs, OnError: b.OnError, Retry: b.Retry, Execution: b.Execution})
+		resp.Bots = append(resp.Bots, builderBotRef{
+			ID: b.ID, Use: b.Use, Inputs: b.Inputs, OnError: b.OnError,
+			Retry: b.Retry, RetryBackoff: b.RetryBackoff,
+			When: b.When, Fallback: b.Fallback, Loop: b.Loop, Swarm: b.Swarm,
+			Execution: b.Execution,
+		})
 	}
 	for _, sn := range sw.Spec.Snaps {
 		resp.Snaps = append(resp.Snaps, builderSnap{From: sn.From, To: sn.To, Join: sn.Join})

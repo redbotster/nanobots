@@ -274,15 +274,37 @@ export interface WebhookDetails {
   curl: string;
 }
 
+/** One bot instance's `loop:` bound — internal/schema.Loop, and
+ * internal/api/builder.go's builderBotRef.Loop on the wire. No builder UI
+ * sets this yet; see DraftBot.loop. */
+export interface DraftLoop {
+  max: number;
+  feed?: Record<string, string>;
+  until?: string;
+}
+
 /** One bot instance in a swarm draft, as the visual builder edits it — the
- * wire shape internal/api/builder.go's builderBotRef expects. */
+ * wire shape internal/api/builder.go's builderBotRef expects.
+ *
+ * Every field below but id/use/inputs is carried through the builder even
+ * though nothing in the UI sets it yet: the builder round-trips a whole
+ * swarm on every save, so a field it doesn't know about is a field it
+ * deletes. retry_backoff, when, fallback, loop and swarm have no editor
+ * yet — see docs/builder.md. */
 export interface DraftBot {
   id: string;
-  use: string; // "<bot-dir-id>@<version>"
+  use: string; // "<bot-dir-id>@<version>" — empty when `swarm` is set instead
   inputs?: Record<string, unknown>;
-  /** Carried through the builder even though nothing in the UI sets it
-   * yet: a round-trip that drops a field deletes it. */
   on_error?: string;
+  retry?: number;
+  retry_backoff?: string;
+  when?: string;
+  fallback?: string;
+  loop?: DraftLoop;
+  /** A path to another swarm's YAML, nested as this bot instance — an
+   * alternative to `use`, never both. See schema.BotRef.Swarm. */
+  swarm?: string;
+  execution?: string;
 }
 
 /** A bot that failed while its swarm was told to carry on without it

@@ -280,10 +280,47 @@ swarm should only run when someone presses Run. Do not describe a schedule
 in "description" that you have not put in "schedule": a swarm that says it
 runs every Friday and does not is worse than one that admits it is manual.
 
-"on_error" and "join" are optional; omit them unless you mean them. Note
-where they live: "on_error" is a sibling of "id" and "use", never a key
-inside "inputs" — "inputs" holds only that bot's declared input ports.
-"join" is a sibling of "from" and "to" on a snap.
+"on_error", "join", "retry", "retry_backoff", "when", "fallback" and "loop"
+are all optional; omit every one you don't mean. Note where they live:
+"on_error", "retry", "retry_backoff", "when" and "fallback" are siblings of
+"id" and "use" on a bot, never a key inside "inputs" — "inputs" holds only
+that bot's declared input ports. "join" is a sibling of "from" and "to" on
+a snap. "loop" is also a sibling of "id" and "use", and is itself an object:
+{ "max": 20, "feed": {"page_token": "next_page"}, "until": "{{outputs.done}}" }.
+
+- "retry": N re-runs this bot up to N more times if it fails — set it only
+  on a bot safe to run twice; one that already sent an email would send it
+  again. "retry_backoff" (a Go duration string like "5s") waits between
+  attempts; omit it to retry immediately.
+- "when": a condition on one of this bot's own resolved inputs, gating
+  whether it runs at all — e.g. "{{inputs.amount}} > 500". It can only
+  reference a port this bot instance actually has (one of its own declared
+  input ports, filled by a snap or a literal), never another bot's data.
+  False skips this bot and everything downstream of it that depends on its
+  output, the same as "on_error": "continue" does — use it for "only
+  notify if X" style requests, not as a substitute for picking the right
+  bots.
+- "fallback": another catalog bot ("id@version") to run in this one's
+  place once "retry" is exhausted and it still fails — a live service call
+  degrading to a fixture, say. It must declare the exact same output ports
+  as this bot (same names, same types), so a downstream snap can't tell
+  the difference. Only propose one when the catalog genuinely has a
+  compatible bot; don't invent a fallback that doesn't fit just because
+  the request mentioned resilience.
+- "loop": re-runs this bot instance in place for pagination or polling —
+  "keep fetching the next page until there isn't one," "poll until it's
+  ready." "max" is required (an iteration ceiling; nothing here waits on
+  someone else's API forever). "feed" maps this bot's own input port names
+  to its own output port names — after each run, an output's value becomes
+  that input's value next time; both must be ports this bot itself
+  declares. "until" (optional) checks "{{outputs.<port>}}" after each
+  iteration and stops early once true; omit it to always run exactly "max"
+  times.
+
+Do not compose a bot that references another *swarm* file ("swarm" on a
+bot) — that nests a whole other nanoswarm as one instance, and you have no
+existing swarm to point at from a single request. Stay within the flat
+catalog above.
 
 Rules:
 - Pick the smallest set of bots that actually accomplishes the request — usually 1-4.

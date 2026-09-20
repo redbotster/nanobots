@@ -121,6 +121,47 @@ func TestHandleComposeSurfacesATypeMismatchRatherThanFailing(t *testing.T) {
 	}
 }
 
+// A model response using the newer per-bot fields must actually survive
+// the round trip: decoded into builderBotRef, type-checked by the real
+// planner, and handed back in the draft the WebUI shows — not silently
+// dropped, which is exactly the bug v3 Phase 8 fixed in the builder's own
+// save path (see swarmmerge_test.go).
+func TestHandleComposeCanUseTheNewerPerBotFields(t *testing.T) {
+	modelResponse := `{
+		"name": "Watch with retry",
+		"description": "Watch a competitor's pages, retrying on a flaky fetch",
+		"bots": [
+			{
+				"id": "watch", "use": "competitor-watch@0.1.0",
+				"inputs": {"urls": ["https://example.com"]},
+				"retry": 2, "retry_backoff": "5s", "when": "{{inputs.urls}}"
+			}
+		],
+		"snaps": []
+	}`
+	srv := testServerForCompose(t, modelResponse)
+	body, _ := json.Marshal(composeRequest{Message: "watch a competitor's pages, retrying on a flaky fetch"})
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/compose", bytes.NewReader(body)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var resp composeResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !resp.Plan.OK {
+		t.Fatalf("expected the draft to type-check, got plan=%+v", resp.Plan)
+	}
+	if len(resp.Draft.Bots) != 1 {
+		t.Fatalf("draft.Bots = %+v", resp.Draft.Bots)
+	}
+	got := resp.Draft.Bots[0]
+	if got.Retry != 2 || got.RetryBackoff != "5s" || got.When != "{{inputs.urls}}" {
+		t.Errorf("got = %+v, want retry/retry_backoff/when carried through", got)
+	}
+}
+
 func TestHandleComposeRejectsUnparsableModelResponse(t *testing.T) {
 	srv := testServerForCompose(t, "not json at all")
 	body, _ := json.Marshal(composeRequest{Message: "anything"})
@@ -307,10 +348,28 @@ func TestTheComposerIsTaughtTheWholeLanguage(t *testing.T) {
 		"on_error", // the error policy
 		"continue", //
 		"never",    // a value is not a port reference
+		"retry",    // v3 Phase 8: the five newer per-bot fields
+		"retry_backoff",
+		"when",
+		"fallback",
+		"loop",
+		"until",
+		"feed",
 	} {
 		if !strings.Contains(strings.ToLower(prompt), strings.ToLower(want)) {
 			t.Errorf("the prompt never mentions %q", want)
 		}
+	}
+}
+
+// The composer builds a flat swarm from a single message; it never has an
+// existing swarm file to point a "swarm" bot at, so it must not be taught
+// to invent one — a nonexistent path there is a worse failure than the
+// planner catches, since nothing type-checks a file that was never real.
+func TestTheComposerIsNotToldToNestSwarms(t *testing.T) {
+	prompt := composePrompt([]BotSummary{{ID: "x", Name: "x", Version: "0.1.0"}}, "do a thing")
+	if !strings.Contains(prompt, "Do not compose a bot that references another") {
+		t.Error("the prompt does not warn the model off nesting a swarm reference")
 	}
 }
 
