@@ -32,6 +32,56 @@ func TestDeployDefaultsToThePublishedImage(t *testing.T) {
 	}
 }
 
+// docs/1claw-feature-requests.md #11: 1Claw shipped a "binary" runtime
+// template that runs a compiled program instead of pulling an image —
+// --template opts out of the image default entirely, rather than sending
+// both and leaving 1Claw to decide which startup mechanism wins.
+func TestTemplateOptsOutOfTheImageDefault(t *testing.T) {
+	got := withDeployDefaults(deployOptions{Template: "binary"})
+	if got.Image != "" {
+		t.Errorf("image = %q, want empty when a template is given", got.Image)
+	}
+	if got.Template != "binary" {
+		t.Errorf("template = %q, want binary", got.Template)
+	}
+
+	// No template, no image: still the old default, unchanged.
+	got = withDeployDefaults(deployOptions{})
+	if got.Image != DefaultImage || got.Template != "" {
+		t.Errorf("defaults = %+v, want the plain image default with no template", got)
+	}
+}
+
+func TestBinaryURLFlagSetsTheNamedEnvVar(t *testing.T) {
+	opts := deployOptions{AgentName: "nanobots", Environment: "production"}
+	err := parseDeployFlags(&opts, []string{"--template", "binary", "--binary-url", "https://example.com/nanobots"})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if opts.RuntimeEnv["BINARY_URL"] != "https://example.com/nanobots" {
+		t.Errorf("RuntimeEnv = %+v, want BINARY_URL set", opts.RuntimeEnv)
+	}
+}
+
+func TestRuntimeEnvFlagIsRepeatableAndRejectsMissingEquals(t *testing.T) {
+	opts := deployOptions{AgentName: "nanobots", Environment: "production"}
+	err := parseDeployFlags(&opts, []string{
+		"--runtime-env", "FOO=bar",
+		"--runtime-env", "BAZ=qux",
+	})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if opts.RuntimeEnv["FOO"] != "bar" || opts.RuntimeEnv["BAZ"] != "qux" {
+		t.Errorf("RuntimeEnv = %+v, want both FOO and BAZ", opts.RuntimeEnv)
+	}
+
+	opts2 := deployOptions{}
+	if err := parseDeployFlags(&opts2, []string{"--runtime-env", "no-equals-sign"}); err == nil {
+		t.Error("expected an error for --runtime-env with no KEY=VALUE shape")
+	}
+}
+
 // A deploy bills, so it must not get as far as creating anything when the
 // machine has no credential at all.
 //
