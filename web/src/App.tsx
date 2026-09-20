@@ -114,10 +114,25 @@ function Dashboard({ onLeave }: { onLeave: () => void }) {
     setOpenFoundryJobId(null);
   };
 
+  // Polled, not fetched once: this footer is always on screen, independent
+  // of whichever page is open, so "fetch on mount" only ever answered
+  // "how many were there when the app first loaded". Saving a swarm
+  // through the builder, or importing one, never changed `page` (both
+  // happen inside SwarmsPage's own local `mode`, not a page transition) —
+  // there was no navigation event this could have hooked instead. Fifteen
+  // seconds, not SwarmsPage's own four: this is a count in a static
+  // corner nobody is watching for a live update, not the list itself, and
+  // both calls already go through the shared ETag cache (see
+  // revalidatingList.ts), so an unchanged tick costs one empty round trip
+  // each, not a refetch.
   useEffect(() => {
-    Promise.all([listBotsCached(), listSwarmsCached()])
-      .then(([bots, { swarms }]) => setCounts({ bots: bots.length, swarms: swarms.length }))
-      .catch(() => {});
+    const tick = () =>
+      Promise.all([listBotsCached(), listSwarmsCached()])
+        .then(([bots, { swarms }]) => setCounts({ bots: bots.length, swarms: swarms.length }))
+        .catch(() => {});
+    tick();
+    const id = setInterval(tick, 15_000);
+    return () => clearInterval(id);
   }, []);
 
   return (
