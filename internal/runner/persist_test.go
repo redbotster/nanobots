@@ -181,6 +181,116 @@ func TestHistoryIsPrunedToTheCap(t *testing.T) {
 	}
 }
 
+// The in-memory map used to only grow: nothing ever removed a finished run
+// from it for as long as the process kept running, which for a swarm on a
+// 30-minute schedule is ~17,500 runs a year, each holding its full log and
+// every bot's outputs. evictOldestBeyondCap caps the live map the same way
+// pruneSQL already caps the table — but only ever a *finished* run, and
+// never one still in progress, however old it started.
+func TestEvictionCapsTheLiveMapButNeverARunningOne(t *testing.T) {
+	dir := t.TempDir()
+	store, err := newTestStore(t, dir)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	base := time.Now().Add(-time.Hour)
+
+	// Started before any of the finished runs below, so an eviction that
+	// only looked at age rather than status would wrongly pick this one.
+	running := NewRun("swarm")
+	running.StartedAt = base
+	store.Add(running)
+	running.SetStatus(StatusRunning)
+
+	var oldestFinished, newestFinished string
+	for i := 0; i < MaxPersistedRuns+5; i++ {
+		r := NewRun("swarm")
+		r.StartedAt = base.Add(time.Duration(i+1) * time.Minute)
+		store.Add(r)
+		r.SetStatus(StatusSucceeded)
+		if i == 0 {
+			oldestFinished = r.ID
+		}
+		newestFinished = r.ID
+	}
+
+	store.mu.RLock()
+	inMemory := len(store.runs)
+	_, runningStillInMemory := store.runs[running.ID]
+	_, oldestStillInMemory := store.runs[oldestFinished]
+	store.mu.RUnlock()
+
+	// +1: the still-running run is never a candidate, so it sits on top of
+	// the cap rather than counting against it.
+	if inMemory > MaxPersistedRuns+1 {
+		t.Errorf("in-memory run count = %d, want capped at %d (+1 for the running one)", inMemory, MaxPersistedRuns)
+	}
+	if !runningStillInMemory {
+		t.Error("a still-running run must never be evicted, however old it started")
+	}
+	if oldestStillInMemory {
+		t.Error("the oldest finished run is still in memory — the map would grow forever")
+	}
+
+	// Dropped from memory, but not lost: Get falls back to the database
+	// for anything the map no longer holds.
+	if _, err := store.Get(oldestFinished); err != nil {
+		t.Errorf("an evicted run should still be readable from the database: %v", err)
+	}
+	if _, err := store.Get(newestFinished); err != nil {
+		t.Errorf("the newest finished run should still be reachable: %v", err)
+	}
+}
+
+// A run reconstructed from the database (evicted from memory, or loaded
+// fresh after a restart via Get rather than the bulk startup load) must
+// behave like the honest, read-only history it is — not silently claim to
+// still be live.
+func TestARunLoadedFromTheDatabaseByGetIsAFullReconstruction(t *testing.T) {
+	dir := t.TempDir()
+	store, err := newTestStore(t, dir)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	r := NewRun("daily-email-recap")
+	r.TriggeredBy = "schedule"
+	store.Add(r)
+	r.Log("triage", "classify", "sorted %d messages", 12)
+	r.SetBotOutputs("triage", map[string]any{"urgent": float64(3)})
+	r.SetStatus(StatusSucceeded)
+
+	// Force eviction of this one run without creating a thousand others:
+	// same lock discipline evictOldestBeyondCap uses, applied directly.
+	store.mu.Lock()
+	delete(store.runs, r.ID)
+	store.mu.Unlock()
+
+	got, err := store.Get(r.ID)
+	if err != nil {
+		t.Fatalf("Get after eviction: %v", err)
+	}
+	if got.GetStatus() != StatusSucceeded {
+		t.Errorf("status = %q, want succeeded", got.GetStatus())
+	}
+	if entries := got.LogEntries(); len(entries) != 1 || entries[0].Msg != "sorted 12 messages" {
+		t.Errorf("log = %+v, want the one entry back verbatim", entries)
+	}
+	if out, ok := got.BotOutputs("triage"); !ok || out["urgent"] != float64(3) {
+		t.Errorf("outputs = %+v (ok=%v), want the triage output back", out, ok)
+	}
+}
+
+func TestGetOfAnUnknownRunFailsEvenWithADatabaseConfigured(t *testing.T) {
+	dir := t.TempDir()
+	store, err := newTestStore(t, dir)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	if _, err := store.Get("no-such-run"); err == nil {
+		t.Error("expected an error for a run id that exists nowhere")
+	}
+}
+
 func TestStoreWithoutADirWritesNothing(t *testing.T) {
 	dir := t.TempDir()
 	store := NewRunStore() // no Dir — what every non-persisting test gets

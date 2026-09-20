@@ -61,6 +61,33 @@ A run that was `running`, `pending`, or `awaiting_approval` when the process die
 - **An unreadable database is a warning, not a startup failure.** `NewPersistentRunStore` returns a usable store alongside the error, and `nanobotd` prints the warning and carries on.
 - **History is per-machine and unencrypted.** A run's log and outputs are written as-is, so anything a bot printed is in there. The file is mode `0700`, in your home directory, and never leaves the machine — but it is not a vault. Credentials never appear in a run log (they stay in 1Claw or your secrets backend; see `docs/oneclaw-bridge.md` and `docs/secrets.md`), which is what makes that acceptable.
 
+## The in-memory map is capped too
+
+Everything above is about the database. `RunStore` also keeps a live map in
+memory — every run this *process* has touched, so a run's subscribers,
+pending approvals, and cancellation can live somewhere (none of those have,
+or need, a disk representation). Until now that map only ever grew: nothing
+ever removed a finished run from it, for as long as `nanobotd` kept running.
+
+A swarm on a 30-minute schedule is ~17,500 runs a year, each holding its
+full log and every bot's outputs — the same data `snapshotOf` writes to
+disk, just never released from RAM.
+
+`RunStore.evictOldestBeyondCap` now drops the oldest *finished* runs from
+the map once it holds more than `MaxPersistedRuns`, the instant each one
+reaches a terminal state — the same cap and the same moment the database
+write already happens at. Only ever a finished run: one still in progress
+owns real state (subscribers, pending approvals) eviction would corrupt,
+and nothing prunes work that isn't done yet, however old it started.
+
+An evicted run is not lost — `Get` falls back to the database for anything
+the map no longer holds, reconstructing it the same way a full restart
+already does (`snapshot.toRun()`). That reconstruction is never cached back
+into the map, since doing so would just undo the eviction it came from: an
+old run's detail page costs one small SQLite read each time it's opened,
+which is the same trade the conditional-GET caches elsewhere in this app
+make on purpose (see `docs/runs.md`).
+
 ## Try it
 
 ```bash

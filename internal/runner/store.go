@@ -3,6 +3,7 @@ package runner
 import (
 	"database/sql"
 	"fmt"
+	"sort"
 	"sync"
 )
 
@@ -109,17 +110,67 @@ func (s *RunStore) Add(r *Run) {
 		if err := writeSnapshotSQL(db, done); err != nil {
 			done.Log("", "", "could not save this run to history: %v", err)
 		}
+		s.evictOldestBeyondCap()
 	})
 }
 
+// evictOldestBeyondCap drops the oldest *finished* runs from the in-memory
+// map once it holds more than MaxPersistedRuns — the same cap the DB layer
+// already enforces on the persisted table (pruneSQL), now applied to the
+// live map too.
+//
+// Before this, the map only ever grew: a swarm on a 30-minute schedule is
+// ~17,500 runs a year, each holding its full log and every bot's outputs,
+// and nothing ever freed one for as long as nanobotd kept running. Only
+// terminal runs are ever candidates — a run still in progress owns real
+// state (subscribers, pending approvals) that eviction would corrupt, and
+// nothing prunes work that isn't done yet.
+//
+// A run dropped here is not gone: Get falls back to the database for
+// anything the map no longer holds, so evicting from memory only means the
+// oldest, coldest runs stop paying rent in RAM — it never makes a run in
+// history unreachable.
+func (s *RunStore) evictOldestBeyondCap() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	over := len(s.runs) - MaxPersistedRuns
+	if over <= 0 {
+		return
+	}
+	terminal := make([]*Run, 0, len(s.runs))
+	for _, r := range s.runs {
+		if r.GetStatus() == StatusSucceeded || r.GetStatus() == StatusFailed {
+			terminal = append(terminal, r)
+		}
+	}
+	if over > len(terminal) {
+		over = len(terminal)
+	}
+	sort.Slice(terminal, func(i, j int) bool { return terminal[i].StartedAt.Before(terminal[j].StartedAt) })
+	for _, r := range terminal[:over] {
+		delete(s.runs, r.ID)
+	}
+}
+
+// Get returns a run by id — from the live map if this process still holds
+// it, or reconstructed from the database if it has aged out of memory (see
+// evictOldestBeyondCap). The reconstructed copy is never cached back into
+// the map: it is read-only history, and caching it would just undo the
+// eviction it came from.
 func (s *RunStore) Get(id string) (*Run, error) {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
 	r, ok := s.runs[id]
-	if !ok {
-		return nil, fmt.Errorf("no run %s", id)
+	db := s.DB
+	s.mu.RUnlock()
+	if ok {
+		return r, nil
 	}
-	return r, nil
+	if db != nil {
+		if r, err := loadOneSnapshotSQL(db, id); err == nil && r != nil {
+			return r, nil
+		}
+	}
+	return nil, fmt.Errorf("no run %s", id)
 }
 
 func (s *RunStore) List() []*Run {
