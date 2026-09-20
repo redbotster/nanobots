@@ -194,6 +194,69 @@ func loadSnapshotsSQL(db *sql.DB) ([]*Run, error) {
 	return out, nil
 }
 
+// loadOneSnapshotSQL reads a single run by id, log included — the DB-backed
+// fallback for a run RunStore.evictOldestBeyondCap has already dropped from
+// memory. Returns nil, nil (not an error) when no such row exists, so a
+// genuinely unknown id and a database problem read differently at the call
+// site.
+func loadOneSnapshotSQL(db *sql.DB, id string) (*Run, error) {
+	var s snapshot
+	var status, startedAt, finishedAt, tolerated, captured, demoServices, outputs string
+	var stoppedByUser, declinedByUser int
+	err := db.QueryRow(`
+		SELECT id, swarm_name, swarm_path, status, started_at, finished_at, error, triggered_by,
+			tolerated, captured, demo_services, stopped_by_user, declined_by_user, nothing_to_do, outputs
+		FROM runs WHERE id = ?`, id).Scan(&s.ID, &s.SwarmName, &s.SwarmPath, &status, &startedAt, &finishedAt,
+		&s.Error, &s.TriggeredBy, &tolerated, &captured, &demoServices, &stoppedByUser, &declinedByUser,
+		&s.NothingToDo, &outputs)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	s.Status = RunStatus(status)
+	s.StoppedByUser = stoppedByUser != 0
+	s.DeclinedByUser = declinedByUser != 0
+	if s.StartedAt, err = parseTimeString(startedAt); err != nil {
+		return nil, fmt.Errorf("run %s: %w", id, err)
+	}
+	s.FinishedAt, _ = parseTimeString(finishedAt) // zero value on "" is correct
+	if err := json.Unmarshal([]byte(tolerated), &s.Tolerated); err != nil {
+		return nil, fmt.Errorf("run %s: %w", id, err)
+	}
+	if err := json.Unmarshal([]byte(captured), &s.Captured); err != nil {
+		return nil, fmt.Errorf("run %s: %w", id, err)
+	}
+	if err := json.Unmarshal([]byte(demoServices), &s.DemoServices); err != nil {
+		return nil, fmt.Errorf("run %s: %w", id, err)
+	}
+	if err := json.Unmarshal([]byte(outputs), &s.Outputs); err != nil {
+		return nil, fmt.Errorf("run %s: %w", id, err)
+	}
+
+	rows, err := db.Query(`SELECT time, bot, step, msg FROM run_log WHERE run_id = ? ORDER BY seq`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var t string
+		var e LogEntry
+		if err := rows.Scan(&t, &e.Bot, &e.Step, &e.Msg); err != nil {
+			return nil, err
+		}
+		if e.Time, err = parseTimeString(t); err != nil {
+			return nil, err
+		}
+		s.Log = append(s.Log, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return s.toRun(), nil
+}
+
 // loadAllRunLogs reads every run_log row in one query and groups it by
 // run_id, rather than one query per run.
 func loadAllRunLogs(db *sql.DB) (map[string][]LogEntry, error) {
