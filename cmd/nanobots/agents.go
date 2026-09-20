@@ -144,10 +144,6 @@ func agentsTheCatalogWants() (map[string]bool, error) {
 	if err != nil {
 		return nil, err
 	}
-	entries, err := os.ReadDir(filepath.Join(root, "bots"))
-	if err != nil {
-		return nil, fmt.Errorf("read bots dir (run this from the repo): %w", err)
-	}
 	// Every fixed name this repo owns, from the one place that holds them.
 	// The first version of this command derived "in use" from the catalog
 	// alone and offered to delete nanobots-composer and
@@ -157,17 +153,13 @@ func agentsTheCatalogWants() (map[string]bool, error) {
 	for _, name := range agentname.WellKnown() {
 		wanted[name] = true
 	}
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		nb, err := schema.LoadNanobot(filepath.Join(root, "bots", e.Name(), "nanobot.yaml"))
-		if err != nil {
-			continue // a malformed bot is not a reason to delete agents
-		}
+	err = schema.ForEachBotDir(filepath.Join(root, "bots"), func(_ string, nb *schema.Nanobot) {
 		if name := runner.AgentNameFor(nb); name != "" {
 			wanted[name] = true
 		}
+	})
+	if err != nil {
+		return nil, fmt.Errorf("read bots dir (run this from the repo): %w", err)
 	}
 	return wanted, nil
 }
