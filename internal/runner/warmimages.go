@@ -36,7 +36,7 @@ func (o *Orchestrator) WarmHarnessImages() {
 	}
 	go func() {
 		for _, t := range types {
-			if _, _, err := EnsureHarnessImage(t, o.RepoRoot); err != nil {
+			if _, _, err := EnsureHarnessImage(t, o.RepoRoot, o.Version); err != nil {
 				// Not fatal and not retried: the same build runs again,
 				// synchronously, the first time an actual bot needs this
 				// harness, and that failure is the one a user sees.

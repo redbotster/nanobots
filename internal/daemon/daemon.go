@@ -31,6 +31,10 @@ type Options struct {
 	RepoRoot    string
 	BotsDir     string
 	EnvFilePath string // ONECLAW_API_KEY source; "" uses the default (~/.secrets/nanobots.env)
+	// Version is the running binary's own version (main.Version — "dev"
+	// for a plain `go build`). Threaded to Orchestrator.Version — see
+	// EnsureHarnessImage.
+	Version string
 }
 
 // Run assembles everything and blocks serving HTTP.
@@ -211,6 +215,7 @@ func build(opts Options) (*api.Server, *scheduler.Scheduler, Options, error) {
 		RepoRoot:     opts.RepoRoot,
 		BotsDir:      opts.BotsDir,
 		CallbackPort: portOf(opts.Addr),
+		Version:      opts.Version,
 	}, paths, oc, svc, secretsStore, callbacks)
 	orch.Memory = mem
 	orch.LLM = gen

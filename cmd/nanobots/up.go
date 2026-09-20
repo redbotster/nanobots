@@ -43,7 +43,7 @@ func runUp(args []string) error {
 	if err != nil {
 		return err
 	}
-	return daemon.Run(daemon.Options{Addr: addr, RepoRoot: root, BotsDir: botsDir})
+	return daemon.Run(daemon.Options{Addr: addr, RepoRoot: root, BotsDir: botsDir, Version: Version})
 }
 
 // resolveRoot decides what to run against: cwd itself, if it has a bots/

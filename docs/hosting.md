@@ -110,17 +110,52 @@ this repo's own directory. A content hash gates re-extraction, so a second
 `nanobots up` against an unchanged binary is one file read, not a copy of
 39 bots. Confirmed live: built the binary, ran it from an empty `/tmp`
 directory with a fresh `$HOME`, and it served all 39 bots and 18 swarms and
-ran `morning-brief` to completion, in-process, with no checkout anywhere on
-the machine.
+ran `get-paid` — every bot in it in-process, none needing Docker — to
+completion, with no checkout anywhere on the machine.
 
-**What this does not yet cover**: the five bots that need Docker
-(`meeting-prep`, `quote-builder`, `recap-emails-to-pdf`, `render-pdf`,
-`sheet-reporter`) still need `harness/*/Dockerfile` to build their images,
-and those aren't embedded — `EnsureHarnessImage` looks for them relative to
+The five bots that need Docker (`meeting-prep`, `quote-builder`,
+`recap-emails-to-pdf`, `render-pdf`, `sheet-reporter`) needed
+`harness/*/Dockerfile` on disk to build their images from, and those
+aren't embedded — `EnsureHarnessImage` looks for them relative to
 `RepoRoot`, which is the extracted catalog directory here, not a real
-checkout. Building a harness image from a standalone binary fails with a plain "no
-such file" until the images ship over a registry instead — the thirty-four bots
-that run in the daemon's own process already work fully standalone.
+checkout. See "The harness images are published too" below for how a
+released binary gets them instead.
+
+### The harness images are published too
+
+`EnsureHarnessImage` now checks for `harness/*/Dockerfile` at `RepoRoot`
+before doing anything else. When it's there — the normal case for anything
+run from a git checkout — nothing changes: the local build and its
+content-hash staleness check (above) behave exactly as before. When it
+isn't — a standalone binary, whether it fell back to the embedded catalog
+or was pointed at some other `--repo` with no `harness/` directory — it
+pulls `ghcr.io/redbotster/nanobots-harness-{bare,openclaw}:vX.Y.Z` instead,
+where `X.Y.Z` is this binary's own version (`nanobots version`). Built and
+pushed by `.github/workflows/release.yml`'s `harness-images` job on every
+tag, the same way the main image already is; `internal/contract`'s
+`TestTheHarnessRegistryNamesMatchWhatReleaseActuallyPublishes` keeps the
+image name in `internal/runner/docker.go` and the one the workflow
+actually builds from drifting apart.
+
+The version *is* the freshness check here — there's no source tree to hash
+against, so a pulled image is trusted as long as its tag matches this
+binary's version, and a different version pulls (and uses) its own
+distinctly-tagged image rather than silently reusing whatever the last one
+left behind.
+
+Two things this doesn't cover: a plain `go build` (`nanobots version` says
+`dev`) has no tagged release to pull, and fails with that named as the
+reason rather than a bare Docker error. Confirmed live, on the same
+standalone binary as above: a swarm using one of the five Docker bots
+(`morning-brief`, whose `meeting-prep` and `render-pdf` both need it)
+failed with `"...is not a released build (version \"dev\") that could
+pull one instead — run from a nanobots checkout, where Docker can build it
+locally"`, in the run's own error, not a mysterious Docker failure. And
+until the first tagged release built after this change actually runs,
+`ghcr.io/redbotster/nanobots-harness-bare` and `-openclaw` don't exist yet
+to pull from at all — the same "not wired up yet" honesty the Homebrew
+cask and npm package already get above, for the same reason: the code and
+the workflow exist, but nothing has published through them yet.
 
 ## In a container
 

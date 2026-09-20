@@ -17,25 +17,37 @@ import (
 	"github.com/google/uuid"
 )
 
-// harnessBuild maps a nanobot.yaml harness.type to the local image tag and
-// the non-root UID the image runs as (distroless nonroot is 65532; the
-// openclaw image's own `nanobot` user is 10001 — see harness/*/Dockerfile).
-// There's no remote registry yet (blueprint §4 #8), so nanobotd builds these
-// itself from the harness/ Dockerfiles on first use rather than pulling
-// nb.Spec.Resources.Image from somewhere that doesn't exist.
-var harnessBuild = map[string]struct {
-	Tag        string
-	Dockerfile string
-	User       string
-}{
-	"bare": {Tag: "nanobots/harness-bare:local", Dockerfile: "harness/bare/Dockerfile", User: "65532:65532"},
+// harnessInfo is one harness.type's local image tag, the non-root UID the
+// image runs as (distroless nonroot is 65532; the openclaw image's own
+// `nanobot` user is 10001 — see harness/*/Dockerfile), and the registry
+// image .github/workflows/release.yml publishes it as, for a binary with
+// no harness/ source of its own to build from.
+type harnessInfo struct {
+	Tag           string
+	Dockerfile    string
+	User          string
+	RegistryImage string
+}
+
+// harnessBuild maps a nanobot.yaml harness.type to its harnessInfo.
+var harnessBuild = map[string]harnessInfo{
+	"bare": {
+		Tag: "nanobots/harness-bare:local", Dockerfile: "harness/bare/Dockerfile", User: "65532:65532",
+		RegistryImage: "ghcr.io/redbotster/nanobots-harness-bare",
+	},
 	// llm runs in the *same* image as bare, deliberately. ai.generate is an
 	// HTTP callback to nanobotd — the container never talks to a model — so
 	// a bot that generates text needs nothing beyond the interpreter and a
 	// CA bundle. The value exists to describe the bot honestly, not to add
 	// anything to its runtime.
-	"llm":      {Tag: "nanobots/harness-bare:local", Dockerfile: "harness/bare/Dockerfile", User: "65532:65532"},
-	"openclaw": {Tag: "nanobots/harness-openclaw:local", Dockerfile: "harness/openclaw/Dockerfile", User: "10001:10001"},
+	"llm": {
+		Tag: "nanobots/harness-bare:local", Dockerfile: "harness/bare/Dockerfile", User: "65532:65532",
+		RegistryImage: "ghcr.io/redbotster/nanobots-harness-bare",
+	},
+	"openclaw": {
+		Tag: "nanobots/harness-openclaw:local", Dockerfile: "harness/openclaw/Dockerfile", User: "10001:10001",
+		RegistryImage: "ghcr.io/redbotster/nanobots-harness-openclaw",
+	},
 }
 
 // EnsureHarnessImage builds the harness image for harnessType if it isn't
@@ -45,11 +57,25 @@ var harnessBuild = map[string]struct {
 // anyone iterating on the interpreter or a bot's Go-side dependencies while
 // testing swarms locally. Set NANOBOTS_REBUILD_HARNESS=1 to always rebuild
 // rather than trusting whatever's cached (or just `docker rmi` the tag).
-func EnsureHarnessImage(harnessType, repoRoot string) (tag, user string, err error) {
+//
+// version is the running binary's own version (main.Version — "dev" for a
+// plain `go build`), used only when repoRoot has no harness/*/Dockerfile to
+// build from — see ensureHarnessImageFromRegistry.
+func EnsureHarnessImage(harnessType, repoRoot, version string) (tag, user string, err error) {
 	h, ok := harnessBuild[harnessType]
 	if !ok {
 		return "", "", fmt.Errorf("harness %q is not implemented in this build (only bare, llm, openclaw)", harnessType)
 	}
+
+	if _, statErr := os.Stat(filepath.Join(repoRoot, h.Dockerfile)); statErr != nil {
+		// A standalone binary run outside a checkout (internal/catalog's
+		// extracted directory has bots/examples/roles, never harness/) has
+		// no Dockerfile to build from at all — the local-build path below
+		// would just fail on "no such file". Pull the published image
+		// instead of trying.
+		return ensureHarnessImageFromRegistry(h, version)
+	}
+
 	forceRebuild := os.Getenv("NANOBOTS_REBUILD_HARNESS") != ""
 
 	// The agent binary is baked into the image, so an image built before an
@@ -82,6 +108,35 @@ func EnsureHarnessImage(harnessType, repoRoot string) (tag, user string, err err
 		return "", "", fmt.Errorf("build harness image %s: %w: %s", h.Tag, err, stderr.String())
 	}
 	return h.Tag, h.User, nil
+}
+
+// ensureHarnessImageFromRegistry pulls h's published image matching
+// version, tagged the moment version was released. There is no "latest"
+// fallback and no staleness check against a source tree that does not
+// exist here: the version string in the tag *is* the freshness check, and
+// a binary that isn't a tagged release (version == "dev", the plain
+// `go build` case) has no matching image to pull, which is named as the
+// reason rather than surfaced as a bare pull failure.
+func ensureHarnessImageFromRegistry(h harnessInfo, version string) (tag, user string, err error) {
+	v := strings.TrimPrefix(version, "v")
+	if v == "" || version == "dev" {
+		return "", "", fmt.Errorf(
+			"this bot needs the %s harness image, but this binary has no %s to build one from "+
+				"and is not a released build (version %q) that could pull one instead — "+
+				"run from a nanobots checkout, where Docker can build it locally",
+			h.Tag, h.Dockerfile, version)
+	}
+	remote := h.RegistryImage + ":v" + v
+	if err := exec.Command("docker", "image", "inspect", remote).Run(); err == nil {
+		return remote, h.User, nil // already pulled — the version in the tag is the freshness check
+	}
+	pull := exec.Command("docker", "pull", remote)
+	var stderr bytes.Buffer
+	pull.Stderr = &stderr
+	if err := pull.Run(); err != nil {
+		return "", "", fmt.Errorf("pull harness image %s: %w: %s", remote, err, strings.TrimSpace(stderr.String()))
+	}
+	return remote, h.User, nil
 }
 
 // DockerAvailable reports whether the docker daemon is reachable right now,

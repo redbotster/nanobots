@@ -226,6 +226,9 @@ type OrchestratorOpts struct {
 	RepoRoot     string
 	BotsDir      string
 	CallbackPort string // the port a bot container calls back on
+	// Version is the running binary's own version (main.Version), passed
+	// through to Orchestrator.Version — see EnsureHarnessImage.
+	Version string
 }
 
 // BuildOrchestrator assembles the runner from already-resolved pieces.
@@ -240,6 +243,7 @@ func BuildOrchestrator(
 	return &runner.Orchestrator{
 		RepoRoot: opts.RepoRoot,
 		BotsDir:  opts.BotsDir,
+		Version:  opts.Version,
 		// host.docker.internal, not localhost: this address is resolved
 		// from inside a bot's container, not from this process.
 		CallbackAddr:  "http://host.docker.internal:" + opts.CallbackPort,

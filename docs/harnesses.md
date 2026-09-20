@@ -100,6 +100,14 @@ Relying on people remembering that failed in practice. A 36-hour-old image made 
 
 `NANOBOTS_REBUILD_HARNESS=1` still forces a rebuild. If the source tree can't be hashed, the old "the image exists, that's good enough" rule applies rather than rebuilding on every run.
 
+## A standalone binary pulls the image instead of building it
+
+Everything above assumes `harness/*/Dockerfile` and the source it builds from are on disk — true for anything run from a git checkout, false for a released binary run standalone (see `docs/hosting.md`'s catalog-embedding section: `internal/catalog`'s extracted directory has `bots/`, `examples/swarms/`, `roles/roles.yaml`, never `harness/`). `EnsureHarnessImage` checks for the Dockerfile first now, and when it isn't there it pulls `ghcr.io/redbotster/nanobots-harness-{bare,openclaw}:vX.Y.Z` — `X.Y.Z` being this binary's own version — instead of trying to build from a Dockerfile that was never going to be there.
+
+There's no source hash to compare against in this path, so the version in the image tag *is* the freshness check: a released binary at `v1.2.3` only ever pulls (and reuses) `...:v1.2.3`, never a stale image an older or newer version left behind. `.github/workflows/release.yml`'s `harness-images` job publishes both images on every tag, from the same Dockerfiles and the same repo checkout `EnsureHarnessImage`'s own local build already uses — `internal/contract`'s `TestTheHarnessRegistryNamesMatchWhatReleaseActuallyPublishes` keeps the image name on both sides of that from drifting apart.
+
+A plain `go build` (`nanobots version` reports `dev`) has nothing to pull — there's no tagged release called "dev" — and fails saying exactly that, rather than a bare Docker pull error three layers down.
+
 ## Images warm before anyone presses Run
 
 `EnsureHarnessImage` used to run for the first time on the critical path of
