@@ -409,7 +409,7 @@ function PostureRow() {
       tone={p.agents_near_cap || p.critical > 0 ? "warn" : p.threats > 0 ? "muted" : "ok"}
       label="Posture"
       detail={
-        `${p.score}/100 · ${cap} agents` +
+        `score ${p.score}/100 · ${cap} agents` +
         (p.threats > 0 ? ` · ${p.threats} open threat${p.threats === 1 ? "" : "s"}` : "") +
         (p.pending > 0 ? ` · ${p.pending} awaiting approval` : "")
       }

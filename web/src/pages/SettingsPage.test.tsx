@@ -73,11 +73,48 @@ describe("Connect a service with 1Claw configured", () => {
   it("offers the OAuth providers alongside the pasted-token ones", async () => {
     vi.spyOn(botsCache, "listBotsCached").mockResolvedValue([]);
     vi.spyOn(api, "listConnections").mockResolvedValue([]);
+    vi.spyOn(api, "posture").mockResolvedValue({
+      configured: false,
+      score: 0,
+      threats: 0,
+      critical: 0,
+      pending: 0,
+      agents: 0,
+      nanobots_agents: 0,
+      agents_near_cap: false,
+    });
 
     render(<SettingsPage status={status({ oneclaw_configured: true })} />);
 
     await waitFor(() => expect(screen.getByText("Connect a service")).toBeTruthy());
     expect(screen.getByText("Google")).toBeTruthy();
     expect(screen.getByText("GitHub")).toBeTruthy();
+  });
+});
+
+// A posture score (100 = perfectly healthy, higher is good) and an agent
+// count against a plan cap (higher is worse, closer to a real 403 mid-run)
+// used to render as two bare "N/M" numbers side by side — "100/100 · 8/50
+// agents" — with nothing distinguishing which direction was the warning
+// sign. The word "score" is the whole fix.
+describe("the Posture row", () => {
+  it("labels the score so it doesn't read like a second capacity number", async () => {
+    vi.spyOn(botsCache, "listBotsCached").mockResolvedValue([]);
+    vi.spyOn(api, "listConnections").mockResolvedValue([]);
+    vi.spyOn(api, "posture").mockResolvedValue({
+      configured: true,
+      score: 100,
+      threats: 0,
+      critical: 0,
+      pending: 0,
+      agents: 8,
+      agent_limit: 50,
+      nanobots_agents: 5,
+      agents_near_cap: false,
+    });
+
+    render(<SettingsPage status={status({ oneclaw_configured: true })} />);
+
+    expect(await screen.findByText(/score 100\/100 · 8\/50 agents/)).toBeTruthy();
   });
 });
