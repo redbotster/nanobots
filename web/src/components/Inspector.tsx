@@ -90,6 +90,23 @@ export function Inspector({ bot }: { bot: BotSummary }) {
             <span className="text-muted">{g.max_runtime_secs}s</span>
           </div>
         )}
+        {g.daily_budget_usd ? (
+          <div className="flex items-center justify-between py-2 text-sm">
+            <span className="text-ink">Daily budget</span>
+            <span className="text-muted">
+              {guarded
+                ? `$${g.daily_budget_usd.toFixed(2)}`
+                : "Asked for, but nothing is applying it"}
+            </span>
+          </div>
+        ) : (
+          guarded && (
+            <div className="flex items-center justify-between py-2 text-sm">
+              <span className="text-ink">Daily budget</span>
+              <span className="text-muted">Not declared by this bot</span>
+            </div>
+          )
+        )}
       </div>
 
       <div className="mt-4 border-t border-edge pt-4">
