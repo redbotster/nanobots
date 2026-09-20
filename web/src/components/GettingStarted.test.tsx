@@ -73,6 +73,16 @@ describe("GettingStarted", () => {
     expect(screen.queryByText(/Then the same swarm reads your actual inbox/)).toBeNull();
   });
 
+  // The collapsed line truncates on a narrow viewport — "Connect an
+  // account, when you want it to be real" became "Connect an accou..." on
+  // mobile with no way to read the rest, since the span had no title.
+  it("keeps the full step name readable when the collapsed line truncates it", async () => {
+    stub(3, false);
+    render(<GettingStarted status={status("gemini (direct)")} onOpenSettings={vi.fn()} />);
+    const step = await screen.findByText(/Connect an account/);
+    expect(step.getAttribute("title")).toBe("Connect an account, when you want it to be real");
+  });
+
   // A genuinely new install is the case this card was written for, and the
   // one where the detail earns its space.
   it("stays full-height when nothing has been done yet", async () => {
