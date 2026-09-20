@@ -8,7 +8,6 @@ package api
 import (
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"sort"
 	"sync"
@@ -472,26 +471,15 @@ func (s *Server) recallBots() []string {
 }
 
 func (s *Server) botsUsingRecall() []string {
-	entries, err := os.ReadDir(s.BotsDir)
-	if err != nil {
-		return []string{}
-	}
 	var ids []string
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		nb, err := schema.LoadNanobot(filepath.Join(s.BotsDir, e.Name(), "nanobot.yaml"))
-		if err != nil {
-			continue
-		}
+	_ = schema.ForEachBotDir(s.BotsDir, func(id string, nb *schema.Nanobot) {
 		for _, st := range nb.Spec.Steps {
 			if st.Type == "memory.recall" {
-				ids = append(ids, e.Name())
-				break
+				ids = append(ids, id)
+				return
 			}
 		}
-	}
+	})
 	sort.Strings(ids)
 	return nonNil(ids)
 }

@@ -50,29 +50,21 @@ type setProviderConnectionResponse struct {
 // split by whether it's currently on demo data or a real account.
 func (s *Server) botsUsingProvider(provider string) (providerBotsResponse, error) {
 	out := providerBotsResponse{Provider: provider, Demo: []string{}, Live: []string{}}
-	entries, err := os.ReadDir(s.BotsDir)
-	if err != nil {
-		return out, err
-	}
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		nb, err := schema.LoadNanobot(filepath.Join(s.BotsDir, e.Name(), "nanobot.yaml"))
-		if err != nil {
-			continue // a broken bot shouldn't hide every working one
-		}
+	err := schema.ForEachBotDir(s.BotsDir, func(id string, nb *schema.Nanobot) {
 		for _, svc := range nb.Spec.Services {
 			if svc.Provider != provider {
 				continue
 			}
 			if svc.Connection == "" || svc.Connection == schema.ConnectionDemo {
-				out.Demo = append(out.Demo, e.Name())
+				out.Demo = append(out.Demo, id)
 			} else {
-				out.Live = append(out.Live, e.Name())
+				out.Live = append(out.Live, id)
 			}
 			break // one entry per bot, not per service
 		}
+	})
+	if err != nil {
+		return out, err
 	}
 	sort.Strings(out.Demo)
 	sort.Strings(out.Live)
@@ -121,26 +113,22 @@ func (s *Server) handleSetProviderConnection(w http.ResponseWriter, r *http.Requ
 	}
 
 	resp := setProviderConnectionResponse{Provider: provider, Changed: []string{}}
-	entries, err := os.ReadDir(s.BotsDir)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		changed, err := s.setProviderOnBot(e.Name(), provider, target)
+	err := schema.ForEachBotDir(s.BotsDir, func(id string, _ *schema.Nanobot) {
+		changed, err := s.setProviderOnBot(id, provider, target)
 		if err != nil {
 			if resp.Failed == nil {
 				resp.Failed = map[string]string{}
 			}
-			resp.Failed[e.Name()] = err.Error()
-			continue
+			resp.Failed[id] = err.Error()
+			return
 		}
 		if changed {
-			resp.Changed = append(resp.Changed, e.Name())
+			resp.Changed = append(resp.Changed, id)
 		}
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
 	}
 	sort.Strings(resp.Changed)
 	writeJSON(w, http.StatusOK, resp)

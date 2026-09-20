@@ -2,8 +2,6 @@ package runner
 
 import (
 	"log"
-	"os"
-	"path/filepath"
 
 	"github.com/redbotster/nanobots/internal/schema"
 )
@@ -57,32 +55,21 @@ func (o *Orchestrator) WarmHarnessImages() {
 // and a bad nanobot.yaml is skipped rather than failing the scan, the same
 // tolerance listBotSummaries already gives a broken bot directory.
 func harnessTypesInUse(botsDir string) []string {
-	entries, err := os.ReadDir(botsDir)
-	if err != nil {
-		return nil
-	}
 	seen := map[string]bool{}
 	var types []string
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		nb, err := schema.LoadNanobot(filepath.Join(botsDir, e.Name(), "nanobot.yaml"))
-		if err != nil {
-			continue
-		}
+	_ = schema.ForEachBotDir(botsDir, func(_ string, nb *schema.Nanobot) {
 		if inProcess, _ := runsInProcess(nb, ""); inProcess {
-			continue
+			return
 		}
 		t := "bare"
 		if needsBrowser(nb) {
 			t = "openclaw"
 		}
 		if seen[t] {
-			continue
+			return
 		}
 		seen[t] = true
 		types = append(types, t)
-	}
+	})
 	return types
 }

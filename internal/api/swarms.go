@@ -3,7 +3,6 @@ package api
 import (
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -182,11 +181,6 @@ func inspectSwarm(sw *schema.Nanoswarm, botsDir string) (live, total int, needsA
 // whole discovery mechanism for now.
 func (s *Server) handleListSwarms(w http.ResponseWriter, r *http.Request) {
 	dir := s.swarmsDir()
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
 	var allRuns []*runner.Run
 	if s.Runs != nil {
 		allRuns = s.Runs.List()
@@ -206,15 +200,7 @@ func (s *Server) handleListSwarms(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var swarms []SwarmSummary
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
-			continue
-		}
-		path := filepath.Join(dir, e.Name())
-		sw, err := schema.LoadNanoswarm(path)
-		if err != nil {
-			continue
-		}
+	err := schema.ForEachSwarmFile(dir, func(path string, sw *schema.Nanoswarm) bool {
 		relPath, err := filepath.Rel(filepath.Dir(s.BotsDir), path)
 		if err != nil {
 			relPath = path
@@ -245,6 +231,11 @@ func (s *Server) handleListSwarms(w http.ResponseWriter, r *http.Request) {
 			summary.SchedulePaused = st.Paused && summary.TriggerType == "cron"
 		}
 		swarms = append(swarms, summary)
+		return true
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
 	}
 	writeJSONCached(w, r, http.StatusOK, nonNil(swarms))
 }

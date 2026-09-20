@@ -3,9 +3,6 @@ package scheduler
 import (
 	"context"
 	"log"
-	"os"
-	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -198,11 +195,6 @@ func (s *Scheduler) wait(now time.Time) time.Duration {
 // failing to launch, is logged and skipped rather than blocking every
 // other swarm's schedule.
 func (s *Scheduler) tick(now time.Time) {
-	entries, err := os.ReadDir(s.SwarmsDir)
-	if err != nil {
-		return
-	}
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.state == nil {
@@ -210,14 +202,9 @@ func (s *Scheduler) tick(now time.Time) {
 	}
 
 	seen := map[string]bool{}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
-			continue
-		}
-		path := filepath.Join(s.SwarmsDir, e.Name())
-		sw, err := schema.LoadNanoswarm(path)
-		if err != nil || sw.Spec.Trigger.Type != "cron" {
-			continue
+	_ = schema.ForEachSwarmFile(s.SwarmsDir, func(path string, sw *schema.Nanoswarm) bool {
+		if sw.Spec.Trigger.Type != "cron" {
+			return true
 		}
 		seen[path] = true
 
@@ -226,7 +213,7 @@ func (s *Scheduler) tick(now time.Time) {
 			sched, err := Parse(sw.Spec.Trigger.Expr)
 			if err != nil {
 				log.Printf("scheduler: %s: bad cron expression %q: %v", path, sw.Spec.Trigger.Expr, err)
-				continue
+				return true
 			}
 			loc := time.UTC
 			if tz := sw.Spec.Trigger.Timezone; tz != "" {
@@ -252,10 +239,10 @@ func (s *Scheduler) tick(now time.Time) {
 		}
 
 		if st.nextFire.IsZero() {
-			continue
+			return true
 		}
 		if now.In(st.loc).Before(st.nextFire) {
-			continue
+			return true
 		}
 
 		// A schedule that has failed the same way N times running is not
@@ -272,7 +259,7 @@ func (s *Scheduler) tick(now time.Time) {
 				// Keep the clock moving so "next run" stays honest and a
 				// resume doesn't immediately fire a backlog.
 				st.nextFire = st.schedule.Next(now.In(st.loc))
-				continue
+				return true
 			}
 			st.paused = false
 		}
@@ -289,7 +276,8 @@ func (s *Scheduler) tick(now time.Time) {
 			s.Runs.Add(run)
 		}
 		st.nextFire = st.schedule.Next(now.In(st.loc))
-	}
+		return true
+	})
 
 	for path := range s.state {
 		if !seen[path] {

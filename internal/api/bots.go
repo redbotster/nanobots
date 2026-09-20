@@ -34,21 +34,12 @@ type BotSummary struct {
 // bot library endpoint and the AI composer's catalog prompt both need
 // exactly this, and must never drift apart.
 func (s *Server) listBotSummaries() ([]BotSummary, error) {
-	entries, err := os.ReadDir(s.BotsDir)
+	var bots []BotSummary
+	err := schema.ForEachBotDir(s.BotsDir, func(id string, nb *schema.Nanobot) {
+		bots = append(bots, botSummaryOf(nb, id))
+	})
 	if err != nil {
 		return nil, err
-	}
-	var bots []BotSummary
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		nbPath := filepath.Join(s.BotsDir, e.Name(), "nanobot.yaml")
-		nb, err := schema.LoadNanobot(nbPath)
-		if err != nil {
-			continue // not every dir under bots/ need be a bot
-		}
-		bots = append(bots, botSummaryOf(nb, e.Name()))
 	}
 	return nonNil(bots), nil
 }
