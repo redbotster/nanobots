@@ -144,3 +144,16 @@ describe("zoom", () => {
     expect(connectorCount(container)).toBe(1);
   });
 });
+
+describe("a placed bot's remove control", () => {
+  // An accessibility audit found this one: the button read to a screen
+  // reader as a bare "✕" glyph (its only accessible-name source once
+  // there's text content, which `title` doesn't override), not which bot
+  // it removes.
+  it("has an accessible name naming the bot, not just the glyph", () => {
+    render(<BuilderCanvas bots={BOTS} botDefs={DEFS} snaps={SNAPS} {...canvasProps} />);
+    expect(
+      screen.getByRole("button", { name: "Remove reporter from the swarm" }),
+    ).toBeInTheDocument();
+  });
+});

@@ -64,7 +64,13 @@
     --c-glow: 37 78 216;
     --c-ink: 33 28 24;
     --c-muted: 122 111 100;
-    --c-warn: 176 108 6;
+    /* 158 97 5, not the original 176 108 6: an accessibility audit measured
+       the original at ~4.2:1 against --c-panel/--c-void (white/near-white)
+       — under the 4.5:1 WCAG AA minimum for normal-size text, which is
+       every text-warn label in this app (all set at 11-12px). This value
+       measures ~5.0:1. Dark theme's --c-warn (255 178 90 on --c-panel
+       34 31 28) was already well clear of AA and is untouched. */
+    --c-warn: 158 97 5;
     --c-ok: 22 138 92;
     --c-danger: 196 58 58;
 
@@ -89,7 +95,8 @@
   --c-glow: 37 78 216;
   --c-ink: 33 28 24;
   --c-muted: 122 111 100;
-  --c-warn: 176 108 6;
+  /* Keep in sync with the @media block above — see its comment. */
+  --c-warn: 158 97 5;
   --c-ok: 22 138 92;
   --c-danger: 196 58 58;
 

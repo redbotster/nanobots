@@ -570,6 +570,7 @@ export const BuilderCanvas = memo(function BuilderCanvas({
                     }}
                     className="shrink-0 text-muted hover:text-danger"
                     title="Remove from swarm"
+                    aria-label={`Remove ${bot.instanceId} from the swarm`}
                   >
                     ✕
                   </button>

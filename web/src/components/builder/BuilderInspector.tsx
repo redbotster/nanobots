@@ -102,7 +102,12 @@ export function BuilderInspector({
             {bot.instanceId} · {def.id}@{def.version}
           </p>
         </div>
-        <button onClick={onClose} className="shrink-0 text-muted hover:text-ink" title="Close">
+        <button
+          onClick={onClose}
+          className="shrink-0 text-muted hover:text-ink"
+          title="Close"
+          aria-label={`Close ${def.name}'s inspector`}
+        >
           ✕
         </button>
       </div>

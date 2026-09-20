@@ -36,7 +36,10 @@ export function Sheet({
                 </Dialog.Description>
               )}
             </div>
-            <Dialog.Close className="rounded p-1 text-muted hover:bg-tron/10 hover:text-ink">
+            <Dialog.Close
+              className="rounded p-1 text-muted hover:bg-tron/10 hover:text-ink"
+              aria-label={`Close ${title}`}
+            >
               ✕
             </Dialog.Close>
           </div>

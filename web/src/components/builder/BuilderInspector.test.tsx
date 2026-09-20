@@ -96,4 +96,11 @@ describe("BuilderInspector", () => {
     const joinSelect = screen.getByText("collapse a list").parentElement!.querySelector("select")!;
     expect((joinSelect as HTMLSelectElement).value).toBe("count");
   });
+
+  // An accessibility audit found this one: the close button read to a
+  // screen reader as a bare "✕" glyph, not which bot's inspector it closes.
+  it("its close button has an accessible name, not just the glyph", () => {
+    renderInspector();
+    expect(screen.getByRole("button", { name: "Close notify's inspector" })).toBeInTheDocument();
+  });
 });
