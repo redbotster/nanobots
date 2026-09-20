@@ -23,6 +23,13 @@ const SettingsPage = lazy(() =>
 );
 const TeamPage = lazy(() => import("./pages/TeamPage").then((m) => ({ default: m.TeamPage })));
 const LabPage = lazy(() => import("./pages/LabPage").then((m) => ({ default: m.LabPage })));
+// Reopens a foundry job the nav badge/Runs banner points at, from wherever
+// in the app you happen to be — the composer's own gap escalation still
+// opens one inline via SwarmsPage's own lazy import of the same component;
+// this is the other entry point, for a job you navigated away from.
+const FoundryJobPage = lazy(() =>
+  import("./pages/FoundryJobPage").then((m) => ({ default: m.FoundryJobPage })),
+);
 
 import { LandingPage } from "./pages/LandingPage";
 import { StatusDot } from "./components/StatusDot";
@@ -76,9 +83,14 @@ function Dashboard({ onLeave }: { onLeave: () => void }) {
   const [counts, setCounts] = useState<{ bots: number; swarms: number } | null>(null);
   const {
     count: pendingApprovals,
+    pendingFoundryJobs,
     permission: notifyPermission,
     requestPermission: enableNotifications,
   } = useApprovalNotifications();
+  // A foundry job reopened from the Runs banner (see RunsPage), independent
+  // of whichever nav page is selected — the same reason SwarmsPage's own
+  // inline foundry mode doesn't live inside the page switch below.
+  const [openFoundryJobId, setOpenFoundryJobId] = useState<string | null>(null);
   const { theme, resolved: resolvedTheme, setTheme } = useTheme();
 
   // Basic mode hides the bot library and Lab nav entries entirely — Lab
@@ -92,6 +104,15 @@ function Dashboard({ onLeave }: { onLeave: () => void }) {
 
   const visibleNav =
     uiMode === "basic" ? NAV.filter((item) => item.id !== "bots" && item.id !== "lab") : NAV;
+
+  // Clears openFoundryJobId too: without this, clicking a nav item while a
+  // reopened foundry job is showing changed `page` underneath a screen that
+  // keeps rendering anyway (openFoundryJobId takes priority below), so
+  // navigation silently did nothing visible.
+  const goTo = (id: Page) => {
+    setPage(id);
+    setOpenFoundryJobId(null);
+  };
 
   useEffect(() => {
     Promise.all([listBotsCached(), listSwarmsCached()])
@@ -208,7 +229,7 @@ function Dashboard({ onLeave }: { onLeave: () => void }) {
           {visibleNav.map((item) => (
             <button
               key={item.id}
-              onClick={() => setPage(item.id)}
+              onClick={() => goTo(item.id)}
               className={`flex items-center gap-3 border-l-2 px-5 py-2.5 text-left text-sm transition-colors ${
                 page === item.id
                   ? "border-tron bg-gradient-to-r from-tron/10 to-transparent text-ink"
@@ -242,20 +263,46 @@ function Dashboard({ onLeave }: { onLeave: () => void }) {
       <main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
         <PrereqBanners status={status} onOpenSettings={() => setPage("settings")} />
         <div className="min-h-0 flex-1 overflow-hidden">
-          {page === "swarm" && (
-            <SwarmsPage
-              uiMode={uiMode}
-              status={status}
-              onOpenSettings={() => setPage("settings")}
-            />
+          {openFoundryJobId ? (
+            <Suspense fallback={<LazyFallback />}>
+              <FoundryJobPage
+                jobId={openFoundryJobId}
+                backLabel="Runs"
+                onDone={() => setOpenFoundryJobId(null)}
+                // SwarmsPage's own inline foundry mode auto-resubmits the
+                // original compose request on promotion, straight into the
+                // builder — a nice shortcut right after you escalated it.
+                // From here, that request may be from a session you left
+                // hours ago, so it just closes: the bot is in the catalog
+                // now (job.bot, shown in the log this page already
+                // rendered), and composing again from Swarms is one click.
+                onPromoted={() => setOpenFoundryJobId(null)}
+              />
+            </Suspense>
+          ) : (
+            <>
+              {page === "swarm" && (
+                <SwarmsPage
+                  uiMode={uiMode}
+                  status={status}
+                  onOpenSettings={() => setPage("settings")}
+                />
+              )}
+              <Suspense fallback={<LazyFallback />}>
+                {page === "bots" && <BotLibrary />}
+                {page === "team" && <TeamPage />}
+                {page === "lab" && <LabPage />}
+                {page === "runs" && (
+                  <RunsPage
+                    onOpenSettings={() => setPage("settings")}
+                    pendingFoundryJobs={pendingFoundryJobs}
+                    onOpenFoundryJob={setOpenFoundryJobId}
+                  />
+                )}
+                {page === "settings" && <SettingsPage status={status} />}
+              </Suspense>
+            </>
           )}
-          <Suspense fallback={<LazyFallback />}>
-            {page === "bots" && <BotLibrary />}
-            {page === "team" && <TeamPage />}
-            {page === "lab" && <LabPage />}
-            {page === "runs" && <RunsPage onOpenSettings={() => setPage("settings")} />}
-            {page === "settings" && <SettingsPage status={status} />}
-          </Suspense>
         </div>
       </main>
 
@@ -263,7 +310,7 @@ function Dashboard({ onLeave }: { onLeave: () => void }) {
         {visibleNav.map((item) => (
           <button
             key={item.id}
-            onClick={() => setPage(item.id)}
+            onClick={() => goTo(item.id)}
             className={`relative flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-display ${
               page === item.id ? "text-tron" : "text-muted"
             }`}

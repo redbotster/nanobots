@@ -40,6 +40,8 @@ curl -X POST http://127.0.0.1:7474/api/foundry/<id>/approvals/<approvalId>/decid
 
 Or, in the WebUI: describe something the catalog genuinely can't do in the Swarms page's compose box, click **Build it** on the gap panel that appears, and watch the live log.
 
+A job you navigate away from mid-review isn't lost. The nav badge counts pending swarm-run approvals and pending foundry-job reviews together (`useApprovalNotifications`), and the Runs page — where clicking the badge lands — shows a review-needed banner for each. That banner used to be the only escalation with nowhere left to reach it once you'd left the compose box's own gap panel: the badge said N, the Runs page had no idea foundry jobs existed at all, and clicking through showed N-1.
+
 ## The brief is assembled, not written
 
 Every brief is built from the repo at the moment a job starts — the bot

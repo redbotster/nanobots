@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Run, RunSummary } from "../lib/types";
+import type { FoundryJob, Run, RunSummary } from "../lib/types";
 import { useRuns } from "../lib/runsFeed";
 import { StatusDot } from "../components/StatusDot";
 import { RunDetail } from "./RunDetail";
@@ -66,7 +66,19 @@ function reallyFailed(r: RunSummary): boolean {
   return r.status === "failed" && !r.stopped_by_user && !r.declined_by_user;
 }
 
-export function RunsPage({ onOpenSettings }: { onOpenSettings?: () => void }) {
+export function RunsPage({
+  onOpenSettings,
+  pendingFoundryJobs = [],
+  onOpenFoundryJob,
+}: {
+  onOpenSettings?: () => void;
+  /** Foundry jobs awaiting a human review of the bot they authored — the
+   * other half of what the nav badge counts (see useApprovalNotifications).
+   * Rendered here, not just counted, so the badge's number and what
+   * clicking it shows finally agree. */
+  pendingFoundryJobs?: FoundryJob[];
+  onOpenFoundryJob?: (jobId: string) => void;
+}) {
   // null (not []) until the first fetch lands, so the empty state doesn't
   // flash "nothing has run yet" at someone who does in fact have runs.
   const runs = useRuns();
@@ -135,6 +147,31 @@ export function RunsPage({ onOpenSettings }: { onOpenSettings?: () => void }) {
             ? "1 run is waiting on your approval — open it"
             : `${needsApproval.length} runs are waiting on your approval — show them`}
         </button>
+      )}
+
+      {/* Foundry jobs are the other half of what the nav badge counts, and
+          used to have nowhere to land once you'd navigated away from the
+          exact composer-gap screen that first opened one — the badge said
+          N, this page (silently, since it has no idea foundry jobs exist)
+          showed N-1. One row per job rather than folding into the swarm-run
+          list above: a FoundryJob isn't a Run, and forcing it through
+          needsApproval's filter/count machinery would just move the same
+          "the count doesn't match what's shown" bug somewhere subtler. */}
+      {pendingFoundryJobs.length > 0 && onOpenFoundryJob && (
+        <div className="mt-2 flex flex-col gap-1.5">
+          {pendingFoundryJobs.map((job) => (
+            <button
+              key={job.id}
+              onClick={() => onOpenFoundryJob(job.id)}
+              className="w-full rounded-lg border border-warn/40 bg-warn/[0.06] px-4 py-3 text-left text-sm text-warn transition-colors hover:border-warn"
+            >
+              <span className="font-display font-semibold">A new bot needs your review</span>
+              <span className="mt-0.5 block truncate text-[12px] text-warn/80" title={job.request}>
+                {job.request}
+              </span>
+            </button>
+          ))}
+        </div>
       )}
 
       {sorted.length > 0 && (
