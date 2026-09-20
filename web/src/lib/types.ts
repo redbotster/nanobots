@@ -67,12 +67,26 @@ export interface BotInstance {
   version: string;
 }
 
+/** A required input port with nothing to fill it — no snap feeds it and no
+ * literal value was given. The backend computes this specifically so the
+ * builder can say "mailer needs a `to`" while you're still wiring, instead
+ * of letting you save something that dies several containers in. */
+export interface UnfedInput {
+  bot: string;
+  port: string;
+  reason: string;
+}
+
 export interface PlanResult {
   swarm: string;
   order?: string[];
   bots: BotInstance[];
   error?: string;
   snaps: SnapCheck[];
+  unfed?: UnfedInput[];
+  /** Swarm-level mistakes that belong to neither a snap nor a port — an
+   * unrecognised on_error, a port both snapped and given a literal. */
+  invalid?: string[];
   ok: boolean;
 }
 

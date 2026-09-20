@@ -21,6 +21,7 @@ import { placeBots, toCanvasSnaps, toDraftBot } from "../components/builder/hydr
 import { BuilderPalette } from "../components/builder/BuilderPalette";
 import { BuilderInspector } from "../components/builder/BuilderInspector";
 import { Button } from "../components/Button";
+import { describeValidationProblem } from "../lib/validationProblem";
 
 function uniqueInstanceId(base: string, existing: Set<string>): string {
   if (!existing.has(base)) return base;
@@ -365,7 +366,7 @@ export function BuilderPage({
                 ? `${bots.length} bot${bots.length === 1 ? "" : "s"} · ready to run`
                 : validation.error
                   ? validation.error
-                  : `${validation.snaps.filter((s) => !s.OK).length} connection(s) need fixing`}
+                  : describeValidationProblem(validation)}
             </span>
           )}
           {saveError && <span className="text-xs text-danger">{saveError}</span>}
