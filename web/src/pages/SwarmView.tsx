@@ -86,6 +86,38 @@ export function SwarmView({
     for (const b of plan?.bots ?? []) m.set(b.instance_id, b.bot_id);
     return m;
   }, [plan]);
+
+  // Per-bot port wiring, from the same plan.snaps/plan.unfed the connector
+  // lines between bricks already use — so a port's own dot can never
+  // disagree with the wire drawn beside it about what's actually
+  // connected. Before this, every input dot was plain-muted and every
+  // output dot was plain-bright regardless of whether *that specific
+  // port* was wired to anything — a fixed styling convention, not a
+  // reflection of the real swarm.
+  const wiringByInstance = useMemo(() => {
+    const m = new Map<
+      string,
+      { wiredIn: Set<string>; wiredOut: Set<string>; unfed: Set<string> }
+    >();
+    const forInstance = (id: string) => {
+      let v = m.get(id);
+      if (!v) {
+        v = { wiredIn: new Set(), wiredOut: new Set(), unfed: new Set() };
+        m.set(id, v);
+      }
+      return v;
+    };
+    for (const s of plan?.snaps ?? []) {
+      const [fromId, fromPort] = s.From.split(".");
+      const [toId, toPort] = s.To.split(".");
+      if (fromId && fromPort) forInstance(fromId).wiredOut.add(fromPort);
+      if (toId && toPort) forInstance(toId).wiredIn.add(toPort);
+    }
+    for (const u of plan?.unfed ?? []) {
+      forInstance(u.bot).unfed.add(u.port);
+    }
+    return m;
+  }, [plan]);
   const isBusy =
     run?.status === "running" ||
     run?.status === "awaiting_approval" ||
@@ -216,6 +248,9 @@ export function SwarmView({
                     active={selected === instanceId}
                     activity={activityOf(instanceId)}
                     onClick={() => setSelected(instanceId)}
+                    wiredInputs={wiringByInstance.get(instanceId)?.wiredIn}
+                    wiredOutputs={wiringByInstance.get(instanceId)?.wiredOut}
+                    unfedInputs={wiringByInstance.get(instanceId)?.unfed}
                   />
                 )}
                 {i < order.length - 1 &&

@@ -1,16 +1,31 @@
 import type { BotSummary } from "../lib/types";
 import { PortBadge } from "./PortBadge";
 
+const EMPTY_SET: ReadonlySet<string> = new Set();
+
 export function BotBrick({
   bot,
   active,
   activity,
   onClick,
+  wiredInputs = EMPTY_SET,
+  wiredOutputs = EMPTY_SET,
+  unfedInputs = EMPTY_SET,
 }: {
   bot: BotSummary;
   active: boolean;
   activity?: "idle" | "running" | "done" | "failed";
   onClick: () => void;
+  /** Which of this bot's own ports are actually fed by a real snap in
+   * this swarm, and which required inputs have nothing feeding them at
+   * all — computed once in SwarmView from the same plan.snaps/plan.unfed
+   * the connector lines between bots already use, so a port's dot and
+   * the wire drawn beside it can never disagree about what's connected.
+   * Left empty (the default) shows every port as plain "not connected",
+   * the same look this component always had before wiring state existed. */
+  wiredInputs?: ReadonlySet<string>;
+  wiredOutputs?: ReadonlySet<string>;
+  unfedInputs?: ReadonlySet<string>;
 }) {
   const ring =
     activity === "running"
@@ -50,12 +65,24 @@ export function BotBrick({
 
       <div className="pointer-events-none absolute -left-1.5 top-1/2 flex -translate-y-1/2 flex-col gap-2.5">
         {(bot.inputs ?? []).map((p) => (
-          <PortBadge key={p.name} name={p.name} type={p.type} dim />
+          <PortBadge
+            key={p.name}
+            name={p.name}
+            type={p.type}
+            state={
+              unfedInputs.has(p.name) ? "unfed" : wiredInputs.has(p.name) ? "wired" : "unwired"
+            }
+          />
         ))}
       </div>
       <div className="pointer-events-none absolute -right-1.5 top-1/2 flex -translate-y-1/2 flex-col gap-2.5">
         {(bot.outputs ?? []).map((p) => (
-          <PortBadge key={p.name} name={p.name} type={p.type} />
+          <PortBadge
+            key={p.name}
+            name={p.name}
+            type={p.type}
+            state={wiredOutputs.has(p.name) ? "wired" : "unwired"}
+          />
         ))}
       </div>
     </button>
