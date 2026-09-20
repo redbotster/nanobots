@@ -402,6 +402,13 @@ func (s *Server) handleSaveSwarm(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	// A saved swarm's service counts must be right the instant Save
+	// returns, not up to swarmInspectTTL later — the builder's own plan
+	// preview just showed the real numbers, and the swarm list going back
+	// to 0/0 (a swarm just written can't yet be in the cached map at all)
+	// would be exactly the "0/4 live, reading as everything is broken"
+	// bug CLAUDE.md already names once.
+	s.swarmInspectCache.invalidate()
 
 	relPath, err := filepath.Rel(filepath.Dir(s.BotsDir), path)
 	if err != nil {

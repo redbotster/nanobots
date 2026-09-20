@@ -112,6 +112,8 @@ func (s *Server) handleSetBotServiceConnection(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	// Every swarm using this bot has a live/total count that just changed.
+	s.swarmInspectCache.invalidate()
 
 	bots, err := s.listBotSummaries()
 	if err != nil {
