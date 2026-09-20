@@ -170,19 +170,7 @@ func (s *Server) handleTeam(w http.ResponseWriter, r *http.Request) {
 // about.
 func (s *Server) swarmMembership() map[string][]string {
 	usedIn := map[string][]string{}
-	entries, err := os.ReadDir(s.swarmsDir())
-	if err != nil {
-		return usedIn
-	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
-			continue
-		}
-		path := filepath.Join(s.swarmsDir(), e.Name())
-		sw, err := schema.LoadNanoswarm(path)
-		if err != nil {
-			continue
-		}
+	_ = schema.ForEachSwarmFile(s.swarmsDir(), func(_ string, sw *schema.Nanoswarm) bool {
 		seen := map[string]bool{}
 		for _, b := range sw.Spec.Bots {
 			botID, _, _ := strings.Cut(b.Use, "@")
@@ -192,7 +180,8 @@ func (s *Server) swarmMembership() map[string][]string {
 			seen[botID] = true
 			usedIn[botID] = append(usedIn[botID], sw.Metadata.Name)
 		}
-	}
+		return true
+	})
 	for k := range usedIn {
 		sort.Strings(usedIn[k])
 	}

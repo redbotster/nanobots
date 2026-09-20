@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -196,22 +195,20 @@ func (s *Server) swarmByName(name string) (string, *schema.Nanoswarm, error) {
 	if name == "" || strings.ContainsAny(name, `/\`) || strings.Contains(name, "..") {
 		return "", nil, fmt.Errorf("invalid swarm name %q", name)
 	}
-	entries, err := os.ReadDir(s.swarmsDir())
+	var foundPath string
+	var found *schema.Nanoswarm
+	err := schema.ForEachSwarmFile(s.swarmsDir(), func(path string, sw *schema.Nanoswarm) bool {
+		if sw.Metadata.Name == name || strings.TrimSuffix(filepath.Base(path), ".yaml") == name {
+			foundPath, found = path, sw
+			return false
+		}
+		return true
+	})
 	if err != nil {
 		return "", nil, err
 	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
-			continue
-		}
-		path := filepath.Join(s.swarmsDir(), e.Name())
-		sw, err := schema.LoadNanoswarm(path)
-		if err != nil {
-			continue
-		}
-		if sw.Metadata.Name == name || strings.TrimSuffix(e.Name(), ".yaml") == name {
-			return path, sw, nil
-		}
+	if found == nil {
+		return "", nil, fmt.Errorf("no swarm called %q", name)
 	}
-	return "", nil, fmt.Errorf("no swarm called %q", name)
+	return foundPath, found, nil
 }

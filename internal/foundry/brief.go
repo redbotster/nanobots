@@ -129,19 +129,9 @@ func writeBotDirVerbatim(b *strings.Builder, botDir string) error {
 // hand-written claim about the repo defeats that.
 func harnessGuidance(repoRoot string) string {
 	counts := map[string]int{}
-	entries, err := os.ReadDir(filepath.Join(repoRoot, "bots"))
-	if err == nil {
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
-			}
-			nb, err := schema.LoadNanobot(filepath.Join(repoRoot, "bots", e.Name(), "nanobot.yaml"))
-			if err != nil {
-				continue
-			}
-			counts[nb.Spec.Harness.Type]++
-		}
-	}
+	_ = schema.ForEachBotDir(filepath.Join(repoRoot, "bots"), func(_ string, nb *schema.Nanobot) {
+		counts[nb.Spec.Harness.Type]++
+	})
 
 	var b strings.Builder
 	b.WriteString("Picking a harness — three values, and the catalog's own split right now")
