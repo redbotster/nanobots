@@ -112,6 +112,7 @@ func runRun(args []string) error {
 		RepoRoot:     root,
 		BotsDir:      filepath.Join(root, botsDir),
 		CallbackPort: port,
+		Version:      Version,
 	}, paths, oc, svc, secretsStore, callbacks)
 	orch.Memory = mem
 	orch.LLM = gen

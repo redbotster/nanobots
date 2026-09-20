@@ -28,8 +28,13 @@ import (
 // containers — one per bot, in the planner's topological order — wiring
 // each bot's inputs from swarm vars, upstream snaps, and port defaults.
 type Orchestrator struct {
-	RepoRoot      string // to build harness images and resolve bot dirs
-	BotsDir       string
+	RepoRoot string // to build harness images and resolve bot dirs
+	BotsDir  string
+	// Version is this binary's own version (main.Version — "dev" for a
+	// plain `go build`). Only read by EnsureHarnessImage, and only when
+	// RepoRoot has no harness/*/Dockerfile to build from — see
+	// ensureHarnessImageFromRegistry.
+	Version       string
 	CallbackAddr  string // how a container reaches nanobotd, e.g. http://host.docker.internal:7474
 	Callbacks     *CallbackRegistry
 	OneClaw       *oneclaw.Client // nil (or unconfigured) => every bot runs in demo mode
@@ -995,7 +1000,7 @@ func (o *Orchestrator) runBotOnce(run *Run, rs *planner.ResolvedSwarm, botID str
 	if !inProcess {
 		harnessType := imageFor(nb, run, botID)
 		var err error
-		image, user, err = EnsureHarnessImage(harnessType, o.RepoRoot)
+		image, user, err = EnsureHarnessImage(harnessType, o.RepoRoot, o.Version)
 		if err != nil {
 			return nil, err
 		}

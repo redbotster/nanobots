@@ -85,8 +85,46 @@ func TestDockerRunArgsGiveAnOfflineBotNoNetwork(t *testing.T) {
 }
 
 func TestEnsureHarnessImageRejectsUnknownHarness(t *testing.T) {
-	if _, _, err := EnsureHarnessImage("hermes", "."); err == nil {
+	if _, _, err := EnsureHarnessImage("hermes", ".", "dev"); err == nil {
 		t.Fatal("expected an error for a harness this build doesn't implement")
+	}
+}
+
+// A standalone binary (internal/catalog's extracted directory has
+// bots/examples/roles, never harness/) falls back to pulling a published
+// image — but only a tagged release has one to pull. A plain `go build`
+// (version "dev") has neither a Dockerfile to build from nor a real
+// version to pull by, and that has to be the error, not a bare Docker
+// failure three layers down.
+func TestEnsureHarnessImageNamesBothMissingPiecesForADevBuildWithNoCheckout(t *testing.T) {
+	dir := t.TempDir() // no harness/ Dockerfiles here
+	_, _, err := EnsureHarnessImage("bare", dir, "dev")
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	for _, want := range []string{"harness/bare/Dockerfile", `"dev"`, "checkout"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %q", err, want)
+		}
+	}
+}
+
+// A real release version with still no harness/ source falls back to a
+// registry pull rather than the dev-build error — this only proves the
+// version reaches that far without needing Docker or a network: the pull
+// itself isn't exercised here, matching this file's existing tests, none
+// of which invoke a real `docker build` either.
+func TestEnsureHarnessImageTriesTheRegistryWithARealVersion(t *testing.T) {
+	dir := t.TempDir()
+	_, _, err := EnsureHarnessImage("openclaw", dir, "v1.2.3")
+	if err == nil {
+		t.Fatal("expected an error — there is no real ghcr.io/redbotster/nanobots-harness-openclaw:v1.2.3 to pull in a test")
+	}
+	if strings.Contains(err.Error(), "not a released build") {
+		t.Errorf("a real version was treated as a dev build: %v", err)
+	}
+	if !strings.Contains(err.Error(), "nanobots-harness-openclaw:v1.2.3") {
+		t.Errorf("error does not name the image it tried to pull: %v", err)
 	}
 }
 

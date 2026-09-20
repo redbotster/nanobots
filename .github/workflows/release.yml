@@ -1,10 +1,13 @@
 # What a tag publishes.
 #
-# Two artifacts, both usable by a stranger with no accounts and no tokens:
-# the binaries with the WebUI compiled in, and a container image. The image
-# is the one that matters most — `nanobots deploy 1claw` needed an image the
-# user had built and pushed themselves, and a published one removes that
-# step entirely.
+# Three artifacts, all usable by a stranger with no accounts and no tokens:
+# the binaries with the WebUI and the bot catalog compiled in, the main
+# container image, and (as of this workflow) the two harness images
+# (bare, openclaw) a released binary pulls when it has no harness/
+# Dockerfile of its own to build from — see internal/runner.EnsureHarnessImage
+# and docs/harnesses.md. The main image matters most — `nanobots deploy
+# 1claw` needed an image the user had built and pushed themselves, and a
+# published one removes that step entirely.
 #
 # What this deliberately does not publish: the Homebrew cask (the tap repo
 # does not exist yet and uploading needs a token this repo does not hold —
@@ -103,3 +106,52 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  harness-images:
+    name: Harness images (${{ matrix.harness }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        harness: [bare, openclaw]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tagged by the exact release tag (v1.2.3), not GoReleaser's
+      # semver-stripped {{.Version}} — this workflow builds the image
+      # directly, and internal/runner.EnsureHarnessImage re-adds the "v"
+      # itself regardless of which convention main.Version arrives in, so
+      # either would have worked; the tag name is what a person reading
+      # `docker pull` output actually recognizes.
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/nanobots-harness-${{ matrix.harness }}
+          tags: |
+            type=ref,event=tag
+            type=raw,value=latest
+
+      # Same two architectures as the main image, for the same reason.
+      # Context is the whole repo: harness/*/Dockerfile COPYs go.mod,
+      # go.sum, cmd/nanobot-agent and internal/ from it, exactly like
+      # EnsureHarnessImage's own local `docker build` does.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: harness/${{ matrix.harness }}/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=harness-${{ matrix.harness }}
+          cache-to: type=gha,mode=max,scope=harness-${{ matrix.harness }}
