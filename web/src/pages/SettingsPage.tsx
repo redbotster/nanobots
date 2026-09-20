@@ -209,7 +209,7 @@ export function SettingsPage({ status }: { status: StatusResponse | null }) {
               <OAuthConnectRow
                 provider="google"
                 label="Google"
-                hint="Gmail, Drive, Sheets, Calendar — opens your browser to sign in"
+                hint="Gmail, Drive, Sheets, Calendar, Business Profile — opens your browser to sign in"
                 connected={isConnected("google")}
                 onConnected={reloadConnections}
                 connectFn={api.connectGoogleStart}

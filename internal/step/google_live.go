@@ -93,6 +93,7 @@ type googleAPI interface {
 	FilesDownload(id string) (contentBase64, mimeType string, err error)
 	RowsAppend(sheetID string, values []any) (rowNumber string, err error)
 	EventsList(calendarID, timeMin, timeMax string) ([]google.Event, error)
+	ReviewsList(since string) ([]google.Review, error)
 }
 
 // googleClient lazily builds the real *google.Client, reusing one
@@ -244,6 +245,14 @@ func dispatchGoogle(c googleAPI, op string, params map[string]any, blobs BlobSto
 			return nil, err
 		}
 		return toJSONAny(events)
+
+	case "reviews.list":
+		since, _ := params["since"].(string)
+		reviews, err := c.ReviewsList(since)
+		if err != nil {
+			return nil, err
+		}
+		return toJSONAny(reviews)
 
 	default:
 		return nil, fmt.Errorf("google: unsupported op %q", op)

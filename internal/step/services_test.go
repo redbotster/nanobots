@@ -27,17 +27,19 @@ func TestEveryProviderTheCatalogUsesLiveHasADispatcher(t *testing.T) {
 // connection, so "no" is not a useful answer on its own — and before the
 // registry this path fell through to a nil OneClaw and panicked.
 //
-// review-responder's google_business_profile is the real example: a gap
-// this build genuinely has, called out in docs/connections.md.
+// google_business_profile was the real example this test used to exercise
+// until review-responder grew a real client and switched to provider:
+// google (see docs/connections.md) — a made-up provider name stands in for
+// it now, since the point is the error path, not that specific gap.
 func TestAnUnsupportedProviderExplainsItselfInsteadOfPanicking(t *testing.T) {
 	l := &LiveDeps{Demo: NewDemoDeps(t.TempDir(), nil)}
-	svc := schema.Service{ID: "gbp", Provider: "google_business_profile", Connection: "oauth_native"}
+	svc := schema.Service{ID: "gbp", Provider: "made_up_provider", Connection: "oauth_native"}
 
 	_, err := l.ServiceCall(svc, "reviews.reply", nil)
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	for _, want := range []string{"gbp", "google_business_profile", "connection: demo", "docs/connections.md"} {
+	for _, want := range []string{"gbp", "made_up_provider", "connection: demo", "docs/connections.md"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error does not mention %q: %v", want, err)
 		}
@@ -102,16 +104,13 @@ func TestEveryProviderTheCatalogDeclaresCanBeDispatched(t *testing.T) {
 	for _, p := range LiveServiceProviders() {
 		supported[p] = true
 	}
-	// google_business_profile is the known exception: review-responder
-	// declares it and no client exists yet (docs/connections.md).
-	known := map[string]bool{"google_business_profile": true}
 
 	declared, err := declaredProviders("../../bots")
 	if err != nil {
 		t.Skipf("bots/ not readable from here: %v", err)
 	}
 	for _, p := range declared {
-		if !supported[p] && !known[p] {
+		if !supported[p] {
 			t.Errorf("bots declare provider %q with no dispatcher — connecting it would do nothing", p)
 		}
 	}

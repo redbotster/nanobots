@@ -21,7 +21,7 @@ spec:
 
   services:
     - id: gbp
-      provider: google_business_profile
+      provider: google
       scopes: [business.manage]
       required: true
       connection: demo
@@ -61,7 +61,12 @@ spec:
     pii: redact
     injection_threshold: 0.7
     max_runtime_secs: 120
-    network_egress: [mybusiness.googleapis.com]
+    network_egress:
+      [
+        mybusinessaccountmanagement.googleapis.com,
+        mybusinessbusinessinformation.googleapis.com,
+        mybusiness.googleapis.com,
+      ]
 
   resources:
     preset: small

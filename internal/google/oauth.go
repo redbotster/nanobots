@@ -45,12 +45,21 @@ const (
 	ScopeDriveFile        = "https://www.googleapis.com/auth/drive.file"
 	ScopeDriveReadonly    = "https://www.googleapis.com/auth/drive.readonly"
 	ScopeCalendarReadonly = "https://www.googleapis.com/auth/calendar.readonly"
+	// ScopeBusinessManage is Business Profile's own scope — a separate
+	// product from Gmail/Drive/Calendar, covering review-responder's
+	// reviews.list (see business.go). Google has historically gated the
+	// Business Profile APIs behind a manual access request beyond the
+	// usual OAuth consent screen, on top of and separate from scope
+	// verification; this has not been tried against a live account, and
+	// docs/connections.md says so rather than assuming testing-mode access
+	// works here the way it does for Gmail/Drive/Calendar's scopes.
+	ScopeBusinessManage = "https://www.googleapis.com/auth/business.manage"
 )
 
 // DefaultScopes covers every Google op this build's bots declare.
 var DefaultScopes = []string{
 	ScopeGmailReadonly, ScopeGmailSend, ScopeGmailCompose, ScopeGmailModify,
-	ScopeDriveFile, ScopeDriveReadonly, ScopeCalendarReadonly,
+	ScopeDriveFile, ScopeDriveReadonly, ScopeCalendarReadonly, ScopeBusinessManage,
 }
 
 // PKCE is one authorization attempt's verifier/challenge/state triple.

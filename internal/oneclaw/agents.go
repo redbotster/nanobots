@@ -41,10 +41,17 @@ type CreateAgentRequest struct {
 }
 
 // UpdateAgentRequest is the (partial) request body for PATCH
-// /v1/agents/{agent_id}. Only the field Nanobots actually needs to flip
-// post-creation is included.
+// /v1/agents/{agent_id}. Only the fields Nanobots actually needs to flip
+// post-creation are included.
 type UpdateAgentRequest struct {
 	MemoryEnabled *bool `json:"memory_enabled,omitempty"`
+	// ExecutionIntentsEnabled turns on POST /v1/agents/{id}/execute and the
+	// bindings it runs against — off by default even once a connector is
+	// installed and connected. Its absence is not a symptom of a missing
+	// credential or a wrong intent_type: a live call against an agent
+	// without this set answers 403 "Execution Intents are not enabled for
+	// this agent" before it ever looks at the binding name.
+	ExecutionIntentsEnabled *bool `json:"execution_intents_enabled,omitempty"`
 }
 
 // Agent mirrors the subset of the live Agent object Nanobots reads back.

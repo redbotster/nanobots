@@ -36,6 +36,32 @@ func TestUpdateAgentPatchesMemoryEnabled(t *testing.T) {
 	}
 }
 
+// A live probe against a real agent found execution_intents_enabled off by
+// default even with a connector installed and connected — POST
+// /v1/agents/{id}/execute 403s with "Execution Intents are not enabled for
+// this agent" before it ever looks at the binding name or intent_type. This
+// is the field that turns it on.
+func TestUpdateAgentPatchesExecutionIntentsEnabled(t *testing.T) {
+	var gotBody map[string]any
+	srv := newTestServer(t, map[string]http.HandlerFunc{
+		"/v1/auth/api-key-token": tokenHandler(t),
+		"/v1/agents/a1": func(w http.ResponseWriter, r *http.Request) {
+			json.NewDecoder(r.Body).Decode(&gotBody)
+			json.NewEncoder(w).Encode(Agent{ID: "a1", Name: "nanobots"})
+		},
+	})
+	c := NewClient("1ck_test")
+	c.BaseURL = srv.URL
+
+	enabled := true
+	if _, err := c.UpdateAgent("a1", UpdateAgentRequest{ExecutionIntentsEnabled: &enabled}); err != nil {
+		t.Fatalf("UpdateAgent: %v", err)
+	}
+	if gotBody["execution_intents_enabled"] != true {
+		t.Errorf("request body execution_intents_enabled = %v, want true", gotBody["execution_intents_enabled"])
+	}
+}
+
 func TestDeleteAgentSendsDELETE(t *testing.T) {
 	var gotMethod string
 	srv := newTestServer(t, map[string]http.HandlerFunc{

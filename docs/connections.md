@@ -16,7 +16,7 @@ A design principle carried through the whole build: wherever a human would norma
 
 Every bot's Google service (Gmail, Drive, Sheets) currently ships as `connection: demo`, even though real Gmail/Drive/Sheets access is now implemented (`internal/google` — PKCE OAuth, no client secret, direct against Google, no browser automation). The obvious first approach — Browser Bridge driving a real logged-in browser to Gmail — was tried and hit a wall: **Google refuses sign-in outright on any CDP/automation-controlled Chrome instance**, confirmed with screenshots (`"This browser or app may not be secure"`), not a guess. That's a deliberate Google policy, not a bug in the bridge or in this code, and not something to work around — spoofing the automation flag to get past Google's own bot detection is out of bounds.
 
-Browser Bridge itself works exactly as documented (see `docs/browser-bridge.md`) and remains the intended `connection` for services with no viable OAuth or static-token path — today that's just Google Business Profile replies (`review-responder`), which stays on `connection: demo` until a dedicated OAuth app exists for it (Business Profile is itself a Google API, so the more likely real path is actually extending `internal/google` with its scope, the same way Calendar was added, rather than Browser Bridge — just not done yet). Stripe, HubSpot, X, and LinkedIn all turned out not to need it: the first two have long-lived static tokens (below), and X/LinkedIn have normal OAuth2 flows of their own (next section).
+Browser Bridge itself works exactly as documented (see `docs/browser-bridge.md`) and remains the intended `connection` for services with no viable OAuth or static-token path — there is currently no provider in this catalog that needs it. Google Business Profile replies (`review-responder`) was the one candidate, and it turned out to be a Google OAuth scope extension instead, the same way Calendar was added (see below) — not Browser Bridge. Stripe, HubSpot, X, and LinkedIn all turned out not to need it either: the first two have long-lived static tokens (below), and X/LinkedIn have normal OAuth2 flows of their own (next section).
 
 ### Turning on real Gmail/Drive/Sheets (`oauth_native`)
 
@@ -25,7 +25,17 @@ Browser Bridge itself works exactly as documented (see `docs/browser-bridge.md`)
 3. Restart `nanobotd`, then click **Connect** next to Google on the WebUI's **Settings** page (or run `nanobots connect google` from the CLI) — it opens your browser to Google's real consent screen, then stores the resulting refresh token in a 1Claw vault secret (`nanobots-main` vault, `google/refresh_token`), never on local disk.
 4. Change a bot's `services[].connection` from `demo` to `oauth_native` in its `nanobot.yaml`.
 
-From then on, every Google-provider service across every bot shares that one connected account (`internal/step/google_live.go`'s `GoogleConfig` is process-wide, not per-bot) — see that file for exactly which `op:` values (`messages.list`, `files.create`, `rows.append`, `events.list`, ...) are implemented and any known shape gaps (e.g. `files.create` has no `filename` input yet, so one gets synthesized; `rows.append` has no column-order mapping yet, so values go in alphabetical-by-key order). `ScopeCalendarReadonly` is included in `DefaultScopes`, so `meeting-prep`/`calendar-scheduler`'s calendar reads work the same way once connected — no separate connect step.
+From then on, every Google-provider service across every bot shares that one connected account (`internal/step/google_live.go`'s `GoogleConfig` is process-wide, not per-bot) — see that file for exactly which `op:` values (`messages.list`, `files.create`, `rows.append`, `events.list`, `reviews.list`, ...) are implemented and any known shape gaps (e.g. `files.create` has no `filename` input yet, so one gets synthesized; `rows.append` has no column-order mapping yet, so values go in alphabetical-by-key order). `ScopeCalendarReadonly` is included in `DefaultScopes`, so `meeting-prep`/`calendar-scheduler`'s calendar reads work the same way once connected — no separate connect step.
+
+### Google Business Profile replies (`review-responder`)
+
+`review-responder`'s `gbp` service was `provider: google_business_profile` — a provider name with no client — until it grew one; it's `provider: google` now, and `ScopeBusinessManage` (`.../auth/business.manage`) is in `DefaultScopes` alongside Gmail/Drive/Calendar's scopes, so connecting Google the same way as above also covers it. No separate connect step, same as Calendar.
+
+Three things about `reviews.list` (`internal/google/business.go`) that are real limits, not oversights:
+
+- **Untried against a live account.** This build has no Business Profile account to test against. The account → location → reviews resolution and the `Review` field mapping are grounded in Google's own API reference docs (fetched while writing this, not assumed from memory), not verified the way Calendar's `rawEvent` shape is against a real response.
+- **Google has historically gated the Business Profile APIs behind a manual access request**, separate from and in addition to OAuth scope verification — a testing-mode app that works fine for Gmail/Drive/Calendar is not guaranteed to get a non-error response from `mybusinessaccountmanagement.googleapis.com` without it. Whether that's still true is exactly the kind of thing this file says to verify against the live API rather than trust from documentation, and nobody has yet.
+- **First account, first location, first page only.** A Business Profile with more than one location only gets the first one's reviews, and `since` filtering happens after fetching one page of up to the API's own per-page maximum — there's no location selector and no pagination yet.
 
 ## Turning on real X/LinkedIn posting (`oauth_native`)
 
@@ -71,19 +81,19 @@ With every Google service still on `connection: demo`, everything in this swarm 
 
 These are two separate things, and the second one used to have no bulk path.
 
-Every bot ships on `connection: demo`. That is the right default — nothing should read a real inbox or write to a real Drive until a human says so. But it means connecting an account changes nothing on its own, and the catalog is lopsided: **24 of the 34 declared services are Google**. Measured on a fresh install, every swarm sits entirely on demo data. Getting one of them live meant one OAuth round trip followed by up to twenty-four individual toggles, hunted down one bot at a time in the bot library.
+Every bot ships on `connection: demo`. That is the right default — nothing should read a real inbox or write to a real Drive until a human says so. But it means connecting an account changes nothing on its own, and the catalog is lopsided: **25 of the 34 declared services are Google**. Measured on a fresh install, every swarm sits entirely on demo data. Getting one of them live meant one OAuth round trip followed by up to twenty-five individual toggles, hunted down one bot at a time in the bot library.
 
 Settings now says, per provider, what connecting it would get you, and offers the second half in one action:
 
 ```
-Google    Gmail, Drive, Sheets, Calendar — opens your browser to sign in   [Connect]
-          18 bots would use this once connected
+Google    Gmail, Drive, Sheets, Calendar, Business Profile — opens your browser to sign in   [Connect]
+          19 bots would use this once connected
 ```
 
 and once connected:
 
 ```
-          18 bots still on demo data   [Use my account in all 18]
+          19 bots still on demo data   [Use my account in all 19]
           6 bots using your account    [Back to demo]
 ```
 
@@ -247,10 +257,8 @@ The dispatcher is registered now, with one op, because one is what the
 catalog uses. `TestEveryProviderTheCatalogDeclaresCanBeDispatched` reads
 every `services:` block in `bots/` and fails if a declared provider has no
 dispatcher, so the next one cannot be offered-but-unreachable in the same
-way.
-
-`google_business_profile` is the remaining exception and is listed as such
-in that test: `review-responder` declares it and no client exists yet.
+way — with no exceptions left in it as of `review-responder`'s move to
+`provider: google` (above).
 
 ## The daemon no longer answers to every website
 

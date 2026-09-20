@@ -116,9 +116,9 @@ of making each one real:
 tokens, no OAuth app, and it is already on a weekday-morning cron. Google is
 the widest unlock: one OAuth app turns on twelve of the sixteen.
 
-`review-responder` declares `google_business_profile`, for which no client
-exists yet; that bot stays on fixtures whatever you connect
-([connections.md](connections.md)).
+`review-responder` declares `provider: google` (Business Profile's
+`business.manage` scope) and connects the same way the swarms above do —
+one Google OAuth app ([connections.md](connections.md)).
 
 ## Checking it worked
 

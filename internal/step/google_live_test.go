@@ -32,6 +32,8 @@ type fakeGoogleAPI struct {
 	rowsAppendResult                                   string
 	eventsListCalendarID, eventsListMin, eventsListMax string
 	eventsListResult                                   []google.Event
+	reviewsListSince                                   string
+	reviewsListResult                                  []google.Review
 }
 
 func (f *fakeGoogleAPI) MessagesList(q string, max int) ([]google.Message, error) {
@@ -75,6 +77,10 @@ func (f *fakeGoogleAPI) EventsList(calendarID, timeMin, timeMax string) ([]googl
 func (f *fakeGoogleAPI) RowsAppend(sheetID string, values []any) (string, error) {
 	f.rowsAppendSheet, f.rowsAppendValues = sheetID, values
 	return f.rowsAppendResult, nil
+}
+func (f *fakeGoogleAPI) ReviewsList(since string) ([]google.Review, error) {
+	f.reviewsListSince = since
+	return f.reviewsListResult, nil
 }
 
 func TestDispatchGoogleMessagesList(t *testing.T) {
@@ -274,6 +280,25 @@ func TestDispatchGoogleEventsListPassesParamsAndShapesResult(t *testing.T) {
 	}
 	m, ok := items[0].(map[string]any)
 	if !ok || m["summary"] != "1:1" {
+		t.Errorf("items[0] = %#v", items[0])
+	}
+}
+
+func TestDispatchGoogleReviewsListPassesSinceAndShapesResult(t *testing.T) {
+	f := &fakeGoogleAPI{reviewsListResult: []google.Review{{ID: "r1", Author: "Jordan T.", Rating: 5, Text: "Best coffee in town"}}}
+	out, err := dispatchGoogle(f, "reviews.list", map[string]any{"since": "2026-09-10T00:00:00Z"}, nil)
+	if err != nil {
+		t.Fatalf("dispatchGoogle: %v", err)
+	}
+	if f.reviewsListSince != "2026-09-10T00:00:00Z" {
+		t.Errorf("reviewsListSince = %q", f.reviewsListSince)
+	}
+	items, ok := out.([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("out = %#v, want []any of length 1", out)
+	}
+	m, ok := items[0].(map[string]any)
+	if !ok || m["author"] != "Jordan T." || m["rating"] != float64(5) {
 		t.Errorf("items[0] = %#v", items[0])
 	}
 }
