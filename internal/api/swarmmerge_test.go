@@ -349,3 +349,79 @@ spec:
 		t.Errorf("not switched to manual:\n%s", got)
 	}
 }
+
+// A live audit found this one: saving get-paid.yaml through the builder
+// with no other change (only a bot added) glued its header comment
+// straight onto metadata's last line and ran every section from defaults
+// through deploy together with no separation at all — a save that edited
+// nothing about the swarm's own formatting still visibly wrecked it,
+// because neither yaml.v3 write path (mergeIntoExistingSwarm's node tree,
+// or marshalSwarmYAML's plain struct marshal) tracks blank lines.
+func TestRestoreSectionSpacingMatchesTheRealCatalogFileAfterAnEdit(t *testing.T) {
+	root := repoRoot(t)
+	existing, err := os.ReadFile(filepath.Join(root, "examples", "swarms", "get-paid.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := mergeIntoExistingSwarm(existing,
+		"get-paid",
+		"Every Monday, find every overdue invoice, send each reminder once approved, and post one summary of what went out.",
+		[]builderBotRef{
+			{ID: "chaser", Use: "invoice-chaser@0.1.0"},
+			{ID: "sender", Use: "email-send-approved@0.1.0"},
+			{ID: "notifier", Use: "notify@0.1.0", OnError: "continue"},
+			{ID: "newbot", Use: "competitor-watch@0.1.0"}, // the actual edit
+		},
+		[]builderSnap{{From: "sender.acted_on", To: "notifier.message", Join: "lines"}},
+		nil, "",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(restoreSectionSpacing(out))
+
+	// The header comment stays separated from metadata, not glued to it —
+	// and separated from spec: on the other side too. The second half of
+	// this was the actual live bug: a first version of this fix restored
+	// only the blank line before the comment block, not the one after it,
+	// so spec: still ran straight into the last comment line with no gap.
+	if !strings.Contains(got, "owner: me@example.com\n\n# Catalog's S10") {
+		t.Errorf("blank line before the header comment is missing:\n%s", got)
+	}
+	if !strings.Contains(got, "(docs/fan-out.md).\n\nspec:") {
+		t.Errorf("blank line between the header comment and spec: is missing:\n%s", got)
+	}
+	// Every one of spec's own sections gets its blank line back, except
+	// the first (defaults, which the real file also runs straight into
+	// spec: with no gap).
+	for _, want := range []string{
+		"daily_budget_usd: 5\n      approval_required_for: [email.send]\n    resources: {preset: small}\n\n  vars:",
+		"notify_channel: \"slack:#finance\"\n\n  trigger:",
+		"timezone: America/Chicago\n\n  bots:",
+		"use: competitor-watch@0.1.0\n\n  snaps:",
+		"join: lines\n\n  deploy:",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing expected spacing %q\n--- result ---\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "spec:\n\n  defaults:") {
+		t.Error("a blank line was added before defaults:, which the real file never has")
+	}
+}
+
+func TestRestoreSectionSpacingIsIdempotent(t *testing.T) {
+	once := restoreSectionSpacing([]byte(existingSwarm))
+	twice := restoreSectionSpacing(once)
+	if string(once) != string(twice) {
+		t.Errorf("running it twice kept adding blank lines:\n--- once ---\n%s\n--- twice ---\n%s", once, twice)
+	}
+}
+
+func TestRestoreSectionSpacingLeavesAFileWithNoSpecAlone(t *testing.T) {
+	malformed := []byte("apiVersion: nanobots.dev/v1\nkind: Nanoswarm\n")
+	got := restoreSectionSpacing(malformed)
+	if string(got) != string(malformed) {
+		t.Errorf("a document with no spec: was changed:\n%s", got)
+	}
+}
