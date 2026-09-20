@@ -58,7 +58,19 @@ run 30adb321: succeeded
 
 and in the WebUI as **"Finished, but one step didn't run"** — in warning
 colours, naming the bot, with the same one-click fix a real failure gets
-("Connect Slack").
+("Connect Slack"), on the run's own detail page.
+
+That banner used to be the only place. A live audit of the running app
+found the gap: a swarm card's "last ran 2h ago" and a Runs list row both
+read `last_run_status`/`status` alone, so a tolerated failure looked
+exactly like a clean run everywhere except the one page you'd have to
+already suspect something to open. `GET /api/swarms`'s
+`last_run_tolerated` and `GET /api/runs`'s `tolerated_count` (both plain
+counts — the full failure list is what the detail page's banner already
+renders) close that: both the swarm card and the Runs list row go amber
+and name how many steps didn't run, without moving the status word itself
+off "succeeded" — the run did finish, and that's still the honest
+one-word summary.
 
 ### Why not a third run status
 

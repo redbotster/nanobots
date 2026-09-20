@@ -170,3 +170,54 @@ describe("a run you declined", () => {
     expect(line!.className).not.toContain("text-danger");
   });
 });
+
+// The gap the live UI audit found: get-paid's reminders went out, notify
+// silently didn't, and the run listed as a plain "succeeded" — identical to
+// one where nothing was skipped. tolerated_count is a count, not the
+// failures themselves (RunDetail's own banner already renders those), but
+// the list has to say *something* changed.
+describe("a run that finished with a tolerated failure", () => {
+  it("still says succeeded, but flags it and names the count", () => {
+    withRuns([
+      run({
+        id: "t1",
+        swarm_name: "get-paid",
+        status: "succeeded",
+        error: undefined,
+        tolerated_count: 1,
+      }),
+    ]);
+    const { container } = render(<RunsPage />);
+
+    expect(screen.getByText("succeeded")).toBeTruthy();
+    expect(screen.getByText(/1 step didn't run/i)).toBeTruthy();
+    const dot = container.querySelector("span.inline-block");
+    expect(dot?.className).toContain("bg-warn");
+  });
+
+  it("is still counted and listed under Succeeded, not Failed", () => {
+    withRuns([
+      run({
+        id: "t1",
+        swarm_name: "get-paid",
+        status: "succeeded",
+        error: undefined,
+        tolerated_count: 1,
+      }),
+    ]);
+    render(<RunsPage />);
+
+    expect(screen.getByText("Succeeded").parentElement?.textContent).toContain("1");
+    expect(screen.getByText("Failed").parentElement?.textContent).toContain("0");
+    fireEvent.click(screen.getByText("Succeeded"));
+    expect(screen.getByText("get-paid")).toBeTruthy();
+  });
+
+  it("plain green, no note, when nothing was tolerated", () => {
+    withRuns([run({ id: "s1", status: "succeeded", error: undefined })]);
+    const { container } = render(<RunsPage />);
+
+    expect(screen.queryByText(/didn't run/i)).toBeNull();
+    expect(container.querySelector("span.inline-block")?.className).toContain("bg-ok");
+  });
+});

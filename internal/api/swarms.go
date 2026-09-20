@@ -33,6 +33,16 @@ type SwarmSummary struct {
 	LastRunStatus  string `json:"last_run_status,omitempty"`
 	LastRunAt      string `json:"last_run_at,omitempty"`
 	LastRunTrigger string `json:"last_run_trigger,omitempty"`
+	// LastRunTolerated counts bots the last run finished without — see
+	// runner.ToleratedFailure. A run carrying one of these still reports
+	// LastRunStatus "succeeded", correctly: the run did finish. Without
+	// this field that was the whole story a swarm card could tell, and
+	// "get-paid: last ran 2h ago" in plain green looked identical whether
+	// every reminder went out or the notify step silently didn't —
+	// exactly the shape of bug this build already treats as its worst
+	// kind. 0 (the zero value) is omitted, so an ordinary successful run
+	// costs nothing extra on the wire.
+	LastRunTolerated int `json:"last_run_tolerated,omitempty"`
 
 	// The schedule this swarm fires on, if any. The scheduler has been
 	// firing these all along while the UI said nothing about them — you
@@ -253,6 +263,7 @@ func (s *Server) handleListSwarms(w http.ResponseWriter, r *http.Request) {
 			summary.LastRunStatus = string(last.GetStatus())
 			summary.LastRunAt = last.StartedAt.Format(time.RFC3339)
 			summary.LastRunTrigger = last.TriggeredBy
+			summary.LastRunTolerated = len(last.GetTolerated())
 		}
 		if s.ScheduleBreaker != nil {
 			// Check's first act is to discard every run belonging to another

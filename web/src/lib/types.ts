@@ -136,6 +136,14 @@ export interface RunCore {
    * writes twenty-four of those a day, and a list that calls them all
    * "succeeded" hides the one that acted. */
   nothing_to_do?: string;
+  /** How many bots this run finished without (runner.ToleratedFailure) —
+   * a count, not the failures themselves; the full list with each error
+   * and remedy is what GET /api/runs/{id}'s `tolerated` already carries,
+   * and RunDetail's own banner already renders it. The status is still
+   * "succeeded", correctly — the run did finish — but a list that shows
+   * every one of those in plain green looks identical to one where
+   * nothing was skipped. */
+  tolerated_count?: number;
 }
 
 /** What GET /api/runs returns per run: everything a list renders, and
@@ -231,6 +239,11 @@ export interface SwarmSummary {
   last_run_status?: RunStatus;
   last_run_at?: string;
   last_run_trigger?: "manual" | "schedule" | "webhook";
+  /** How many bots the last run finished without (runner.ToleratedFailure).
+   * last_run_status is still "succeeded", correctly — but a card reading
+   * "last ran 2h ago" in plain green looked identical whether every step
+   * ran or one silently didn't. */
+  last_run_tolerated?: number;
   /** "Weekdays at 7:00 AM" — the swarm's cron trigger in words. Absent when
    * the swarm has no cron trigger. See internal/scheduler/describe.go. */
   schedule?: string;

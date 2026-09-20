@@ -182,6 +182,53 @@ func TestHandleListSwarmsReportsLastRun(t *testing.T) {
 	}
 }
 
+// The gap a live UI audit found: get-paid's reminders went out, its notify
+// step silently didn't, and last_run_status still read "succeeded" —
+// correctly, the run did finish — with nothing anywhere on the swarm card
+// to say a step was skipped. LastRunTolerated is what the card now checks.
+func TestHandleListSwarmsReportsATolerateFailureOnTheLastRun(t *testing.T) {
+	srv := testServer(t)
+	run := runner.NewRun("daily-email-recap")
+	run.AddTolerated("notify", "slack: not configured")
+	run.SetStatus(runner.StatusSucceeded)
+	srv.Runs.Add(run)
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/api/swarms", nil))
+	var swarms []SwarmSummary
+	if err := json.Unmarshal(rec.Body.Bytes(), &swarms); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	var found *SwarmSummary
+	for i := range swarms {
+		if swarms[i].Name == "daily-email-recap" {
+			found = &swarms[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("daily-email-recap not found in listing")
+	}
+	if found.LastRunStatus != "succeeded" {
+		t.Errorf("LastRunStatus = %q, want succeeded — the run did finish", found.LastRunStatus)
+	}
+	if found.LastRunTolerated != 1 {
+		t.Errorf("LastRunTolerated = %d, want 1", found.LastRunTolerated)
+	}
+}
+
+func TestHandleListSwarmsOmitsLastRunToleratedWhenThereIsNothingToSay(t *testing.T) {
+	srv := testServer(t)
+	run := runner.NewRun("daily-email-recap")
+	run.SetStatus(runner.StatusSucceeded)
+	srv.Runs.Add(run)
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/api/swarms", nil))
+	if strings.Contains(rec.Body.String(), "last_run_tolerated") {
+		t.Error("last_run_tolerated should be omitted (omitempty) for an ordinary clean run")
+	}
+}
+
 func TestLastRunForPicksTheMostRecentMatchingRun(t *testing.T) {
 	older := runner.NewRun("x")
 	older.StartedAt = time.Now().Add(-time.Hour)
