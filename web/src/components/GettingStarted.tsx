@@ -142,7 +142,9 @@ export function GettingStarted({
         <span className="text-muted">
           Getting started · {steps.length - remaining.length} of {steps.length} done
         </span>
-        <span className="min-w-0 truncate text-ink">{remaining[0].title}</span>
+        <span className="min-w-0 truncate text-ink" title={remaining[0].title}>
+          {remaining[0].title}
+        </span>
         {remaining[0].action && (
           <button
             onClick={remaining[0].action.onClick}
