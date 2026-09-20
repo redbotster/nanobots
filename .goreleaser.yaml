@@ -4,6 +4,11 @@
 # published binary serves the WebUI itself. A release without that step is a
 # binary that boots to a "UI not built" page, which is why it is a `before`
 # hook rather than something a release engineer has to remember.
+#
+# The catalog (bots/, examples/swarms/, roles/roles.yaml) is copied into
+# internal/catalog/data the same way, for the same reason: a released
+# binary has no git checkout beside it to read them from otherwise. See
+# internal/catalog and cmd/nanobots/up.go's fallback.
 version: 2
 
 before:
@@ -16,6 +21,7 @@ before:
     # an empty match. Running goreleaser locally once deleted it, `git add
     # -A` committed the deletion, and CI could not build the next commit.
     - sh -c "rm -rf internal/webui/dist && mkdir -p internal/webui/dist && cp -R web/dist/. internal/webui/dist/ && touch internal/webui/dist/.gitkeep"
+    - make catalog
 
 builds:
   - id: nanobots

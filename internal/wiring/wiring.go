@@ -1,5 +1,5 @@
 // Package wiring builds the shared runtime objects both entry points need:
-// nanobotd (internal/daemon) and the `nanobots run` CLI (cmd/nanobots).
+// `nanobots up` (internal/daemon) and `nanobots run` (cmd/nanobots).
 //
 // It exists because those two used to construct the same forty lines
 // independently — the 1Claw vault, the per-provider step configs, the
@@ -48,6 +48,7 @@ type Paths struct {
 	MemoryDir      string // what bots remember between runs
 	SecretsDir     string // the secrets.File backend's key and ciphertext, when that's the backend in use
 	DBPath         string // ~/.nanobots/nanobots.db — run history, and (as they migrate off their own formats) other daemon state
+	CatalogDir     string // where `nanobots up` extracts its own embedded bots/examples/roles when no git checkout has them — see internal/catalog and cmd/nanobots/up.go
 }
 
 // ResolvePaths locates (and creates where needed) everything under
@@ -71,6 +72,7 @@ func ResolvePaths() (Paths, error) {
 		MemoryDir:      filepath.Join(base, "memory"),
 		SecretsDir:     filepath.Join(base, "secrets"),
 		DBPath:         filepath.Join(base, "nanobots.db"),
+		CatalogDir:     filepath.Join(base, "catalog"),
 	}
 	if err := os.MkdirAll(p.RunWorkDir, 0o755); err != nil {
 		return Paths{}, err

@@ -159,6 +159,7 @@ internal/runner/    Docker-backed orchestrator: builds harness images, runs bots
 internal/remedy/    one place per known failure, and what to do about it
 internal/api/       REST+SSE handlers, the builder/Connect/composer/foundry endpoints, the callbacks
 internal/webui/     the built React app, embedded into the binary
+internal/catalog/   bots/, examples/swarms/ and roles/roles.yaml, embedded the same way (docs/hosting.md)
 internal/wiring/    shared startup wiring, so `nanobots up` and `nanobots run` build it the same way
 internal/daemon/    wires the above together and serves HTTP; called from `nanobots up` (no separate daemon binary)
 harness/            Dockerfiles for the bot runtime images (bare, openclaw) and the foundry sandbox
