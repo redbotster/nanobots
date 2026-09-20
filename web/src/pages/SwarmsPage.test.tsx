@@ -1,7 +1,10 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import { LastRunLine, ScheduleLine } from "./SwarmsPage";
+import { render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { LastRunLine, ScheduleLine, SwarmsPage } from "./SwarmsPage";
 import { swarmMatches } from "../lib/swarmFilter";
+import { api } from "../lib/api";
+import * as runsFeed from "../lib/runsFeed";
+import * as swarmsCacheModule from "../lib/swarmsCache";
 import type { SwarmSummary } from "../lib/types";
 
 function swarm(over: Partial<SwarmSummary>): SwarmSummary {
@@ -79,6 +82,33 @@ describe("the swarm card's run line", () => {
   it("says nothing has run yet when nothing has", () => {
     render(<LastRunLine swarm={swarm({})} />);
     expect(screen.getByText(/never run yet/i)).toBeTruthy();
+  });
+});
+
+describe("loading the swarm list on mount", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  // The shared cache in swarmsCache.ts is a module-level singleton: it can
+  // already hold a fresh ETag from an earlier mount of this page (Swarms ->
+  // Lab -> Swarms), so this remounted instance's very first poll can come
+  // back `changed: false` even though it has never painted a list. That
+  // used to leave the page reading "Loading swarms..." forever, since
+  // nothing else populates `swarms` on mount.
+  it("shows the list even when the first poll reports nothing changed", async () => {
+    // SwarmsPage renders GettingStarted, which reads the run feed and the
+    // connections list — through the shared feed here, not this test's
+    // concern, so stub both the same way GettingStarted's own tests do.
+    vi.spyOn(runsFeed, "useRuns").mockReturnValue([]);
+    vi.spyOn(api, "listConnections").mockResolvedValue([]);
+    vi.spyOn(swarmsCacheModule, "listSwarmsCached").mockResolvedValue({
+      swarms: [swarm({ name: "morning-brief" })],
+      changed: false,
+    });
+
+    render(<SwarmsPage uiMode="advanced" status={null} onOpenSettings={() => {}} />);
+
+    await waitFor(() => expect(screen.getByText("morning-brief")).toBeTruthy());
+    expect(screen.queryByText(/loading swarms/i)).toBeNull();
   });
 });
 
