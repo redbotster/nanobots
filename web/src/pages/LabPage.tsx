@@ -61,7 +61,19 @@ export function LabPage() {
       // treating *any* "lab" entry as "done" cleared the busy indicator
       // on that interim line instead of the real answer, re-enabling the
       // input while the actual Team agent was still working.
-      if (entry.bot === "lab" && !entry.step) setBusy(false);
+      //
+      // Derived from every entry, not just cleared by one: this endpoint
+      // replays the whole history on connect (internal/api/lab.go), and
+      // this ran before that replay too — `busy` started false on mount
+      // and only ever flipped true from this tab's own send(), so opening
+      // (or reloading) the Lab page while a real request was still running
+      // in the background showed an idle input and no "thinking" line,
+      // with nothing stopping a second message from firing alongside a
+      // Team agent still burning the same request quota. A turn is open
+      // for every entry except the final bare "lab" line, on replay same
+      // as live, so this now agrees with the transcript it is looking at
+      // instead of only with what this tab itself has sent.
+      setBusy(!(entry.bot === "lab" && !entry.step));
     });
   }, []);
 
