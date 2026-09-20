@@ -147,9 +147,17 @@ func (a *RunQueueApprover) mirror(localID, summary, riskTier string, done <-chan
 		for {
 			select {
 			case <-done:
-				// Answered here. The 1Claw approval is left pending rather
-				// than withdrawn: its API has no cancel, and a stale
-				// question is better than pretending to have one.
+				// Answered here — withdraw the 1Claw mirror rather than
+				// leaving it to expire on its own thirty minutes later.
+				// docs/1claw-feature-requests.md #3: this used to have no
+				// cancel endpoint to call, so every locally-answered
+				// question left a stale one sitting in a real person's
+				// 1Claw queue for the rest of the timeout. Best-effort,
+				// same as everything else in this function: a failure to
+				// cancel costs a mirror going stale, not the run.
+				if err := client.CancelApproval(ap.ID); err != nil {
+					a.Run.Log(a.Bot, a.Step, "answered here, but could not withdraw the 1Claw copy: %v", err)
+				}
 				return
 			case <-ticker.C:
 				status, err := client.ApprovalStatus(ap.ID)

@@ -62,17 +62,21 @@ services that have them, which is the argument for request #1.
 
 ---
 
-## 3. ~~Cancelling or withdrawing an approval request~~ — shipped
+## 3. ~~Cancelling or withdrawing an approval request~~ — shipped and wired in
 
 **Resolved.** `POST /v1/approvals/{approval_id}/cancel` exists now — the
 same resource family as `/v1/approvals/{approval_id}/decide`, not a
 workaround via the platform-executed-actions family this entry originally
 pointed at.
 
-**What this still blocks.** Wiring it in. `internal/runner/approver.go`
-still leaves the mirror pending and lets it expire, exactly as before; this
-entry only records that the endpoint we needed showed up, not that the
-build calls it yet. Tracked as ordinary backlog.
+**What this unblocked.** `RunQueueApprover.mirror` now calls it the moment
+the local decision lands, instead of leaving the 1Claw copy to expire on
+its own thirty minutes later — a stale question that used to sit in a real
+person's queue for the rest of that timeout every time a run was answered
+here rather than there. Best-effort, same as the rest of that function: a
+failed cancel is logged and does not touch the local decision, which
+already stands either way (`internal/oneclaw.Client.CancelApproval`,
+`TestAnsweringLocallyCancelsTheMirror`).
 
 ---
 
