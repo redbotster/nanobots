@@ -37,13 +37,28 @@ HTTPS API, bound to one host) that wasn't asked for but covers the same
 shape of gap. Full detail (scopes, `base_url`, `allowed_hosts`) checked for
 each, not just the slug's presence.
 
-**What this still blocks.** Nothing at the API level. Migrating
-`internal/stripe`, `internal/hubspot`, `internal/linkedin` (608 lines) and
-the Drive portion of `internal/google` (1109 lines) onto these presets is
-real, separate work — swapping a hand-rolled client for a binding changes
-where the credential lives and how a bot calls it — and hasn't happened
-yet. Recorded here as done at the platform level; the migration is tracked
-as ordinary backlog, not as a 1Claw gap.
+**What this still blocks — and a nuance found doing the legwork.** All four
+presets came back `requires_oauth: true`. For LinkedIn and Drive that is no
+change in kind — both hand-rolled clients are already OAuth, so migrating
+only relocates the refresh token to 1Claw's vault. For Stripe it is a
+different auth model, not the same one moved: `internal/stripe` reads your
+own account with a plain secret key (`stripe/secret_key`), the ordinary way
+a bot reads its own Stripe data; a `requires_oauth` preset scoped
+`read_only`/`read_write` describes Stripe Connect, the platform flow for
+connecting *someone else's* account. Migrating Stripe onto the preset is a
+feature change wearing a refactor's name, not a drop-in swap — worth typing
+in code and docs however this lands, so nobody reads "migrated to the 1Claw
+preset" as "same behavior, different plumbing." HubSpot needs the same
+check before assuming its preset is equivalent to its current private-app
+token.
+
+Migrating any of the four is now also blocked at the platform level,
+independent of the auth-model question above — see #14: 1Claw's own
+execution-intent binding path, which is what a migrated call would run
+through, 500s on every request tried against a real (if hand-made) `http`
+binding. Recorded here as done at the platform level for connector
+*installation*; the migration itself is tracked as ordinary backlog behind
+#14, not as a 1Claw gap in this entry.
 
 ---
 
@@ -313,3 +328,63 @@ this account's own token type, not evidence the endpoint is unusable for
 an unattended caller in general. Moot either way: that endpoint's tools
 come from a runtime's own tool registry rather than ad hoc request tools,
 and `/v1/chat/completions` is the right surface for `ai.generate` regardless.
+
+---
+
+## 14. `POST /v1/agents/{id}/execute` 500s on a real `http` binding
+
+**What we need.** `internal/step/live.go`'s `LiveDeps.ServiceCall` has had a
+generic fallback for any provider with no direct integration since it was
+written: `l.OneClaw.Execute(agentID, svc.ID, "http", {"op": op, "params":
+params})`, against `POST /v1/agents/{id}/execute`. It has never actually
+been exercised live — `review-responder`'s `google_business_profile` was
+the one provider that would have reached it, and it stayed on
+`connection: demo` the whole time it did (moot now that it has a real
+`internal/google` client instead — see that commit). Investigating the
+stripe/hubspot/linkedin/drive connector migration (#1) meant finally
+calling this path for real, since a migrated provider would route through
+exactly this.
+
+**What was found, in order.**
+
+1. `POST /v1/agents/{id}/execute` 403s "Execution Intents are not enabled
+   for this agent" — for *any* `binding`/`intent_type`, before the request
+   is validated at all. This is `execution_intents_enabled`, a per-agent
+   flag on `CreateAgentRequest`/`UpdateAgentRequest`, default `false` — not
+   a symptom of a missing credential, a wrong `intent_type`, or a missing
+   binding. `UpdateAgentRequest` didn't expose it (`internal/oneclaw`); it
+   does now, and it's been turned on for the agent this build's `deploy.go`
+   resolves by name. A live, reversible finding, not a guess.
+2. With that flag on, a `binding` that doesn't exist 404s "Binding '...'
+   not found or inactive" — for both `"http"` and `"http_request"` as
+   `intent_type`, so which one the schema means by its own example
+   (`ExecuteRequest.intent_type`'s description names `http_request`, not
+   the `"http"` this code sends) couldn't be told apart at this step.
+3. A real binding, created directly (`CreateBinding`, `binding_type: http`,
+   pointed at `https://httpbin.org` with no credential) and confirmed
+   healthy by 1Claw's own `POST .../bindings/{id}/test` (`success: true`,
+   463ms), still gets a bare `500 An unexpected error occurred` from
+   `/execute` — for `"http"` and `"http_request"`, and for every params
+   shape tried (`{method,path}`, `{method,path,headers,query}`,
+   `{request:{...}}`, `{http_method,path}`, `{verb,path}`). The binding
+   works; the execute call against it does not, regardless of guess.
+
+**What this blocks.** Any migration of a live-integrated provider (#1's
+stripe/hubspot/linkedin/drive) onto a 1Claw connector-preset binding,
+because that migration's whole point is routing through this exact path.
+Shipping it today would trade a working hand-rolled client for one that
+500s. Paused here rather than guessed further — this is exactly the "call
+it with real data and check the answer" case this file's own header asks
+for, not a params shape worth continuing to guess at.
+
+**What we do instead.** Keep `internal/stripe`, `internal/hubspot`,
+`internal/linkedin`, and the Drive portion of `internal/google` exactly as
+they are. Re-probe this endpoint the next time this file gets its live
+re-check; if it starts answering, #1's migration becomes a real option
+again, minus the Stripe auth-model question already raised there.
+
+**Left behind on the live account, not deleted per this repo's own rule**
+(never remove a 1Claw resource without asking first): a binding named
+`probe-http` on the `nanobots` agent (`eea76e92-69cb-4f29-9fa9-abae6d0405cf`),
+pointed at `httpbin.org`, carrying no credential. Harmless, but real, and
+worth a deliberate delete rather than an assumed one.
