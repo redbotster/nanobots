@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { BotSummary, DraftLoop, SnapCheck } from "../../lib/types";
 
 export interface PlacedBot {
@@ -95,7 +95,11 @@ function endpointPort(ref: string): { instanceId: string; port: string } {
  * state and resets on reload (a disclosed limitation, see its doc comment).
  * Delete/Backspace removes the selected node when focus isn't in a text
  * field; Escape cancels an in-progress connection drag. */
-export function BuilderCanvas({
+// Memoized: BuilderPage re-renders on every keystroke in its name/description
+// inputs (plain useState, unrelated to bots/snaps), and without this every
+// one of those re-rendered the whole canvas tree too — the props below are
+// the only things that should trigger it.
+export const BuilderCanvas = memo(function BuilderCanvas({
   bots,
   botDefs,
   snaps,
@@ -658,7 +662,7 @@ export function BuilderCanvas({
       )}
     </div>
   );
-}
+});
 
 /** Zoom out / level / zoom in / fit.
  *

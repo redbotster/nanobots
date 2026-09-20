@@ -1,3 +1,10 @@
+/** "14:32:07" — a run or Lab log line's own clock-time stamp, distinct from
+ * relativeTime's "3m ago": a log is read as a sequence, where the wall-clock
+ * time between two lines matters more than how long ago either one was. */
+export function timeOf(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour12: false });
+}
+
 /** "3m ago", "2h ago", "just now" — falls back to a locale date once
  * something's more than a week old, since "9d ago" stops being more
  * useful than the actual date at that point. Used anywhere a timestamp

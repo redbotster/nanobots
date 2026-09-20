@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { SchedulePicker } from "../components/builder/SchedulePicker";
 import { api } from "../lib/api";
 import { listBotsCached } from "../lib/botsCache";
@@ -210,30 +210,46 @@ export function BuilderPage({
     setBots((prev) => [...prev, { instanceId: id, botId: bot.id, x: pos.x, y: pos.y }]);
   };
 
-  const removeBot = (instanceId: string) => {
-    setBots((prev) => prev.filter((b) => b.instanceId !== instanceId));
-    setSnaps((prev) =>
-      prev.filter(
-        (s) => !s.from.startsWith(instanceId + ".") && !s.to.startsWith(instanceId + "."),
-      ),
-    );
-    setInputValues((prev) => {
-      const { [instanceId]: _drop, ...rest } = prev;
-      return rest;
-    });
-    if (selected === instanceId) setSelected(null);
-  };
+  // useCallback below, not plain functions: BuilderCanvas is memoized (its
+  // own doc comment says why — a keystroke in the name/description inputs
+  // shouldn't re-render the whole canvas), which only holds if the props it
+  // receives keep the same identity when nothing they touch has changed.
+  const removeBot = useCallback(
+    (instanceId: string) => {
+      setBots((prev) => prev.filter((b) => b.instanceId !== instanceId));
+      setSnaps((prev) =>
+        prev.filter(
+          (s) => !s.from.startsWith(instanceId + ".") && !s.to.startsWith(instanceId + "."),
+        ),
+      );
+      setInputValues((prev) => {
+        const { [instanceId]: _drop, ...rest } = prev;
+        return rest;
+      });
+      if (selected === instanceId) setSelected(null);
+    },
+    [selected],
+  );
 
-  const addSnap = (snap: CanvasSnap) => {
+  const addSnap = useCallback((snap: CanvasSnap) => {
     setSnaps((prev) => {
       // One connection per input port — a fresh one to the same target
       // replaces whatever fed it before, rather than silently stacking.
       const withoutTarget = prev.filter((s) => s.to !== snap.to);
       return [...withoutTarget, snap];
     });
-  };
+  }, []);
 
-  const removeSnap = (index: number) => setSnaps((prev) => prev.filter((_, i) => i !== index));
+  const removeSnap = useCallback(
+    (index: number) => setSnaps((prev) => prev.filter((_, i) => i !== index)),
+    [],
+  );
+
+  const moveBot = useCallback(
+    (id: string, x: number, y: number) =>
+      setBots((prev) => prev.map((b) => (b.instanceId === id ? { ...b, x, y } : b))),
+    [],
+  );
 
   // Lets a human pick a nested field of a json/list<json> output from the
   // Inspector (e.g. "recap.recap_json" -> "recap.recap_json.headline")
@@ -430,9 +446,7 @@ export function BuilderPage({
               botDefs={botDefs}
               snaps={snaps}
               snapChecks={snapChecksByPair}
-              onMoveBot={(id, x, y) =>
-                setBots((prev) => prev.map((b) => (b.instanceId === id ? { ...b, x, y } : b)))
-              }
+              onMoveBot={moveBot}
               onRemoveBot={removeBot}
               onAddSnap={addSnap}
               onRemoveSnap={removeSnap}

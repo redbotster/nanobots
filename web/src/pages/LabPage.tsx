@@ -2,10 +2,18 @@ import { useEffect, useRef, useState } from "react";
 import { api, subscribeLabEvents } from "../lib/api";
 import { Button } from "../components/Button";
 import type { LogEntry } from "../lib/types";
+import { timeOf } from "../lib/relativeTime";
 
-function timeOf(iso: string) {
-  return new Date(iso).toLocaleTimeString([], { hour12: false });
-}
+// Shown only before the first message — once a real conversation exists,
+// suggestions for starting one are noise. Each names a thing this app can
+// actually do (docs/team.md, README's own `nanobots team run` example) so
+// the empty state teaches by showing, not by describing.
+const STARTER_PROMPTS = [
+  "What can you help me with?",
+  "Add a bot that watches Stripe for failed payments and posts to Slack",
+  "Explain what the morning-brief swarm does",
+  "Which of my bots need Docker, and why?",
+];
 
 // Who's talking, from the log entry's own "bot" field — "you" and "lab"
 // are literal speakers; "team/<role>" is that role's own agent working,
@@ -65,8 +73,8 @@ export function LabPage() {
     if (!busy) inputRef.current?.focus();
   }, [busy]);
 
-  const send = async () => {
-    const text = message.trim();
+  const send = async (overrideText?: string) => {
+    const text = (overrideText ?? message).trim();
     if (!text) return;
     setSending(true);
     setBusy(true);
@@ -86,9 +94,24 @@ export function LabPage() {
     <div className="grid h-full grid-rows-[1fr_auto] overflow-hidden">
       <div className="overflow-auto px-4 py-4 sm:px-6">
         {entries.length === 0 && (
-          <div className="flex h-full items-center justify-center p-8 text-center text-sm text-muted">
-            Talk to Lab about what you want a Team member to do — it'll delegate to one, or just
-            answer if there's nothing to delegate.
+          <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center text-sm text-muted">
+            <p>
+              Talk to Lab about what you want a Team member to do — it'll delegate to one, or just
+              answer if there's nothing to delegate.
+            </p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {STARTER_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => void send(prompt)}
+                  disabled={busy}
+                  className="rounded-full border border-edge-strong px-3 py-1.5 text-[12.5px] text-ink transition-colors hover:border-tron hover:bg-tron/10 disabled:opacity-60"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         <div className="flex flex-col gap-2">

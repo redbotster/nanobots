@@ -2,10 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { LoggableJob } from "../lib/types";
 import { api } from "../lib/api";
 import { Button } from "./Button";
-
-function timeOf(iso: string) {
-  return new Date(iso).toLocaleTimeString([], { hour12: false });
-}
+import { timeOf } from "../lib/relativeTime";
 
 /** Renders a run or a foundry job's live log identically — both are
  * LoggableJob-shaped (id/log/pending_approvals), so this never needs to

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { relativeTime, untilTime } from "./relativeTime";
+import { relativeTime, timeOf, untilTime } from "./relativeTime";
 
 describe("relativeTime", () => {
   const now = new Date("2026-03-02T12:00:00Z");
@@ -69,5 +69,16 @@ describe("untilTime", () => {
 
   it("passes through something that isn't a date", () => {
     expect(untilTime("not a date")).toBe("not a date");
+  });
+});
+
+// Extracted from RunLog.tsx and LabPage.tsx, which each defined this
+// verbatim — one place per fact, same reason relativeTime/untilTime live
+// here rather than beside whichever page happened to need one first.
+describe("timeOf", () => {
+  it("renders a 24-hour clock time with seconds", () => {
+    expect(timeOf("2026-03-02T14:05:09Z")).toBe(
+      new Date("2026-03-02T14:05:09Z").toLocaleTimeString([], { hour12: false }),
+    );
   });
 });

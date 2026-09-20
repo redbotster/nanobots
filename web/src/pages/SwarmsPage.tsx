@@ -403,10 +403,22 @@ export function SwarmsPage({
   useEffect(() => {
     if (mode.kind !== "list") return;
     let alive = true;
+    // True only until this effect's own first tick resolves — not the same
+    // thing as "swarms is null". The shared cache in swarmsCache.ts is a
+    // module-level singleton: leaving this page and coming back (Swarms ->
+    // Lab -> Swarms) remounts the component, but the cache's ETag is still
+    // the one from the last visit, so the very first tick here can come
+    // back `changed: false` (a 304) even though THIS instance has never
+    // painted a list. Skipping the update in that case left the page
+    // reading "Loading swarms..." forever, since nothing else sets
+    // `swarms` on mount. Found live: reproduced by clicking Lab then back
+    // to Swarms.
+    let first = true;
     const tick = async () => {
       try {
         const res = await listSwarmsCached();
-        if (!alive || !res.changed) return;
+        if (!alive || (!res.changed && !first)) return;
+        first = false;
         setSwarms(res.swarms);
         setError(null);
       } catch (e) {

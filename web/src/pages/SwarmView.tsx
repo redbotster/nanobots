@@ -218,15 +218,36 @@ export function SwarmView({
                     onClick={() => setSelected(instanceId)}
                   />
                 )}
-                {i < order.length - 1 && (
-                  <SnapTrail
-                    from={snaps[0] ? snaps[0].From.split(".").slice(1).join(".") : "output"}
-                    to={snaps[0] ? snaps[0].To.split(".").slice(1).join(".") : "input"}
-                    extra={Math.max(0, snaps.length - 1)}
-                    join={snaps[0]?.join}
-                    live={run?.status === "running"}
-                  />
-                )}
+                {i < order.length - 1 &&
+                  (snaps.length > 0 ? (
+                    <SnapTrail
+                      from={snaps[0].From.split(".").slice(1).join(".")}
+                      to={snaps[0].To.split(".").slice(1).join(".")}
+                      extra={Math.max(0, snaps.length - 1)}
+                      join={snaps[0].join}
+                      live={run?.status === "running"}
+                    />
+                  ) : (
+                    // Adjacent in the run order, but not connected: no real
+                    // snap:. A SnapTrail here used to fall back to the
+                    // literal strings "output"/"input" — a wire drawn
+                    // between two bots that share no data, indistinguishable
+                    // from a real one. That happens for any bot with no
+                    // snap at all (meeting-prep in morning-brief has none in
+                    // either direction) and for any bot feeding a *later*
+                    // bot that isn't its immediate neighbor in this order
+                    // (triage feeds notifier here, but brief sits between
+                    // them) — five of the eighteen catalog swarms branch
+                    // (docs/parallelism.md) and hit one of these two shapes.
+                    // A gap says nothing rather than saying something false;
+                    // drawing every real snap regardless of adjacency is a
+                    // real DAG layout, which this straight-line-of-bricks
+                    // view isn't built for yet.
+                    <div
+                      className="hidden h-24 w-10 shrink-0 sm:block"
+                      aria-label="not connected to the next bot shown"
+                    />
+                  ))}
               </div>
             );
           })}

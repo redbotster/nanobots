@@ -9,8 +9,12 @@ exactly the elevated-trust shortcut the design doc rules out.
 
 ## What it is
 
-A tab (Advanced mode, next to Team) with one ongoing conversation. Type
-what you want; Lab decides what to do with it:
+A tab (Advanced mode, next to Team) with one ongoing conversation. Before
+the first message, the empty state offers four starter prompts — real
+things this app can do, one of them lifted straight from the transcript
+below — so a first-time visitor has something to click instead of a blank
+box and a placeholder; they disappear the moment a real conversation
+exists. Type what you want; Lab decides what to do with it:
 
 - **Delegate** it to a Team role — an existing one, or a new one it names
   — and stream that role's real work back into the same chat as it
