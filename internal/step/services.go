@@ -123,8 +123,7 @@ func LiveServiceProviders() []string {
 //
 // Reached only when a bot declares a non-demo connection for one, which is
 // a deliberate act — so the message says what to do about it rather than
-// just refusing. review-responder's google_business_profile is the live
-// example, and the one this build genuinely does not have.
+// just refusing.
 func unsupportedProviderError(svc schema.Service) error {
 	return fmt.Errorf("service %q has connection: %s, but this build has no direct %s integration "+
 		"(it has: %v) — set connection: demo to run it against fixtures, or see docs/connections.md",
