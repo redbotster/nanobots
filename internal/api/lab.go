@@ -20,7 +20,7 @@ type labMessageRequest struct {
 // subscribe" shape POST /api/runs already uses.
 func (s *Server) handleLabMessage(w http.ResponseWriter, r *http.Request) {
 	if s.Lab == nil {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("Lab isn't configured on this server"))
+		writeError(w, http.StatusBadRequest, fmt.Errorf("lab isn't configured on this server"))
 		return
 	}
 	var req labMessageRequest
@@ -49,7 +49,7 @@ func (s *Server) handleLabMessage(w http.ResponseWriter, r *http.Request) {
 // so far, then stays subscribed.
 func (s *Server) handleLabEvents(w http.ResponseWriter, r *http.Request) {
 	if s.Lab == nil {
-		writeError(w, http.StatusNotFound, fmt.Errorf("Lab isn't configured on this server"))
+		writeError(w, http.StatusNotFound, fmt.Errorf("lab isn't configured on this server"))
 		return
 	}
 	run := s.Lab.Run()

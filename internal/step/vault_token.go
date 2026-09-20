@@ -53,7 +53,15 @@ func (v *vaultToken) Get() (string, error) {
 		return "", fmt.Errorf("reading %q failed: %w", v.cfg.Key, err)
 	}
 	if !found {
-		return "", fmt.Errorf("no connected account yet — connect it from Settings")
+		// No "connect it from Settings" here: every caller of Get() wraps
+		// this through wrapTokenErr, which already appends its own
+		// provider-specific version of that same instruction ("connect a
+		// bot token from Settings", "connect a personal access token from
+		// Settings", ...). Saying it twice in one error — once generic, once
+		// specific — was the actual run log line for a missing Slack token:
+		// "slack: not configured — connect a bot token from Settings (no
+		// connected account yet — connect it from Settings)".
+		return "", fmt.Errorf("no connected account yet")
 	}
 	v.value = val
 	v.fetched = true
