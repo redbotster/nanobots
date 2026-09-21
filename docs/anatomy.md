@@ -51,6 +51,23 @@ from the bot's card in the UI or overridable per swarm. The precedence rule
 lives in one place in Go rather than in nineteen prompt files
 ([bot-contract.md](bot-contract.md)).
 
+`guardrails:` is the other half — what a bot is allowed to do, not how it
+does it — and every bot has one, including a bare-harness bot with no
+`instructions` port at all. Its seven fields (`pii`, `injection_threshold`,
+`max_runtime_secs`, `daily_budget_usd`, `network_egress`, `writes_allowed`,
+`approval_required_for`) are editable catalog-wide from the Team page's
+"How bots work" tab, the same "shipped with, and you can always put it
+back" shape `instructions` already has — a change here reaches every swarm
+using the bot, the same way an `instructions` change does. Loosening one is
+validated before it is written: `pii`/`injection_threshold` are checked
+against Shroud's own accepted values, `approval_required_for` must name a
+step the bot actually has (or `*`), and `max_runtime_secs` on a bot that
+declares an `approve` step cannot be set shorter than the approval window
+itself allows — the exact invariant
+`TestABotThatAsksAPersonWaitsLongEnoughForOne`
+(`internal/contract/approvalbudget_test.go`) checks for the whole catalog,
+enforced here at write time instead of only discovered by that test later.
+
 ## A nanoswarm
 
 A swarm says which bots to run and how to wire them. A `snap` connects one

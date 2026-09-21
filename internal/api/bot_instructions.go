@@ -107,8 +107,10 @@ func (s *Server) handleSetBotInstructions(w http.ResponseWriter, r *http.Request
 
 	if s.Team != nil {
 		if shipped, known := s.Team.Shipped(botID); known && shipped == text {
-			// Put back to what it shipped with — it's no longer tuned.
-			_ = s.Team.Forget(botID)
+			// Put back to what it shipped with — instructions are no
+			// longer tuned (the bot may still be in the team for its
+			// guardrails, which ForgetInstructions leaves alone).
+			_ = s.Team.ForgetInstructions(botID)
 		} else if text != previous {
 			_ = s.Team.RecordTuned(botID, previous)
 		}
