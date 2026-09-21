@@ -162,6 +162,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/bots", s.handleListBots)
 	mux.HandleFunc("POST /api/bots/{id}/services/{serviceId}/connection", s.handleSetBotServiceConnection)
 	mux.HandleFunc("POST /api/bots/{id}/instructions", s.handleSetBotInstructions)
+	mux.HandleFunc("POST /api/bots/{id}/guardrails", s.handleSetBotGuardrails)
 	mux.HandleFunc("GET /api/team", s.handleTeam)
 	mux.HandleFunc("GET /api/roles", s.handleListRoles)
 	mux.HandleFunc("POST /api/roles/{id}", s.handleSetRole)

@@ -1,5 +1,6 @@
 import type {
   Team,
+  Guardrails,
   BotSummary,
   ComposeResult,
   ConnectableService,
@@ -179,6 +180,19 @@ export const api = {
     req<BotSummary>(`/api/bots/${botId}/instructions`, {
       method: "POST",
       body: JSON.stringify({ instructions }),
+    }),
+  setBotGuardrails: (botId: string, guardrails: Guardrails) =>
+    req<BotSummary>(`/api/bots/${botId}/guardrails`, {
+      method: "POST",
+      body: JSON.stringify({
+        pii: guardrails.pii ?? "",
+        injection_threshold: guardrails.injection_threshold ?? 0,
+        max_runtime_secs: guardrails.max_runtime_secs ?? 0,
+        daily_budget_usd: guardrails.daily_budget_usd ?? 0,
+        network_egress: guardrails.network_egress ?? [],
+        writes_allowed: guardrails.writes_allowed ?? [],
+        approval_required_for: guardrails.approval_required_for ?? [],
+      }),
     }),
   startRun: (swarmPath: string) =>
     req<Run>("/api/runs", {

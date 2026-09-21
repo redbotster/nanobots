@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { listBotsCached } from "../lib/botsCache";
 import { InstructionsEditor } from "../components/BotCard";
+import { GuardrailsEditor } from "../components/GuardrailsEditor";
 import { RoleLibrarySection } from "../components/RoleLibrary";
 import { Tabs } from "../components/Tabs";
 import type { BotSummary, Team, TeamMember } from "../lib/types";
@@ -45,43 +46,59 @@ function MemberRow({ member, onChanged }: { member: TeamMember; onChanged: () =>
         )}
       </div>
 
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value.replace(/\n/g, " "))}
-        rows={2}
-        maxLength={2000}
-        className="mt-2 w-full resize-none rounded border border-edge bg-void px-2.5 py-1.5 text-[13px] leading-snug text-ink focus:border-tron focus:outline-none"
+      {member.has_instructions && (
+        <>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value.replace(/\n/g, " "))}
+            rows={2}
+            maxLength={2000}
+            className="mt-2 w-full resize-none rounded border border-edge bg-void px-2.5 py-1.5 text-[13px] leading-snug text-ink focus:border-tron focus:outline-none"
+          />
+
+          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px]">
+            <button
+              onClick={() => void save(text)}
+              disabled={busy || !dirty}
+              className="rounded border border-edge-strong px-2 py-0.5 text-ink transition-colors hover:border-tron disabled:opacity-40"
+            >
+              {busy ? "Saving…" : "Save"}
+            </button>
+            {/* Putting it back is what makes tuning safe to experiment
+                with — and it's only offered once there is something real
+                to put back to (see instructions_tuned's own comment). */}
+            {member.instructions_tuned && (
+              <button
+                onClick={() => {
+                  setText(member.shipped);
+                  void save(member.shipped);
+                }}
+                disabled={busy}
+                className="rounded border border-edge px-2 py-0.5 text-muted transition-colors hover:border-warn hover:text-warn disabled:opacity-40"
+                title={member.shipped || "(it shipped with nothing set)"}
+              >
+                Put back what it shipped with
+              </button>
+            )}
+            {error && <span className="text-danger">{error}</span>}
+          </div>
+
+          {member.instructions_tuned && (
+            <p className="mt-1.5 text-[11px] leading-snug text-muted/70">
+              <span className="text-muted">shipped with · </span>
+              {member.shipped || <span className="italic">nothing set</span>}
+            </p>
+          )}
+        </>
+      )}
+
+      <GuardrailsEditor
+        botId={member.bot_id}
+        current={member.guardrails}
+        shipped={member.shipped_guardrails}
+        tuned={member.guardrails_tuned}
+        onChanged={onChanged}
       />
-
-      <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px]">
-        <button
-          onClick={() => void save(text)}
-          disabled={busy || !dirty}
-          className="rounded border border-edge-strong px-2 py-0.5 text-ink transition-colors hover:border-tron disabled:opacity-40"
-        >
-          {busy ? "Saving…" : "Save"}
-        </button>
-        {/* Putting it back is what makes tuning safe to experiment with —
-            and it's only possible because the shipped value is recorded
-            before the first edit overwrites it. */}
-        <button
-          onClick={() => {
-            setText(member.shipped);
-            void save(member.shipped);
-          }}
-          disabled={busy}
-          className="rounded border border-edge px-2 py-0.5 text-muted transition-colors hover:border-warn hover:text-warn disabled:opacity-40"
-          title={member.shipped || "(it shipped with nothing set)"}
-        >
-          Put back what it shipped with
-        </button>
-        {error && <span className="text-danger">{error}</span>}
-      </div>
-
-      <p className="mt-1.5 text-[11px] leading-snug text-muted/70">
-        <span className="text-muted">shipped with · </span>
-        {member.shipped || <span className="italic">nothing set</span>}
-      </p>
     </div>
   );
 }
@@ -109,11 +126,11 @@ export function TuneAnother({ tuned, onChanged }: { tuned: Set<string>; onChange
         .catch((e: unknown) => setError(String(e)));
   }, [open, all]);
 
-  // Only bots that actually take instructions — the rest have nothing to
-  // tune, and listing them would make the picker a bot catalog.
-  const tunable = (all ?? []).filter(
-    (b) => !tuned.has(b.id) && b.inputs.some((p) => p.name === "instructions"),
-  );
+  // Every bot has guardrails to tune, even the ones with no instructions
+  // port at all (a bare-harness bot with no ai.generate step) — this used
+  // to filter to instructions-taking bots only, which made a bot like
+  // render-pdf impossible to bring into the team for its guardrails.
+  const tunable = (all ?? []).filter((b) => !tuned.has(b.id));
 
   // Picking a bot opens its editor. It does not save anything yet.
   //
@@ -134,24 +151,37 @@ export function TuneAnother({ tuned, onChanged }: { tuned: Set<string>; onChange
   };
 
   if (drafting) {
+    const hasInstructions = drafting.inputs.some((p) => p.name === "instructions");
     const shipped = drafting.inputs.find((p) => p.name === "instructions")?.default ?? "";
+    const added = () => {
+      setDrafting(null);
+      onChanged();
+    };
     return (
       <div className="mt-3 rounded-lg border border-tron/60 bg-panel p-4">
         <div className="flex items-baseline justify-between gap-2">
           <span className="font-display text-sm text-ink">{drafting.id}</span>
           <span className="text-[11px] text-muted">
-            change this and save to add it to your team
+            change something and save to add it to your team
           </span>
         </div>
-        <InstructionsEditor
+        {hasInstructions && (
+          <InstructionsEditor
+            botId={drafting.id}
+            current={shipped}
+            startOpen
+            onCancel={() => setDrafting(null)}
+            onChanged={added}
+          />
+        )}
+        <GuardrailsEditor
           botId={drafting.id}
-          current={shipped}
-          startOpen
-          onCancel={() => setDrafting(null)}
-          onChanged={() => {
-            setDrafting(null);
-            onChanged();
-          }}
+          current={drafting.guardrails}
+          shipped={drafting.guardrails}
+          tuned={false}
+          startOpen={!hasInstructions}
+          onCancel={hasInstructions ? undefined : () => setDrafting(null)}
+          onChanged={added}
         />
       </div>
     );
@@ -180,7 +210,7 @@ export function TuneAnother({ tuned, onChanged }: { tuned: Set<string>; onChange
       {error && <p className="mt-2 text-[12px] text-danger">{error}</p>}
       {all !== null && tunable.length === 0 && (
         <p className="mt-2 text-[13px] text-muted">
-          Every bot that takes instructions is already in your team.
+          Every bot in the catalog is already in your team.
         </p>
       )}
       <div className="mt-2 grid max-h-72 grid-cols-1 gap-1 overflow-auto sm:grid-cols-2">
@@ -232,8 +262,8 @@ export function TeamPage() {
               content: (
                 <div className="h-full overflow-auto pt-4">
                   <p className="max-w-2xl text-[13px] leading-snug text-muted">
-                    The bots you've told how to do their job. Each keeps what it shipped with, so
-                    you can always put it back.
+                    The bots you've told how to do their job, or changed what they're allowed to do.
+                    Each keeps what it shipped with, so you can always put it back.
                   </p>
 
                   {error && (
@@ -246,9 +276,10 @@ export function TeamPage() {
                   )}
                   {team !== null && team.members.length === 0 && (
                     <p className="mt-4 max-w-xl text-[13px] leading-snug text-muted">
-                      Nothing tuned yet. Every bot with an LLM step ships with a suggested way of
-                      working — "Anything mentioning data loss or billing is top priority" — and
-                      changing one brings it here.
+                      Nothing tuned yet. Every LLM bot ships with a suggested way of working —
+                      "Anything mentioning data loss or billing is top priority" — and every bot
+                      ships with guardrails on what it's allowed to do. Changing either brings it
+                      here.
                     </p>
                   )}
                   {team !== null && team.members.length > 0 && (

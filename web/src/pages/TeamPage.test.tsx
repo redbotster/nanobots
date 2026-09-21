@@ -68,7 +68,11 @@ describe("adding a bot to the team", () => {
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 
-  it("lists only bots that take instructions, and not ones already tuned", async () => {
+  // Every bot has guardrails to tune, even one with no instructions port
+  // at all (a bare-harness bot with no ai.generate step) — this used to
+  // filter to instructions-taking bots only, which made a bot like
+  // drive-save impossible to bring into the team for its guardrails.
+  it("lists every untuned bot, including ones with no instructions port", async () => {
     const plain = { ...bot("drive-save", ""), inputs: [] } as unknown as BotSummary;
     vi.spyOn(bots, "listBotsCached").mockResolvedValue([
       bot("inbox-triage", "a"),
@@ -80,7 +84,24 @@ describe("adding a bot to the team", () => {
     fireEvent.click(screen.getByText("+ Tune how a bot works"));
 
     await waitFor(() => expect(screen.getByText("inbox-triage")).toBeTruthy());
+    // Already tuned — excluded.
     expect(screen.queryByText("draft-replies")).toBeNull();
-    expect(screen.queryByText("drive-save")).toBeNull();
+    // No instructions port, but still tunable for its guardrails.
+    expect(screen.getByText("drive-save")).toBeTruthy();
+  });
+
+  it("only offers an instructions editor for a bot that has that port", async () => {
+    const plain = { ...bot("drive-save", ""), inputs: [] } as unknown as BotSummary;
+    vi.spyOn(bots, "listBotsCached").mockResolvedValue([plain] as never);
+
+    render(<TuneAnother tuned={new Set()} onChanged={vi.fn()} />);
+    fireEvent.click(screen.getByText("+ Tune how a bot works"));
+    await waitFor(() => expect(screen.getByText("drive-save")).toBeTruthy());
+    fireEvent.click(screen.getByText("drive-save"));
+
+    // No instructions box, but the guardrails editor opens straight away
+    // since it's the only thing there is to tune.
+    expect(screen.queryByText(/how this bot should work/i)).toBeNull();
+    await waitFor(() => expect(screen.getByText(/what this bot is allowed to do/i)).toBeTruthy());
   });
 });

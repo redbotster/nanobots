@@ -23,10 +23,25 @@ import (
 // is also what makes "put it back" possible, which is the affordance that
 // makes tuning safe to experiment with.
 
-// tunedRecord remembers the suggestion a bot shipped with, written the
-// first time its instructions are changed and never overwritten after.
+// tunedRecord remembers what a bot shipped with, written the first time
+// each of its two independently-tunable things is changed and never
+// overwritten after.
+//
+// The two are tracked independently, not as one "is this bot tuned"
+// flag: a bot can have its guardrails tuned with its instructions never
+// touched, or the other way round, and each needs its own "put back"
+// target. Shipped is a pointer (not a bare string, as it used to be)
+// for the same reason GuardrailsShipped is one — nil means "never
+// recorded," which a bare "" cannot distinguish from "recorded, and it
+// shipped with nothing set." Before this, a bot guardrails-tuned first
+// created a record with no Shipped at all, and the existing "only the
+// first call records" check on RecordTuned then saw a record already
+// existed and skipped recording instructions' real shipped value the
+// first time they were later touched — silently breaking "put back" for
+// instructions on any bot tuned in that order.
 type tunedRecord struct {
-	Shipped string `json:"shipped"`
+	Shipped           *string            `json:"shipped,omitempty"`
+	GuardrailsShipped *schema.Guardrails `json:"guardrails_shipped,omitempty"`
 }
 
 // TeamStore persists which bots have been tuned. A plain JSON file next to
@@ -81,26 +96,76 @@ func (s *TeamStore) save(m map[string]tunedRecord) error {
 	return os.WriteFile(s.Path, raw, 0o600)
 }
 
-// RecordTuned notes that botID has been customised, keeping whatever it
-// shipped with. Only the first call records — the shipped value is the
-// original, not the previous edit.
+// RecordTuned notes that botID's instructions have been customised,
+// keeping whatever they shipped with. Only the first call records — the
+// shipped value is the original, not the previous edit — and it checks
+// specifically whether instructions were already recorded, not merely
+// whether the bot has any record at all: a bot already present only for
+// its guardrails must still get its instructions' shipped value recorded
+// the first time those are touched too.
 func (s *TeamStore) RecordTuned(botID, shipped string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	m, _ := s.load()
-	if _, already := m[botID]; already {
+	rec := m[botID]
+	if rec.Shipped != nil {
 		return nil
 	}
-	m[botID] = tunedRecord{Shipped: shipped}
+	rec.Shipped = &shipped
+	m[botID] = rec
 	return s.save(m)
 }
 
-// Forget drops a bot from the team, for when its instructions are put back.
-func (s *TeamStore) Forget(botID string) error {
+// RecordGuardrailsTuned mirrors RecordTuned for guardrails.
+func (s *TeamStore) RecordGuardrailsTuned(botID string, shipped schema.Guardrails) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	m, _ := s.load()
-	delete(m, botID)
+	rec := m[botID]
+	if rec.GuardrailsShipped != nil {
+		return nil
+	}
+	rec.GuardrailsShipped = &shipped
+	m[botID] = rec
+	return s.save(m)
+}
+
+// ForgetInstructions clears just the instructions half of a bot's record,
+// for when they're put back to what shipped — dropping the bot from the
+// team entirely only if its guardrails were never tuned either, so a
+// guardrails customisation already on record survives.
+func (s *TeamStore) ForgetInstructions(botID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m, _ := s.load()
+	rec, ok := m[botID]
+	if !ok {
+		return nil
+	}
+	rec.Shipped = nil
+	if rec.GuardrailsShipped == nil {
+		delete(m, botID)
+	} else {
+		m[botID] = rec
+	}
+	return s.save(m)
+}
+
+// ForgetGuardrails mirrors ForgetInstructions for guardrails.
+func (s *TeamStore) ForgetGuardrails(botID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m, _ := s.load()
+	rec, ok := m[botID]
+	if !ok {
+		return nil
+	}
+	rec.GuardrailsShipped = nil
+	if rec.Shipped == nil {
+		delete(m, botID)
+	} else {
+		m[botID] = rec
+	}
 	return s.save(m)
 }
 
@@ -109,18 +174,49 @@ func (s *TeamStore) Shipped(botID string) (string, bool) {
 	defer s.mu.Unlock()
 	m, _ := s.load()
 	r, ok := m[botID]
-	return r.Shipped, ok
+	if !ok || r.Shipped == nil {
+		return "", false
+	}
+	return *r.Shipped, true
 }
 
-// TeamMember is one tuned bot and where it works.
+// ShippedGuardrails mirrors Shipped for guardrails.
+func (s *TeamStore) ShippedGuardrails(botID string) (schema.Guardrails, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m, _ := s.load()
+	r, ok := m[botID]
+	if !ok || r.GuardrailsShipped == nil {
+		return schema.Guardrails{}, false
+	}
+	return *r.GuardrailsShipped, true
+}
+
+// TeamMember is one tuned bot and where it works. A bot appears here for
+// either or both of two independent reasons — instructions changed,
+// guardrails changed — and each carries its own "shipped with" / "tuned"
+// pair so the UI can offer "put back" for each separately.
 type TeamMember struct {
 	BotID string `json:"bot_id"`
 	Name  string `json:"name"`
 	// Instructions is what it does now; Shipped is what it came with, so
 	// the UI can show the change and offer to put it back.
-	Instructions string   `json:"instructions"`
-	Shipped      string   `json:"shipped"`
-	UsedIn       []string `json:"used_in"`
+	Instructions      string `json:"instructions"`
+	Shipped           string `json:"shipped"`
+	InstructionsTuned bool   `json:"instructions_tuned"`
+	// HasInstructions says whether this bot has an instructions port at
+	// all — a bot present here only for a guardrails tune may have none,
+	// and the UI needs a real fact to hide that editor rather than a
+	// guess from Instructions happening to be empty.
+	HasInstructions bool `json:"has_instructions"`
+	// Guardrails is what applies now; ShippedGuardrails is what it came
+	// with. ShippedGuardrails is meaningless when GuardrailsTuned is
+	// false — it is the zero value, not "shipped with nothing set", since
+	// no bot in this catalog actually ships with every guardrail unset.
+	Guardrails        schema.Guardrails `json:"guardrails"`
+	ShippedGuardrails schema.Guardrails `json:"shipped_guardrails"`
+	GuardrailsTuned   bool              `json:"guardrails_tuned"`
+	UsedIn            []string          `json:"used_in"`
 }
 
 type teamResponse struct {
@@ -143,13 +239,23 @@ func (s *Server) handleTeam(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			continue // a bot that's since been deleted isn't a team member
 		}
-		members = append(members, TeamMember{
-			BotID:        botID,
-			Name:         nb.Metadata.Name,
-			Instructions: instructionsDefaultOf(nb),
-			Shipped:      rec.Shipped,
-			UsedIn:       nonNil(usedIn[botID]),
-		})
+		member := TeamMember{
+			BotID:           botID,
+			Name:            nb.Metadata.Name,
+			Instructions:    instructionsDefaultOf(nb),
+			HasInstructions: hasInstructionsPort(nb),
+			Guardrails:      nb.Spec.Guardrails,
+			GuardrailsTuned: rec.GuardrailsShipped != nil,
+			UsedIn:          nonNil(usedIn[botID]),
+		}
+		if rec.Shipped != nil {
+			member.InstructionsTuned = true
+			member.Shipped = *rec.Shipped
+		}
+		if rec.GuardrailsShipped != nil {
+			member.ShippedGuardrails = *rec.GuardrailsShipped
+		}
+		members = append(members, member)
 	}
 	sort.Slice(members, func(i, j int) bool { return members[i].BotID < members[j].BotID })
 

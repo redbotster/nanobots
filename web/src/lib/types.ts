@@ -490,8 +490,20 @@ export interface TeamMember {
   name: string;
   instructions: string;
   /** What it shipped with, so the UI can show the change and offer to put
-   * it back. */
+   * it back. Meaningless unless instructions_tuned is true. */
   shipped: string;
+  instructions_tuned: boolean;
+  /** Whether this bot has an instructions port at all — false for a bot
+   * present here only for a guardrails tune. */
+  has_instructions: boolean;
+  /** What applies now. */
+  guardrails: Guardrails;
+  /** What it shipped with, so the UI can offer to put it back.
+   * Meaningless unless guardrails_tuned is true — it's the zero value,
+   * not "shipped with nothing set", since no bot in this catalog actually
+   * ships with every guardrail unset. */
+  shipped_guardrails: Guardrails;
+  guardrails_tuned: boolean;
   used_in: string[];
 }
 
