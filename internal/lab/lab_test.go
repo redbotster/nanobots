@@ -125,6 +125,104 @@ func TestHandleMessageDelegateWithNoEngineConfiguredSaysSo(t *testing.T) {
 	}
 }
 
+func TestHandleMessageAutomateWithNoComposerConfiguredSaysSo(t *testing.T) {
+	gen := &fakeGenerator{answers: []string{`{"action":"automate","request":"summarise my inbox every morning"}`}}
+	s := NewSession(gen, Config{})
+	s.HandleMessage(context.Background(), "set up a basic automation")
+	if !strings.Contains(lastLogMsg(s), "composer needs a model") {
+		t.Errorf("last log line = %q, want it to admit the composer isn't wired up", lastLogMsg(s))
+	}
+}
+
+func TestHandleMessageAutomateReportsAComposeError(t *testing.T) {
+	gen := &fakeGenerator{answers: []string{`{"action":"automate","request":"summarise my inbox"}`}}
+	s := NewSession(gen, Config{Automate: func(context.Context, string) (AutomateResult, error) {
+		return AutomateResult{}, fmt.Errorf("the model timed out")
+	}})
+	s.HandleMessage(context.Background(), "set up a basic automation")
+	if !strings.Contains(lastLogMsg(s), "couldn't build that") || !strings.Contains(lastLogMsg(s), "timed out") {
+		t.Errorf("last log line = %q, want the real error surfaced", lastLogMsg(s))
+	}
+}
+
+func TestHandleMessageAutomateReportsAGap(t *testing.T) {
+	gen := &fakeGenerator{answers: []string{`{"action":"automate","request":"trade stocks for me"}`}}
+	s := NewSession(gen, Config{Automate: func(context.Context, string) (AutomateResult, error) {
+		return AutomateResult{Gap: "no bot can place a trade"}, nil
+	}})
+	s.HandleMessage(context.Background(), "set up a basic automation")
+	if !strings.Contains(lastLogMsg(s), "no bot can place a trade") {
+		t.Errorf("last log line = %q, want the gap explained", lastLogMsg(s))
+	}
+}
+
+// Auto-save, don't auto-run: a successful automate call must link to the
+// saved swarm (so the WebUI can render something to click, see
+// runner.Run.LogOpenSwarm) without ever implying it already ran.
+func TestHandleMessageAutomateSuccessLinksToTheSavedSwarm(t *testing.T) {
+	gen := &fakeGenerator{answers: []string{`{"action":"automate","request":"summarise my inbox every morning"}`}}
+	s := NewSession(gen, Config{Automate: func(context.Context, string) (AutomateResult, error) {
+		return AutomateResult{Name: "Inbox Summary", Path: "examples/swarms/inbox-summary.yaml", PlanOK: true}, nil
+	}})
+	s.HandleMessage(context.Background(), "set up a basic automation")
+
+	entries := s.Run().LogEntries()
+	last := entries[len(entries)-1]
+	if last.OpenSwarmPath != "examples/swarms/inbox-summary.yaml" {
+		t.Errorf("OpenSwarmPath = %q", last.OpenSwarmPath)
+	}
+	if strings.Contains(last.Msg, "it ran") || strings.Contains(last.Msg, "is running") {
+		t.Errorf("message must not claim it ran: %q", last.Msg)
+	}
+}
+
+// A draft saved with a snap that doesn't type-check yet must say so, not
+// claim success — the same "save a work in progress, but don't lie about
+// it" policy handleSaveSwarm already has for a human's Save click.
+func TestHandleMessageAutomateSuccessWithAPlanErrorSaysSo(t *testing.T) {
+	gen := &fakeGenerator{answers: []string{`{"action":"automate","request":"summarise my inbox"}`}}
+	s := NewSession(gen, Config{Automate: func(context.Context, string) (AutomateResult, error) {
+		return AutomateResult{
+			Name: "Inbox Summary", Path: "examples/swarms/inbox-summary.yaml",
+			PlanOK: false, PlanError: "notify.message wants a string, got json",
+		}, nil
+	}})
+	s.HandleMessage(context.Background(), "set up a basic automation")
+	if !strings.Contains(lastLogMsg(s), "notify.message wants a string") {
+		t.Errorf("last log line = %q, want the plan error named", lastLogMsg(s))
+	}
+}
+
+// Mirrors TestDelegatingLogsAnInterimStepDistinctFromTheFinalAnswer: the
+// WebUI's busy indicator relies on an interim step being present and
+// distinct from the final, step-less entry.
+func TestAutomatingLogsAnInterimStepDistinctFromTheFinalAnswer(t *testing.T) {
+	gen := &fakeGenerator{answers: []string{`{"action":"automate","request":"summarise my inbox every morning"}`}}
+	s := NewSession(gen, Config{Automate: func(context.Context, string) (AutomateResult, error) {
+		return AutomateResult{Name: "Inbox Summary", Path: "examples/swarms/inbox-summary.yaml", PlanOK: true}, nil
+	}})
+	s.HandleMessage(context.Background(), "set up a basic automation")
+
+	var sawInterim, sawFinal bool
+	for _, e := range s.Run().LogEntries() {
+		if e.Bot != "lab" {
+			continue
+		}
+		if e.Step == "composing" {
+			sawInterim = true
+		}
+		if e.Step == "" {
+			sawFinal = true
+		}
+	}
+	if !sawInterim {
+		t.Error("no interim \"composing\" step logged")
+	}
+	if !sawFinal {
+		t.Error("no final, step-less \"lab\" entry logged")
+	}
+}
+
 // The WebUI tells "Lab is still working" apart from "Lab has answered" by
 // whether a "lab"-authored entry carries a step (see LabPage.tsx) — found
 // live, after treating any "lab" entry as "answered" cleared the busy

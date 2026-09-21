@@ -257,16 +257,6 @@ func build(opts Options) (*api.Server, *scheduler.Scheduler, Options, error) {
 
 	runs := wiring.BuildRunStore(db, paths, func(f string, a ...any) { log.Printf(f, a...) })
 
-	labSession := lab.NewSession(gen, lab.Config{
-		Team: team.Config{
-			RepoRoot:        opts.RepoRoot,
-			TeamDir:         teamDir,
-			AnthropicAPIKey: anthropicKey,
-			GeminiAPIKey:    geminiKey,
-		},
-		Engines: enginePrefs,
-	})
-
 	srv := &api.Server{
 		Orchestrator:        orch,
 		Runs:                runs,
@@ -284,12 +274,28 @@ func build(opts Options) (*api.Server, *scheduler.Scheduler, Options, error) {
 		Webhook:             webhookTrigger,
 		Roles:               roleStore,
 		UI:                  webui.Handler(),
-		Lab:                 labSession,
 		LabEngines:          enginePrefs,
 		LabTeamDir:          teamDir,
 		LabClaudeConfigured: anthropicKey != "",
 		LabGeminiConfigured: geminiKey != "",
 	}
+
+	// Built after srv, and Lab wired on afterward: the Automate closure is
+	// srv's own compose-and-save method, so srv has to exist first — see
+	// internal/lab.Config.Automate's own doc comment for why this is a
+	// plain closure rather than an interface (internal/api already imports
+	// internal/lab for Session itself, so the reverse import isn't legal).
+	labSession := lab.NewSession(gen, lab.Config{
+		Team: team.Config{
+			RepoRoot:        opts.RepoRoot,
+			TeamDir:         teamDir,
+			AnthropicAPIKey: anthropicKey,
+			GeminiAPIKey:    geminiKey,
+		},
+		Engines:  enginePrefs,
+		Automate: srv.ComposeAndSaveAutomation,
+	})
+	srv.Lab = labSession
 
 	// The breaker is shared with the API rather than made twice, so the app
 	// can show why a schedule stopped and offer to start it again — a pause

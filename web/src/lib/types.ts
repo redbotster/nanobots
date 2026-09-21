@@ -98,6 +98,8 @@ export interface LogEntry {
   bot: string;
   step?: string;
   msg: string;
+  /** Set only on the entry announcing a swarm Lab just composed and saved. */
+  open_swarm_path?: string;
 }
 
 export interface PendingApproval {

@@ -10,6 +10,7 @@ import { timeOf } from "../lib/relativeTime";
 // the empty state teaches by showing, not by describing.
 const STARTER_PROMPTS = [
   "What can you help me with?",
+  "Set up a basic automation so I can see one run",
   "Add a bot that watches Stripe for failed payments and posts to Slack",
   "Explain what the morning-brief swarm does",
   "Which of my bots need Docker, and why?",
@@ -33,7 +34,7 @@ function speakerOf(bot: string): { label: string; align: "left" | "right" } {
  * single-tenant shape as everything else in this app — opening this page
  * always shows the same session, replayed from wherever it left off.
  */
-export function LabPage() {
+export function LabPage({ onOpenSwarm }: { onOpenSwarm: (path: string) => void }) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
@@ -108,8 +109,8 @@ export function LabPage() {
         {entries.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center text-sm text-muted">
             <p>
-              Talk to Lab about what you want a Team member to do — it'll delegate to one, or just
-              answer if there's nothing to delegate.
+              Talk to Lab about what you want a Team member to do — it'll delegate to one, compose
+              and save a quick automation to try, or just answer if there's nothing to do.
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               {STARTER_PROMPTS.map((prompt) => (
@@ -149,6 +150,15 @@ export function LabPage() {
                     <span className="opacity-60">{timeOf(entry.time)}</span>
                   </div>
                   <div className="whitespace-pre-wrap break-words">{entry.msg}</div>
+                  {entry.open_swarm_path && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenSwarm(entry.open_swarm_path!)}
+                      className="mt-1.5 text-[12.5px] font-medium text-tron underline decoration-dotted underline-offset-2 hover:decoration-solid"
+                    >
+                      Open swarm →
+                    </button>
+                  )}
                 </div>
               </div>
             );

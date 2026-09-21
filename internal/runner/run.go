@@ -36,6 +36,14 @@ type LogEntry struct {
 	Bot  string    `json:"bot"`
 	Step string    `json:"step,omitempty"`
 	Msg  string    `json:"msg"`
+	// OpenSwarmPath is set only by Lab, on the entry announcing a swarm it
+	// just composed and saved — never by a bot run or a foundry job, which
+	// is why this lives on the shared LogEntry rather than a Lab-specific
+	// type: internal/lab.Session already reuses *Run purely for its
+	// existing Log/Subscribe/SSE plumbing (see lab.go's own doc comment),
+	// and a second pub-sub mechanism just to carry one optional link back
+	// to the WebUI would duplicate all of it for one field.
+	OpenSwarmPath string `json:"open_swarm_path,omitempty"`
 }
 
 // PendingApproval is one `approve` step blocking on a human decision. The
@@ -234,7 +242,19 @@ func (r *Run) WasStoppedByUser() bool {
 }
 
 func (r *Run) Log(bot, step, format string, a ...any) {
-	entry := LogEntry{Time: time.Now(), Bot: bot, Step: step, Msg: fmt.Sprintf(format, a...)}
+	r.appendEntry(LogEntry{Time: time.Now(), Bot: bot, Step: step, Msg: fmt.Sprintf(format, a...)})
+}
+
+// LogOpenSwarm is Log plus a link — used exactly once, by Lab announcing a
+// swarm it just composed and saved, so the WebUI can render that one
+// entry with something to click instead of a bare path in prose.
+func (r *Run) LogOpenSwarm(bot, swarmPath, format string, a ...any) {
+	r.appendEntry(LogEntry{
+		Time: time.Now(), Bot: bot, Msg: fmt.Sprintf(format, a...), OpenSwarmPath: swarmPath,
+	})
+}
+
+func (r *Run) appendEntry(entry LogEntry) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.log = append(r.log, entry)

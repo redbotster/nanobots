@@ -382,15 +382,39 @@ export function SwarmsPage({
   uiMode,
   status,
   onOpenSettings,
+  openPath,
+  onOpenedPath,
 }: {
   uiMode: UIMode;
   status: StatusResponse | null;
   onOpenSettings: () => void;
+  /** A swarm to jump straight to the "view" mode for, once it's loaded —
+   * set when Lab links to a swarm it just composed and saved (see
+   * LabPage's onOpenSwarm). `path` matches SwarmSummary's own `path`
+   * field exactly, both computed the same way server-side
+   * (filepath.Rel against BotsDir's parent). */
+  openPath?: string | null;
+  /** Called once openPath has been consumed (found and opened, or the
+   * list loaded without it), so App.tsx can clear it and not re-trigger
+   * on the next render. */
+  onOpenedPath?: () => void;
 }) {
   const [swarms, setSwarms] = useState<SwarmSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>({ kind: "list" });
   const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    if (!openPath || !swarms) return;
+    const found = swarms.find((s) => s.path === openPath);
+    if (found) setMode({ kind: "view", swarm: found });
+    onOpenedPath?.();
+    // onOpenedPath is deliberately not a dependency: App.tsx passes a fresh
+    // closure each render, and including it would rerun this the instant
+    // App re-renders for any other reason, not just when openPath/swarms
+    // actually change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openPath, swarms]);
 
   const reload = () =>
     listSwarmsCached()

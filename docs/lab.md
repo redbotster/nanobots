@@ -3,9 +3,13 @@
 `context/TEAM-LAB-DESIGN.md` proposed `Human -> Lab Agent -> Team agents ->
 nanobots and nanoswarms`. `docs/team.md` built and proved the bottom layer.
 This page is the layer above it: one chat tab, backed by an orchestrator
-that decides whether to delegate your message to a Team member or just
-answer it — never a third option that acts directly, since that would be
-exactly the elevated-trust shortcut the design doc rules out.
+that decides whether to delegate your message to a Team member, compose a
+starter automation, report status, or just answer it.
+
+Composing is the one action that writes something without a Team agent's
+own workspace and review cycle in between, so it earns its own explanation
+of why it still isn't the elevated-trust shortcut the design doc rules out
+— see "Compose a starter automation" below.
 
 ## What it is
 
@@ -19,10 +23,45 @@ exists. Type what you want; Lab decides what to do with it:
 - **Delegate** it to a Team role — an existing one, or a new one it names
   — and stream that role's real work back into the same chat as it
   happens.
+- **Compose a starter automation** — a real swarm, saved immediately —
+  when you ask to set up or try a basic automation and want something
+  concrete fast. See "Compose a starter automation" below.
 - **Report status** on a role's recent work, read from its workspace's own
   commit history.
 - **Just answer**, when there's nothing to delegate — a greeting, a
   clarifying question, ordinary conversation.
+
+## Compose a starter automation
+
+Ask Lab to "set up a basic automation" (or describe one directly — "build
+me something that recaps my inbox every morning") and it drafts a swarm
+through the same path as the Swarms page's own compose box
+(`internal/api/compose.go`: the real bot catalog, the real planner's
+type-checking, one retry if the first draft doesn't connect), then **saves
+it for real immediately** — no separate "Save" click — and posts a link in
+chat. Opening the link takes you straight to that swarm on the Swarms page.
+
+This is a deliberate, disclosed departure from the compose box's own "never
+saves or runs anything on its own" rule (see `internal/api/compose.go`'s
+doc comment), scoped to exactly this one caller. It's still not the
+elevated-trust shortcut the design doc rules out: what it writes is a swarm
+file — the same artifact a Team agent editing its git worktree already
+produces today — and nothing in nanobots runs a swarm, or does anything to
+a real account, because a file exists on disk. **You still press Run
+yourself**, and any step with a real effect still opens its own approval
+gate first, exactly as it would for a swarm you built by hand. Composing is
+as safe as a Team agent authoring a swarm, minus the container and the
+wait — which is the point: "quickly build an example to try" is a promise
+about speed, and a general-purpose coding agent is not the fast path to it
+when a purpose-built one already is.
+
+When the real catalog can't do what you asked, Lab says so in chat instead
+of saving a swarm that doesn't work — the same honest "can't do this" the
+compose box's own gap response gives, carried over rather than papered
+over. When a draft saves with a snap that doesn't fully type-check yet, Lab
+saves it anyway (matching `handleSaveSwarm`'s own "a work in progress is
+never blocked from being saved" policy) and names the one thing left to
+fix, rather than claiming it's ready to run.
 
 ## Why it's a single-shot router, not a chat loop
 
@@ -186,6 +225,16 @@ was blocking Team from working on a 1Claw Cloud Runtime deployment at all.
   (`*team.Preferences`) — the same live pointer `GET/POST /api/lab/engines*`
   read and write from Settings, so a change reaches the very next
   `delegate()` call. See `docs/team.md`'s "Choosing which engine, live".
+- Composing is `lab.Config.Automate`, a plain closure to
+  `(*api.Server).ComposeAndSaveAutomation` — injected from
+  `internal/daemon`, not called directly, because `internal/api` already
+  imports `internal/lab` for `Session` itself and the reverse import isn't
+  legal. `ComposeAndSaveAutomation` shares its two halves
+  (`composeSwarm`/`saveSwarm`) with `POST /api/compose` and
+  `POST /api/swarms/save`, so Lab's automations never drift from what a
+  human gets from the compose box. A saved swarm's entry carries its path
+  on `LogEntry.OpenSwarmPath` (`runner.Run.LogOpenSwarm`), which is how the
+  WebUI renders a link instead of a bare path in prose.
 
 ## What's deliberately not built yet
 
