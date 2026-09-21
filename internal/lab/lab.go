@@ -1,9 +1,22 @@
 // Package lab is the "Lab" tier from context/TEAM-LAB-DESIGN.md: Human ->
 // Lab Agent -> Team agents -> nanobots/nanoswarms. A human sends one chat
 // message; Lab's orchestrator decides whether to delegate it to a Team
-// role (internal/team), report on a role's recent work, or just answer in
-// chat — never a fourth option that acts directly, since that would be
-// exactly the elevated-trust shortcut context/TEAM-LAB-DESIGN.md rules out.
+// role (internal/team), report on a role's recent work, compose a starter
+// automation, or just answer in chat.
+//
+// Composing is the one action that writes something without a Team
+// agent's own workspace and review cycle in between, so it earns its own
+// paragraph on why it still isn't the elevated-trust shortcut
+// context/TEAM-LAB-DESIGN.md rules out: what it writes is a swarm file —
+// the same artifact a Team agent editing its git worktree already
+// produces today, and nothing in nanobots runs a swarm, or does anything
+// to a real account, because its file exists on disk. A human still has
+// to press Run, and any step with a real effect still opens its own
+// approval gate first. Composing is exactly as safe as a Team agent
+// authoring a swarm, minus the container and the wait — which is the
+// whole point: "quickly build an example to try" reads as a promise about
+// speed, and a general-purpose coding agent is not the fast path to it
+// when a purpose-built one (the existing `/api/compose`) already is.
 //
 // The orchestrator is a single-shot router, not a multi-turn tool-calling
 // loop: internal/llm.Generator is one prompt in, one completion out (the
@@ -35,6 +48,30 @@ import (
 // promise this call reaches Anthropic specifically.
 var labModel = schema.Model{Provider: "anthropic", Name: "claude-sonnet-4-6", MaxTokens: 1500}
 
+// AutomateResult is what one compose-and-save attempt produces — enough
+// for Lab to describe it in chat and link to it. Defined here, not in
+// internal/api, because internal/api already imports internal/lab (for
+// Session itself) and a callback's return type has to live on whichever
+// side of that import doesn't create a cycle.
+type AutomateResult struct {
+	// Gap is set instead of everything else when the real catalog cannot
+	// do what was asked — composing's own honest "can't do this" outcome,
+	// carried over rather than papered over with a swarm that doesn't work.
+	Gap string
+	// Name/Path/Description describe the swarm once Gap is empty. Path is
+	// the same repo-relative form the WebUI already uses to open one
+	// (examples/swarms/<slug>.yaml).
+	Name        string
+	Path        string
+	Description string
+	// PlanOK is false when the draft was saved anyway but doesn't fully
+	// type-check yet — matching handleSaveSwarm's own policy of saving a
+	// work in progress rather than blocking it, so Lab can say plainly
+	// that there's one more thing to fix rather than claiming success.
+	PlanOK    bool
+	PlanError string
+}
+
 // Config is what a Session needs that doesn't change message to message.
 type Config struct {
 	Team team.Config
@@ -46,6 +83,14 @@ type Config struct {
 	// what it decided last time — nothing here should let a model pick
 	// which paid credential a request burns through.
 	Engines *team.Preferences
+	// Automate composes a swarm from a plain-English request and saves it
+	// for real (see AutomateResult) — internal/api.Server's own compose +
+	// save path, reused rather than reimplemented, injected here since
+	// internal/lab cannot import internal/api (the reverse already holds:
+	// api.Server carries a *lab.Session). nil disables the action entirely
+	// — see automate()'s own nil check — matching how DefaultEngine's
+	// absence disables delegation rather than panicking.
+	Automate func(ctx context.Context, request string) (AutomateResult, error)
 }
 
 // turn is one exchange in the conversation, restated into every routing
@@ -122,9 +167,39 @@ func (s *Session) HandleMessage(ctx context.Context, message string) {
 		s.appendLab(s.reportStatus(d.Role))
 	case actionDelegate:
 		s.delegate(ctx, d.Role, d.Task)
+	case actionAutomate:
+		s.automate(ctx, d.Request)
 	default:
 		s.appendLab(fmt.Sprintf("I produced an action I don't recognize (%q) — that's a bug in me, not in you.", d.Action))
 	}
+}
+
+// automate composes a swarm from request and saves it for real — see
+// AutomateResult and Config.Automate's own doc comments for why this one
+// action is allowed to write something without a Team agent's workspace
+// and review cycle in between.
+func (s *Session) automate(ctx context.Context, request string) {
+	if s.cfg.Automate == nil {
+		s.appendLab("I can't build an automation yet — the composer needs a model configured (see docs/llm.md).")
+		return
+	}
+	s.run.Log("lab", "composing", "composing an automation: %s", request)
+	result, err := s.cfg.Automate(ctx, request)
+	if err != nil {
+		s.appendLab(fmt.Sprintf("I couldn't build that: %s", shortErr(err)))
+		return
+	}
+	if result.Gap != "" {
+		s.appendLab(fmt.Sprintf("The current bot catalog can't do that yet: %s", result.Gap))
+		return
+	}
+	msg := fmt.Sprintf("Built %q and saved it.", result.Name)
+	if result.PlanOK {
+		msg += " Open it to see it run — nothing runs until you press Run yourself."
+	} else {
+		msg += fmt.Sprintf(" One thing doesn't connect yet: %s — open it to fix that first.", result.PlanError)
+	}
+	s.appendLabWithLink(msg, result.Path)
 }
 
 // delegate runs the task through internal/team, streaming its live events
@@ -218,6 +293,15 @@ func consumeDelegation(role string, events <-chan foundry.Event, done <-chan err
 
 func (s *Session) appendLab(text string) {
 	s.run.Log("lab", "", "%s", text)
+	s.mu.Lock()
+	s.history = append(s.history, turn{who: "lab", text: text})
+	s.mu.Unlock()
+}
+
+// appendLabWithLink is appendLab plus a link to a swarm just composed and
+// saved — see runner.Run.LogOpenSwarm.
+func (s *Session) appendLabWithLink(text, swarmPath string) {
+	s.run.LogOpenSwarm("lab", swarmPath, "%s", text)
 	s.mu.Lock()
 	s.history = append(s.history, turn{who: "lab", text: text})
 	s.mu.Unlock()

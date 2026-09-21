@@ -144,6 +144,65 @@ describe("loading the swarm list on mount", () => {
   });
 });
 
+// Lab links to a swarm it just composed and saved by path (see LabPage's
+// onOpenSwarm / App.tsx's openSwarmPath) — this is the other end: once the
+// list has the matching swarm, jump straight to viewing it.
+describe("opening a swarm by path", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("opens the matching swarm once the list has loaded, then reports it consumed", async () => {
+    vi.spyOn(runsFeed, "useRuns").mockReturnValue([]);
+    vi.spyOn(api, "listConnections").mockResolvedValue([]);
+    vi.spyOn(swarmsCacheModule, "listSwarmsCached").mockResolvedValue({
+      swarms: [
+        swarm({
+          path: "examples/swarms/inbox-summary.yaml",
+          name: "inbox-summary",
+          description: "d",
+        }),
+      ],
+      changed: true,
+    });
+    const onOpenedPath = vi.fn();
+
+    render(
+      <SwarmsPage
+        uiMode="advanced"
+        status={null}
+        onOpenSettings={() => {}}
+        openPath="examples/swarms/inbox-summary.yaml"
+        onOpenedPath={onOpenedPath}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText("d")).toBeTruthy());
+    expect(onOpenedPath).toHaveBeenCalled();
+  });
+
+  it("does nothing when the path doesn't match any loaded swarm", async () => {
+    vi.spyOn(runsFeed, "useRuns").mockReturnValue([]);
+    vi.spyOn(api, "listConnections").mockResolvedValue([]);
+    vi.spyOn(swarmsCacheModule, "listSwarmsCached").mockResolvedValue({
+      swarms: [swarm({ name: "morning-brief" })],
+      changed: true,
+    });
+    const onOpenedPath = vi.fn();
+
+    render(
+      <SwarmsPage
+        uiMode="advanced"
+        status={null}
+        onOpenSettings={() => {}}
+        openPath="examples/swarms/does-not-exist.yaml"
+        onOpenedPath={onOpenedPath}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText("morning-brief")).toBeTruthy());
+    expect(onOpenedPath).toHaveBeenCalled();
+  });
+});
+
 describe("filtering the swarm list", () => {
   const list = [
     swarm({

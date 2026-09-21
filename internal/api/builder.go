@@ -331,13 +331,25 @@ func (s *Server) handleSaveSwarm(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	if strings.TrimSpace(req.Name) == "" {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("name is required"))
+	resp, status, err := s.saveSwarm(req)
+	if err != nil {
+		writeError(w, status, err)
 		return
 	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// saveSwarm is handleSaveSwarm's core, minus the HTTP request/response
+// shapes — reused by ComposeAndSaveAutomation so Lab's "automate" action
+// saves through the exact same path a human's "Save" click does, including
+// the merge-not-replace behaviour swarmmerge.go exists for. status is the
+// HTTP status err would have been reported with.
+func (s *Server) saveSwarm(req saveSwarmRequest) (saveSwarmResponse, int, error) {
+	if strings.TrimSpace(req.Name) == "" {
+		return saveSwarmResponse{}, http.StatusBadRequest, fmt.Errorf("name is required")
+	}
 	if len(req.Bots) == 0 {
-		writeError(w, http.StatusBadRequest, fmt.Errorf("add at least one bot before saving"))
-		return
+		return saveSwarmResponse{}, http.StatusBadRequest, fmt.Errorf("add at least one bot before saving")
 	}
 
 	// Refused before anything is written, not warned about after: a swarm
@@ -345,15 +357,13 @@ func (s *Server) handleSaveSwarm(w http.ResponseWriter, r *http.Request) {
 	// runs, which is the worst of both.
 	trigger, terr := triggerFor(req.Schedule, req.Timezone)
 	if terr != nil {
-		writeError(w, http.StatusBadRequest, terr)
-		return
+		return saveSwarmResponse{}, http.StatusBadRequest, terr
 	}
 
 	sw := draftToNanoswarmWithTrigger(req.Name, req.Description, req.Owner, req.Bots, req.Snaps, trigger)
 	result, resolveErr := planner.PlanSwarm(sw, s.BotsDir)
 	if resolveErr != nil {
-		writeError(w, http.StatusBadRequest, resolveErr)
-		return
+		return saveSwarmResponse{}, http.StatusBadRequest, resolveErr
 	}
 
 	dir := s.swarmsDir()
@@ -361,8 +371,7 @@ func (s *Server) handleSaveSwarm(w http.ResponseWriter, r *http.Request) {
 	if req.Path != "" {
 		abs, err := swarmPathFromRequest(dir, req.Path)
 		if err != nil {
-			writeError(w, http.StatusBadRequest, err)
-			return
+			return saveSwarmResponse{}, http.StatusBadRequest, err
 		}
 		path = abs
 	} else {
@@ -379,9 +388,8 @@ func (s *Server) handleSaveSwarm(w http.ResponseWriter, r *http.Request) {
 	if existing, readErr := os.ReadFile(path); readErr == nil {
 		raw, err = mergeIntoExistingSwarm(existing, req.Name, req.Description, req.Bots, req.Snaps, req.Schedule, req.Timezone)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError,
-				fmt.Errorf("could not update %s without losing the rest of the file: %w", filepath.Base(path), err))
-			return
+			return saveSwarmResponse{}, http.StatusInternalServerError,
+				fmt.Errorf("could not update %s without losing the rest of the file: %w", filepath.Base(path), err)
 		}
 	} else {
 		// Two-space indent, matching the hand-written catalog and what
@@ -390,8 +398,7 @@ func (s *Server) handleSaveSwarm(w http.ResponseWriter, r *http.Request) {
 		// every later edit re-indented the whole file.
 		raw, err = marshalSwarmYAML(sw)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
+			return saveSwarmResponse{}, http.StatusInternalServerError, err
 		}
 	}
 	// Neither path above produces the blank lines every hand-written
@@ -402,12 +409,10 @@ func (s *Server) handleSaveSwarm(w http.ResponseWriter, r *http.Request) {
 	// without this.
 	raw = restoreSectionSpacing(raw)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+		return saveSwarmResponse{}, http.StatusInternalServerError, err
 	}
 	if err := os.WriteFile(path, raw, 0o644); err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
+		return saveSwarmResponse{}, http.StatusInternalServerError, err
 	}
 	// A saved swarm's service counts must be right the instant Save
 	// returns, not up to swarmInspectTTL later — the builder's own plan
@@ -421,10 +426,10 @@ func (s *Server) handleSaveSwarm(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		relPath = path
 	}
-	writeJSON(w, http.StatusOK, saveSwarmResponse{
+	return saveSwarmResponse{
 		Path: relPath, Name: req.Name, Description: req.Description,
 		Plan: buildPlanResponse(req.Name, result, nil),
-	})
+	}, http.StatusOK, nil
 }
 
 // swarmPathFromRequest resolves a caller-supplied swarm path against dir,

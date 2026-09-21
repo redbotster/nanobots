@@ -23,7 +23,7 @@ describe("Lab's empty state", () => {
   // `nanobots team run` case among them) rather than a bare text box.
   it("offers starter prompts", () => {
     stub();
-    render(<LabPage />);
+    render(<LabPage onOpenSwarm={() => {}} />);
     for (const prompt of [
       "What can you help me with?",
       "Add a bot that watches Stripe for failed payments and posts to Slack",
@@ -34,7 +34,7 @@ describe("Lab's empty state", () => {
 
   it("sends the exact prompt text when a starter is clicked", async () => {
     const sendLabMessage = stub();
-    render(<LabPage />);
+    render(<LabPage onOpenSwarm={() => {}} />);
 
     await act(async () => {
       fireEvent.click(
@@ -53,7 +53,7 @@ describe("Lab's empty state", () => {
     });
     vi.spyOn(api, "sendLabMessage").mockResolvedValue({ ok: true });
 
-    render(<LabPage />);
+    render(<LabPage onOpenSwarm={() => {}} />);
     expect(screen.queryByRole("button", { name: "What can you help me with?" })).toBeTruthy();
 
     act(() => onEntry.current?.({ time: new Date().toISOString(), bot: "you", msg: "hi" }));
@@ -76,7 +76,7 @@ describe("opening Lab mid-request", () => {
     });
     vi.spyOn(api, "sendLabMessage").mockResolvedValue({ ok: true });
 
-    render(<LabPage />);
+    render(<LabPage onOpenSwarm={() => {}} />);
     // Replay of a request that was still running when the tab connected:
     // the human's message and the delegation, but no final "lab" answer.
     act(() => {
@@ -107,5 +107,47 @@ describe("opening Lab mid-request", () => {
       }),
     );
     expect(screen.queryByText("thinking")).toBeNull();
+  });
+});
+
+// The one entry a "set up a basic automation" request produces carries a
+// path to what Lab just saved (see internal/runner.Run.LogOpenSwarm) — the
+// whole point of the feature is a link to click, not just a description.
+describe("Lab linking to a swarm it just composed", () => {
+  it("renders a clickable link that opens the saved swarm", () => {
+    const onEntry: { current: ((e: LogEntry) => void) | null } = { current: null };
+    vi.spyOn(apiModule, "subscribeLabEvents").mockImplementation((cb) => {
+      onEntry.current = cb;
+      return () => {};
+    });
+    vi.spyOn(api, "sendLabMessage").mockResolvedValue({ ok: true });
+    const onOpenSwarm = vi.fn();
+
+    render(<LabPage onOpenSwarm={onOpenSwarm} />);
+    act(() =>
+      onEntry.current?.({
+        time: new Date().toISOString(),
+        bot: "lab",
+        msg: 'Built "Inbox Summary" and saved it. Open it to see it run.',
+        open_swarm_path: "examples/swarms/inbox-summary.yaml",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open swarm →" }));
+    expect(onOpenSwarm).toHaveBeenCalledWith("examples/swarms/inbox-summary.yaml");
+  });
+
+  it("renders no link for an ordinary answer", () => {
+    const onEntry: { current: ((e: LogEntry) => void) | null } = { current: null };
+    vi.spyOn(apiModule, "subscribeLabEvents").mockImplementation((cb) => {
+      onEntry.current = cb;
+      return () => {};
+    });
+    vi.spyOn(api, "sendLabMessage").mockResolvedValue({ ok: true });
+
+    render(<LabPage onOpenSwarm={() => {}} />);
+    act(() => onEntry.current?.({ time: new Date().toISOString(), bot: "lab", msg: "Hi there!" }));
+
+    expect(screen.queryByRole("button", { name: "Open swarm →" })).toBeNull();
   });
 });

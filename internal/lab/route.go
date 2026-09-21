@@ -15,14 +15,16 @@ const (
 	actionDelegate action = "delegate"
 	actionStatus   action = "status"
 	actionAnswer   action = "answer"
+	actionAutomate action = "automate"
 )
 
 // decision is the one JSON object route asks the model for.
 type decision struct {
-	Action action `json:"action"`
-	Role   string `json:"role,omitempty"`
-	Task   string `json:"task,omitempty"`
-	Text   string `json:"text,omitempty"`
+	Action  action `json:"action"`
+	Role    string `json:"role,omitempty"`
+	Task    string `json:"task,omitempty"`
+	Text    string `json:"text,omitempty"`
+	Request string `json:"request,omitempty"`
 }
 
 // route asks the configured model what to do with the conversation so
@@ -41,7 +43,7 @@ func route(ctx context.Context, gen llm.Generator, history []turn, roles []strin
 func routePrompt(history []turn, roles []string) string {
 	var b strings.Builder
 	b.WriteString("You are Lab, the orchestrator for a nanobots Team (see context/TEAM-LAB-DESIGN.md). ")
-	b.WriteString("A human is chatting with you. For their latest message, decide exactly one of three things and respond with exactly one JSON object — nothing before it, nothing after it, no markdown fence.\n\n")
+	b.WriteString("A human is chatting with you. For their latest message, decide exactly one of four things and respond with exactly one JSON object — nothing before it, nothing after it, no markdown fence.\n\n")
 
 	b.WriteString("1. Delegate a task to a Team member, who works in their own persistent workspace (a real git worktree of the nanobots repo) and can read the bot catalog, author or edit bots and swarms, and run the nanobots CLI — never anything against a real account until a human separately runs or approves it:\n")
 	b.WriteString(`   {"action": "delegate", "role": "<short-kebab-case-role>", "task": "<a clear, self-contained task description>"}` + "\n")
@@ -53,7 +55,10 @@ func routePrompt(history []turn, roles []string) string {
 	b.WriteString("\n2. Report a role's recent work, when the human is asking what a role has done rather than asking for new work:\n")
 	b.WriteString(`   {"action": "status", "role": "<an existing role>"}` + "\n\n")
 
-	b.WriteString("3. Just answer in chat — a greeting, a clarifying question, general conversation, or anything that plainly isn't a task for the team:\n")
+	b.WriteString("3. Compose a starter automation (a swarm), when the human asks to set up, build, or try a basic automation and wants something concrete to look at fast rather than a Team member's full workflow:\n")
+	b.WriteString(`   {"action": "automate", "request": "<a clear, self-contained description of what to automate>"}` + "\n\n")
+
+	b.WriteString("4. Just answer in chat — a greeting, a clarifying question, general conversation, or anything that plainly isn't a task for the team:\n")
 	b.WriteString(`   {"action": "answer", "text": "<your reply>"}` + "\n\n")
 
 	if len(history) > 1 {
@@ -91,6 +96,10 @@ func parseDecision(raw string) (decision, error) {
 	case actionAnswer:
 		if d.Text == "" {
 			return decision{}, fmt.Errorf("an answer decision needs text: %q", raw)
+		}
+	case actionAutomate:
+		if d.Request == "" {
+			return decision{}, fmt.Errorf("an automate decision needs a request: %q", raw)
 		}
 	default:
 		return decision{}, fmt.Errorf("unrecognized action %q: %q", d.Action, raw)

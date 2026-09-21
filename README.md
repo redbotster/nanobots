@@ -141,10 +141,10 @@ ever joins the catalog ([docs/foundry.md](docs/foundry.md)).
 The composer drafts a swarm from your description. **Lab** (Advanced mode)
 is the other direction: a chat tab that delegates your message to a
 persistent, role-scoped coding agent (**Team**, Claude Code or Gemini CLI,
-in its own git worktree of this repo) or just answers it. Nothing a Team
-member does takes effect against a real account until a human runs or
-approves it — the same gate a person editing YAML by hand goes through, no
-new trust boundary built for this one.
+in its own git worktree of this repo), or composes and saves a starter
+automation on request. Nothing a Team member does — and nothing composed —
+takes effect against a real account until a human runs or approves it, the
+same gate as editing YAML by hand ([docs/lab.md](docs/lab.md)).
 
 ```sh
 nanobots team run backend-engineer "add a stripe-watch bot to the catalog"

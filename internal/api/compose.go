@@ -51,17 +51,6 @@ type composeResponse struct {
 }
 
 func (s *Server) handleCompose(w http.ResponseWriter, r *http.Request) {
-	// What the composer needs is a model, which is not the same as needing
-	// 1Claw. This used to demand ONECLAW_API_KEY specifically, so someone
-	// with a working Gemini key had a working catalog, working bots, and a
-	// compose box — the product's primary entry point — that refused to do
-	// anything.
-	if s.Orchestrator == nil || s.Orchestrator.LLM == nil {
-		writeError(w, http.StatusBadRequest, fmt.Errorf(
-			"the composer needs a model — set ONECLAW_API_KEY, or one of "+
-				"ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY (see docs/llm.md)"))
-		return
-	}
 	var req composeRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -72,39 +61,64 @@ func (s *Server) handleCompose(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bots, err := s.listBotSummaries()
+	draft, gap, plan, status, err := s.composeSwarm(r.Context(), req.Message)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-	if len(bots) == 0 {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("no bots found in the catalog to compose from"))
-		return
-	}
-
-	gen, err := s.composerGenerator()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err)
-		return
-	}
-
-	raw, err := composeChat(r.Context(), gen, composePrompt(bots, req.Message))
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("compose: %w", err))
-		return
-	}
-	draft, gap, err := parseComposeResponse(raw)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Errorf("compose produced an unusable response: %w", err))
+		writeError(w, status, err)
 		return
 	}
 	if gap != nil {
 		writeJSON(w, http.StatusOK, composeResponse{Gap: gap})
 		return
 	}
-
-	draft, plan := s.planWithOneCorrection(r.Context(), bots, req.Message, draft, gen)
 	writeJSON(w, http.StatusOK, composeResponse{Draft: draft, Plan: &plan})
+}
+
+// composeSwarm is handleCompose's core, minus the HTTP request/response
+// shapes — reused by ComposeAndSaveAutomation (internal/lab's "automate"
+// action) so Lab talks to the same drafting-and-type-checking path a human
+// gets from the compose box, rather than a second implementation that could
+// drift from it. status is the HTTP status err would have been reported
+// with, kept alongside err so handleCompose doesn't need its own copy of
+// this function's error classification.
+func (s *Server) composeSwarm(ctx context.Context, message string) (draft *saveSwarmRequest, gap *composeGapPayload, plan planResponse, status int, err error) {
+	// What the composer needs is a model, which is not the same as needing
+	// 1Claw. This used to demand ONECLAW_API_KEY specifically, so someone
+	// with a working Gemini key had a working catalog, working bots, and a
+	// compose box — the product's primary entry point — that refused to do
+	// anything.
+	if s.Orchestrator == nil || s.Orchestrator.LLM == nil {
+		return nil, nil, planResponse{}, http.StatusBadRequest, fmt.Errorf(
+			"the composer needs a model — set ONECLAW_API_KEY, or one of " +
+				"ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY (see docs/llm.md)")
+	}
+
+	bots, err := s.listBotSummaries()
+	if err != nil {
+		return nil, nil, planResponse{}, http.StatusInternalServerError, err
+	}
+	if len(bots) == 0 {
+		return nil, nil, planResponse{}, http.StatusInternalServerError, fmt.Errorf("no bots found in the catalog to compose from")
+	}
+
+	gen, err := s.composerGenerator()
+	if err != nil {
+		return nil, nil, planResponse{}, http.StatusInternalServerError, err
+	}
+
+	raw, err := composeChat(ctx, gen, composePrompt(bots, message))
+	if err != nil {
+		return nil, nil, planResponse{}, http.StatusInternalServerError, fmt.Errorf("compose: %w", err)
+	}
+	draft, gap, err = parseComposeResponse(raw)
+	if err != nil {
+		return nil, nil, planResponse{}, http.StatusInternalServerError, fmt.Errorf("compose produced an unusable response: %w", err)
+	}
+	if gap != nil {
+		return nil, gap, planResponse{}, http.StatusOK, nil
+	}
+
+	draft, planResult := s.planWithOneCorrection(ctx, bots, message, draft, gen)
+	return draft, nil, planResult, http.StatusOK, nil
 }
 
 // planWithOneCorrection type-checks the model's draft and, if the planner

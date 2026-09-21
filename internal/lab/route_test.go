@@ -65,6 +65,29 @@ func TestParseDecisionRejectsAnswerMissingText(t *testing.T) {
 	}
 }
 
+func TestParseDecisionAutomate(t *testing.T) {
+	d, err := parseDecision(`{"action":"automate","request":"summarise my inbox every morning"}`)
+	if err != nil {
+		t.Fatalf("parseDecision: %v", err)
+	}
+	if d.Action != actionAutomate || d.Request != "summarise my inbox every morning" {
+		t.Errorf("d = %+v", d)
+	}
+}
+
+func TestParseDecisionRejectsAutomateMissingRequest(t *testing.T) {
+	if _, err := parseDecision(`{"action":"automate"}`); err == nil {
+		t.Fatal("expected an error for an automate decision with no request")
+	}
+}
+
+func TestRoutePromptTeachesTheAutomateAction(t *testing.T) {
+	p := routePrompt([]turn{{who: "human", text: "set up a basic automation"}}, nil)
+	if !strings.Contains(p, `"action": "automate"`) {
+		t.Errorf("prompt doesn't teach the automate action:\n%s", p)
+	}
+}
+
 func TestRoutePromptListsExistingRoles(t *testing.T) {
 	p := routePrompt([]turn{{who: "human", text: "what's up"}}, []string{"backend-engineer", "designer"})
 	if !strings.Contains(p, "backend-engineer, designer") {

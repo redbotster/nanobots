@@ -91,6 +91,10 @@ function Dashboard({ onLeave }: { onLeave: () => void }) {
   // of whichever nav page is selected — the same reason SwarmsPage's own
   // inline foundry mode doesn't live inside the page switch below.
   const [openFoundryJobId, setOpenFoundryJobId] = useState<string | null>(null);
+  // A swarm Lab just composed and saved, to open on the Swarms page the
+  // instant its list has loaded — see LabPage's onOpenSwarm and
+  // SwarmsPage's own openPath/onOpenedPath.
+  const [openSwarmPath, setOpenSwarmPath] = useState<string | null>(null);
   const { theme, resolved: resolvedTheme, setTheme } = useTheme();
 
   // Basic mode hides the bot library and Lab nav entries entirely — Lab
@@ -112,6 +116,11 @@ function Dashboard({ onLeave }: { onLeave: () => void }) {
   const goTo = (id: Page) => {
     setPage(id);
     setOpenFoundryJobId(null);
+  };
+
+  const openSwarm = (path: string) => {
+    setOpenSwarmPath(path);
+    goTo("swarm");
   };
 
   // Polled, not fetched once: this footer is always on screen, independent
@@ -301,12 +310,14 @@ function Dashboard({ onLeave }: { onLeave: () => void }) {
                   uiMode={uiMode}
                   status={status}
                   onOpenSettings={() => goTo("settings")}
+                  openPath={openSwarmPath}
+                  onOpenedPath={() => setOpenSwarmPath(null)}
                 />
               )}
               <Suspense fallback={<LazyFallback />}>
                 {page === "bots" && <BotLibrary />}
                 {page === "team" && <TeamPage />}
-                {page === "lab" && <LabPage />}
+                {page === "lab" && <LabPage onOpenSwarm={openSwarm} />}
                 {page === "runs" && (
                   <RunsPage
                     onOpenSettings={() => goTo("settings")}
